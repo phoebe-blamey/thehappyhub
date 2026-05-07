@@ -1,0 +1,30 @@
+# Secrets — NEVER commit any of these (per CLAUDE.md)
+.env
+.env.*
+*.pem
+*.key
+
+# Dependencies
+node_modules/
+
+# Netlify local state
+.netlify/
+
+# Build output (no build step today, but defensive)
+dist/
+build/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
