@@ -75,7 +75,7 @@ Set on the `the-happy-hub` Netlify site:
 | `ZOOM_CLIENT_ID` | ✅ live | Zoom Server-to-Server OAuth |
 | `ZOOM_CLIENT_SECRET` | ✅ live | Zoom Server-to-Server OAuth |
 | `ZOOM_VERIFICATION_TOKEN` | ✅ live | Zoom webhook verification |
-| `RESEND_API_KEY` | ⏳ pending | Outbound email |
+| `RESEND_API_KEY` | ✅ live | Outbound email. **Note: was exposed in chat history during setup — rotate before relying on it.** Domain `phoebeblamey.com.au` must be verified in Resend before sends succeed. |
 | `TWILIO_*` | ⏳ optional | Outbound SMS |
 
 **Never commit secrets to the repo. Never echo them in code or logs.**
@@ -107,7 +107,7 @@ Louise Syphers, Yvette Polley, Frances Pratt, Kari Marsden, Christine Lukich, Ju
 In rough priority order:
 
 1. **Rotate the Anthropic API key.** It was visible in chat history during the build. Generate a new one at console.anthropic.com → update Netlify env var → done.
-2. **Resend account setup** for outbound email. Free tier covers her volume.
+2. **Verify `phoebeblamey.com.au` in Resend** at resend.com/domains so emails actually send (key is live but domain verification is the missing step). Also rotate the current `RESEND_API_KEY` since it was pasted into chat during setup.
 3. **AI flagging in Research Brief** — add a "⚠️ For Phoebe's attention" section that surfaces red flags / things she should probe.
 4. **Zoom auto-trigger webhook** — currently the "Pull from Zoom" button works manually. Webhook would auto-trigger after a session ends.
 5. **Twilio SMS** — optional. Email covers most needs.
