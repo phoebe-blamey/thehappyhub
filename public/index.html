@@ -377,7 +377,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7704 loaded successfully
+✓ The Happy Hub — Build v7705 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -1308,9 +1308,9 @@ function showPage(id) {
       else if (id === 'cohort-manager') renderCohortManager();
       else if (id === 'task-sheet') renderTaskSheet();
       else if (id === 'happy-hub')  renderHappyHub('','','');
-      else if (id === 'planner')    if (typeof renderPlanBuilderPage==='function') renderPlanBuilderPage();
-      else if (id === 'research')   if (typeof renderResearchPage==='function')    renderResearchPage();
-      else if (id === 'tasks')      if (typeof renderAllTasks==='function')        renderAllTasks();
+      else if (id === 'planner')    { if (typeof renderPlanBuilderPage==='function') renderPlanBuilderPage(); }
+      else if (id === 'research')   { if (typeof renderResearchPage==='function') renderResearchPage(); }
+      else if (id === 'tasks')      { if (typeof renderAllTasks==='function') renderAllTasks(); }
     } catch(e) { console.error('Page render error:', id, e); }
   }, 50);
 }
@@ -2654,24 +2654,8 @@ openProgram = function(client, progId) {
   }, 100);
 };
 
-// Wire into revenue dashboard
-var _origRevDash = renderRevenueDashboard;
-renderRevenueDashboard = function() {
-  _origRevDash();
-  // Add profitability leaderboard below revenue content
-  var el = document.getElementById('revenue-content');
-  if (el) {
-    var lb = document.createElement('div');
-    lb.id = 'profit-leaderboard';
-    lb.style.marginTop = '24px';
-    var header = document.createElement('div');
-    header.style.cssText = 'font-family:var(--f-head);font-size:18px;color:var(--magenta);margin-bottom:16px;padding-top:20px;border-top:1px solid var(--border)';
-    header.textContent = 'Client Profitability';
-    el.appendChild(header);
-    el.appendChild(lb);
-    renderProfitLeaderboard();
-  }
-};
+// Profitability leaderboard wrapper removed — renderProfitLeaderboard was never
+// implemented and the throw was breaking the rest of the revenue render chain.
 
 // Load saved rate on startup
 (function() {
@@ -2869,7 +2853,9 @@ function toolCard(title, desc, color, onclickArg) {
     window[fnName] = onclickArg;
     oc = fnName + '()';
   }
-  return '<div onclick="' + oc + '" style="background:white;border:1.5px solid ' + color + ';border-left:4px solid ' + color + ';border-radius:12px;padding:14px;cursor:pointer;transition:all 0.2s">' +
+  // Escape any double-quotes so inline onclick attributes don't break the HTML
+  var safe = oc.replace(/"/g, '&quot;');
+  return '<div onclick="' + safe + '" style="background:white;border:1.5px solid ' + color + ';border-left:4px solid ' + color + ';border-radius:12px;padding:14px;cursor:pointer;transition:all 0.2s">' +
     '<div style="font-family:var(--f-head);font-size:13px;font-weight:700;color:' + color + ';margin-bottom:4px">' + title + '</div>' +
     '<div style="font-size:11px;color:var(--stone)">' + desc + '</div>' +
     '</div>';
@@ -3424,11 +3410,9 @@ function renderClientActions(client, prog) {
 // ============================================================
 // PROFITABILITY CALC + STAT CARD
 // ============================================================
-var PROGRAM_VALUES = {
-  '90day':795,'accelerator':795,'broker':597,'happyhour':630,
-  'adhoc':630,'audit':795,'mdc':1745,'builder-6m':3000,
-  'inquiry':0,'podcast':0,'partner':0,'research':0,'general':0,
-};
+// Note: PROGRAM_VALUES is defined once earlier in the file (above the revenue
+// dashboard). Don't redeclare it here — the duplicate was missing 'mdc-cohort'
+// and was overwriting the earlier complete map at runtime.
 var HOURLY_RATE = parseInt(localStorage.getItem('hmh_hourly_rate')||'297');
 var SESSION_TIMES = { '90day':120,'accelerator':120,'happyhour':90,'adhoc':60,'audit':90,'mdc':60,'inquiry':30 };
 
@@ -3884,52 +3868,6 @@ async function generateBusinessInsights() {
     outputEl.classList.remove('streaming');
   } catch(e){outputEl.textContent='Error: '+e.message;outputEl.classList.remove('streaming');}
 }
-
-
-// ========== RENDER CLIENTS GRID ==========
-function renderClients() {
-  var grid = document.getElementById('clients-grid');
-  if (!grid) return;
-  var list = clients;
-  if (activeFilter !== 'all') {
-    list = clients.filter(function(c) {
-      return (c.programs||[]).some(function(p) {
-        return p.program === activeFilter || p.workbook === activeFilter;
-      });
-    });
-  }
-  if (!list.length) {
-    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--stone);font-size:14px;padding:32px 0;text-align:center">No clients yet — they will appear here when they book through Calendly, or click + Add client.</div>';
-    return;
-  }
-  grid.innerHTML = list.map(function(c) {
-    var progs = (c.programs||[]).filter(function(p){ return p.workbook!=='none'&&p.workbook!=='inquiry'; });
-    var latestProg = progs[progs.length-1] || {};
-    var initials = c.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2);
-    var dateStr = latestProg.sessionDate ? new Date(latestProg.sessionDate).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) : '';
-    var healthColor = {green:'var(--teal)',amber:'#E8A020',red:'var(--hot-pink)'}[c.health||'green'] || 'var(--teal)';
-    var progTags = progs.slice(-3).map(function(p) {
-      var pi = PROGRAMS[p.program]||{};
-      return '<span class="prog-badge '+(pi.color||'prog-stone')+'">'+(pi.short||p.program)+(p.locked?' 🔒':'')+'</span>';
-    }).join('');
-    return '<div class="client-card" data-cid="'+c.id+'" onclick="openClientById(this.dataset.cid)"> ' +
-      '<div class="client-card-top">' +
-      '<div class="client-avatar">'+initials+'</div>' +
-      '<div style="flex:1;min-width:0">' +
-      '<div class="client-card-name">'+c.name+'</div>' +
-      '<div class="client-card-prog">'+(c.biz||c.email||'')+'</div>' +
-      '</div>' +
-      '<span class="client-status status-'+(c.status||'new')+'" style="border-left:3px solid '+healthColor+'">'+(c.status||'new')+'</span>' +
-      '</div>' +
-      '<div class="client-card-footer">'+progTags+
-      (dateStr?'<span style="margin-left:auto;font-size:11px;color:var(--stone)">📅 '+dateStr+'</span>':'')+
-      '</div></div>';
-  }).join('');
-}
-
-function openClientById(id) { openClient(id); }
-
-
 
 
 // ========== RENDER CLIENTS GRID ==========
