@@ -192,6 +192,24 @@ export default async (req: Request) => {
     await notifyStore.set(`notify:${Date.now()}`, JSON.stringify(notif));
   } catch {}
 
+  // ── Trigger AI pre-session intelligence brief (background, fire-and-forget) ─
+  if (fields.websiteLink) {
+    const link = fields.websiteLink;
+    const isLinkedIn = link.toLowerCase().includes("linkedin.com");
+    const baseUrl = new URL(req.url).origin;
+    fetch(`${baseUrl}/.netlify/functions/discover-socials-background`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId,
+        name,
+        websiteUrl:   isLinkedIn ? "" : link,
+        linkedIn:     isLinkedIn ? link : "",
+        businessName: fields.businessName || "",
+      }),
+    }).catch(err => console.error("Failed to trigger social discovery:", err));
+  }
+
   return new Response(JSON.stringify({ success: true, clientId, isNew, program: programInfo.label }), {
     status: 200,
     headers: { "Content-Type": "application/json" },

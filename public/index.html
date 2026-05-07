@@ -377,7 +377,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7703 loaded successfully
+✓ The Happy Hub — Build v7704 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -808,7 +808,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
         <div class="settings-card">
           <h4>🔌 Calendly webhook</h4>
           <p>When a client books the 90-Day Business Builder, a client file is auto-created with all intake answers. Add this URL in Calendly → Integrations → Webhooks → invitee.created:</p>
-          <div class="code-block" id="webhook-url-display">https://phoebe-breakthrough-hub.netlify.app/api/calendly-webhook</div>
+          <div class="code-block" id="webhook-url-display">https://the-happy-hub.netlify.app/api/calendly-webhook</div>
         </div>
 
         <div class="settings-card">
@@ -1853,7 +1853,7 @@ async function generateHappyHourSummary() {
   var prompt = 'You are Phoebe Blamey\'s assistant. Write a warm, professional Happy Hour session summary for client ' + client.name + '.\n\nAssets/Position: ' + (hh.assets||'') + '\nDiscussed: ' + (hh.discussed||'') + '\nActions: ' + (hh.actions||'') + '\n\nWrite in Phoebe\'s voice: smart, warm, direct, empowering. Structure: Here is what we learned (table of assets/goals), key conversations with clear explanations, specific action items, warm closing. This is education not financial advice.';
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-beta':'output-128k-2025-02-19'},
+      method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
       body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:1200, stream:true, messages:[{role:'user',content:prompt}] })
     });
     var reader = resp.body.getReader(); var decoder = new TextDecoder(); var buffer = '';
@@ -1922,7 +1922,7 @@ async function runResearch() {
   output.classList.add('show','streaming'); output.textContent='';
   var prompt='You are Phoebe Blamey\'s AI research assistant.\n\nClient: '+name+'\nWebsite: '+(document.getElementById('r-url').value||'Not provided')+'\nSocial: '+(document.getElementById('r-social').value||'Not provided')+'\nIndustry: '+(document.getElementById('r-industry').value||'Not provided')+'\nIntake: '+(document.getElementById('r-intake').value||'Not provided')+'\n\nPre-session coaching brief:\n1. DIGITAL PRESENCE AUDIT — messaging, CTA strength, score /10\n2. REVENUE LEAK SPOTS\n3. OPPORTUNITIES\n4. COACHING FOCUS AREAS\n5. QUICK WINS (first 30 days)\n\nSharp, practical, for an experienced coach.';
   try {
-    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-beta':'output-128k-2025-02-19'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,stream:true,messages:[{role:'user',content:prompt}]})});
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,stream:true,messages:[{role:'user',content:prompt}]})});
     var reader=resp.body.getReader();var decoder=new TextDecoder();var buffer='';
     while(true){var r=await reader.read();if(r.done)break;buffer+=decoder.decode(r.value,{stream:true});var lines=buffer.split('\n');buffer=lines.pop();
     for(var l of lines){if(l.startsWith('data: ')){try{var p=JSON.parse(l.slice(6));if(p.type==='content_block_delta'&&p.delta?.text)output.textContent+=p.delta.text;}catch(e){}}}}
@@ -1938,7 +1938,7 @@ async function runPlanBuilder() {
   btn.disabled=true;btn.innerHTML='⏳ Building…';output.classList.add('show','streaming');output.textContent='';
   var prompt='You are helping Phoebe Blamey build a 90-day plan for client '+clientName+'.\n\nSESSION NOTES:\n'+notes+'\n\nCreate a structured 90-Day Business Breakthrough plan:\n\nMONTH 1 — FOUNDATION (4-5 specific tasks)\nMONTH 2 — MOMENTUM (4-5 tasks building on Month 1)\nMONTH 3 — BREAKTHROUGH (4-5 tasks locking in transformation)\n\nKEY FOCUS AREAS: 3 headline themes\nQUICK WIN: Single most impactful thing this week\nCOACHING NOTE: Private observation for Phoebe\n\nDirect, practical, tailored to the session.';
   try {
-    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-beta':'output-128k-2025-02-19'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,stream:true,messages:[{role:'user',content:prompt}]})});
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,stream:true,messages:[{role:'user',content:prompt}]})});
     var reader=resp.body.getReader();var decoder=new TextDecoder();var buffer='';
     while(true){var r=await reader.read();if(r.done)break;buffer+=decoder.decode(r.value,{stream:true});var lines=buffer.split('\n');buffer=lines.pop();
     for(var l of lines){if(l.startsWith('data: ')){try{var p=JSON.parse(l.slice(6));if(p.type==='content_block_delta'&&p.delta?.text)output.textContent+=p.delta.text;}catch(e){}}}}
@@ -2615,8 +2615,8 @@ async function generateGroupInsights() {
 
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-beta':'output-128k-2025-02-19'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500, stream:true, messages:[{role:'user',content:prompt}] })
+      method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1500, stream:true, messages:[{role:'user',content:prompt}] })
     });
     var reader=resp.body.getReader(); var decoder=new TextDecoder(); var buffer='';
     while(true){var r=await reader.read();if(r.done)break;buffer+=decoder.decode(r.value,{stream:true});var lines=buffer.split('\n');buffer=lines.pop();
@@ -3581,7 +3581,7 @@ async function runDeepDive(clientId) {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
       headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:2000,
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:2000,
         messages:[{role:'user',content:prompt}] })
     });
     var data = await resp.json();
@@ -3878,7 +3878,7 @@ async function generateBusinessInsights() {
     }).join('\n');
   var prompt = 'You are Phoebe Blamey\'s strategic advisor. Analyse her coaching business.\n\n'+ctx+'\n\nProvide:\n1. WHAT\'S WORKING — best performing patterns\n2. WHERE TO FOCUS — biggest opportunities right now\n3. REVENUE GAPS — where money is being left on the table\n4. CLIENT SUCCESS PATTERNS — who is getting the best results and why\n5. ONE BOLD MOVE — single highest-impact action in the next 30 days\n\nBe specific and direct. Speak as a peer.';
   try {
-    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1200,messages:[{role:'user',content:prompt}]})});
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1200,messages:[{role:'user',content:prompt}]})});
     var data=await resp.json();
     outputEl.textContent=(data.content&&data.content[0]&&data.content[0].text)||'Error.';
     outputEl.classList.remove('streaming');

@@ -36,14 +36,15 @@ public/
   index.html          # entire frontend — landing, coach portal, client portal, all pages, all logic
 netlify/
   functions/
-    calendly-webhook.mts    # auto-creates client on Calendly booking
-    save-clients.mts        # POST → Netlify Blobs
-    get-clients.mts         # GET ← Netlify Blobs
-    ai-call.mts             # server-side Anthropic proxy (uses ANTHROPIC_API_KEY env var)
-    zoom-transcript.mts     # pulls Zoom recording transcripts via Server-to-Server OAuth
-    seed-clients.mts        # one-shot real client seed (Louise, Yvette, Frances, etc.)
-    notifications.mts       # new booking alerts
-    send-message.mts        # email (Resend) / SMS (Twilio) outbound
+    calendly-webhook.mts                # auto-creates client on Calendly booking
+    save-client.mts                     # POST → Netlify Blobs
+    get-clients.mts                     # GET ← Netlify Blobs
+    ai-call.mts                         # server-side Anthropic proxy (uses ANTHROPIC_API_KEY env var)
+    zoom-transcript.mts                 # pulls Zoom recording transcripts via Server-to-Server OAuth
+    seed-clients.mts                    # one-shot real client seed (Anna-Louise, Louise, Yvette, Frances, Kari, Christine, Julie)
+    get-notifications.mts               # new booking alerts (read + clear queue)
+    send-message.mts                    # email (Resend) / SMS (Twilio) outbound
+    discover-socials-background.mts     # AI pre-session brief — Netlify background fn, auto-triggered by calendly-webhook when a website/LinkedIn is provided
 netlify.toml               # build config — publish dir is `public`, no build command
 package.json               # function dependencies only
 ```
@@ -56,7 +57,7 @@ package.json               # function dependencies only
 - **Backend:** Netlify Functions (`.mts` TypeScript modules)
 - **AI:** Anthropic API direct
   - `claude-haiku-4-5-20251001` — fast tasks (social discovery, task extraction)
-  - `claude-sonnet-4-20250514` — heavy analysis (research brief, plan builder, win impact, profitability insights)
+  - `claude-sonnet-4-6` — heavy analysis (research brief, plan builder, win impact, profitability insights)
 - **Calendar:** Calendly API + webhook
 - **Video:** Zoom Server-to-Server OAuth (recording + transcript scopes)
 - **Email:** Resend (pending — env var not yet set)
