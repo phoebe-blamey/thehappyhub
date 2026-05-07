@@ -25,6 +25,9 @@ desktop.ini
 *.swp
 *.swo
 
+# Claude Code — user-specific local settings (shared commands/agents are tracked)
+.claude/settings.local.json
+
 # Logs
 *.log
 npm-debug.log*
