@@ -393,7 +393,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7714 loaded successfully
+✓ The Happy Hub — Build v7715 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -1165,8 +1165,8 @@ var COACH_PIN = 'PB2025';
 
 // MDC Cohorts — run every 90 days
 var MDC_COHORTS = [
-  { id:'cohort-1', name:'MDC Cohort 1', dates:'Apr–Jun 2026', start:'2026-04-01', end:'2026-06-30', whatsapp:'https://chat.whatsapp.com/example1', active:true },
-  { id:'cohort-2', name:'MDC Cohort 2', dates:'Jul–Sep 2026', start:'2026-07-01', end:'2026-09-30', whatsapp:'', active:false },
+  { id:'cohort-1', name:'MDC Cohort 1', dates:'Apr–Jun 2026', start:'2026-04-01', end:'2026-06-30', whatsapp:'https://chat.whatsapp.com/example1', zoomLink:'', nextSessionDate:'', nextSessionTime:'', active:true },
+  { id:'cohort-2', name:'MDC Cohort 2', dates:'Jul–Sep 2026', start:'2026-07-01', end:'2026-09-30', whatsapp:'', zoomLink:'', nextSessionDate:'', nextSessionTime:'', active:false },
 ];
 
 // ========== STATE ==========
@@ -4265,13 +4265,57 @@ function renderCohortManager() {
       return (c.programs || []).some(function(p) { return p.cohort === co.id; });
     });
 
-    html += '<div style="background:white;border:1.5px solid #F5D5E3;border-radius:14px;padding:18px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div><div style="font-family:var(--f-head);font-size:16px;color:#C9266B;font-weight:700">' + co.name + '</div><div style="font-size:11px;color:#ACA495">' + (co.dates||'') + ' · ' + members.length + ' member' + (members.length!==1?'s':'') + '</div></div><button onclick="showAddToCohort(\''+co.id+'\')" style="background:#EC2C8A;color:white;border:none;padding:6px 12px;border-radius:99px;font-size:11px;font-weight:700;cursor:pointer">+ Assign</button></div>';
+    // Compose date label — prefer structured start/end if present, fall back to legacy "dates" string
+    var dateLabel = '';
+    if (co.start && co.end) {
+      try {
+        var s = new Date(co.start), e = new Date(co.end);
+        dateLabel = s.toLocaleDateString('en-AU', {month:'short',year:'numeric'}) + ' – ' + e.toLocaleDateString('en-AU', {month:'short',year:'numeric'});
+      } catch(_) { dateLabel = co.dates || ''; }
+    } else { dateLabel = co.dates || ''; }
 
-    if (co.whatsapp) {
-      html += '<a href="'+co.whatsapp+'" target="_blank" style="display:inline-block;font-size:11px;background:#25D366;color:white;padding:4px 10px;border-radius:99px;text-decoration:none;margin-bottom:10px">💬 Open WhatsApp group</a>';
-    } else {
-      html += '<button onclick="setCohortWhatsApp(\''+co.id+'\')" style="background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer;margin-bottom:10px">+ Add WhatsApp link</button>';
+    // Next session display
+    var nextSessionLabel = '';
+    if (co.nextSessionDate) {
+      try {
+        var d = new Date(co.nextSessionDate);
+        nextSessionLabel = d.toLocaleDateString('en-AU', {weekday:'short',day:'numeric',month:'short'}) + (co.nextSessionTime ? ' · ' + co.nextSessionTime : '');
+      } catch(_) { nextSessionLabel = co.nextSessionDate; }
     }
+
+    html += '<div style="background:white;border:1.5px solid #F5D5E3;border-radius:14px;padding:18px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">' +
+      '<div style="min-width:0;flex:1"><div style="font-family:var(--f-head);font-size:16px;color:#C9266B;font-weight:700">' + co.name + '</div>' +
+      '<div style="font-size:11px;color:#ACA495">' + (dateLabel||'No dates set') + ' · ' + members.length + ' member' + (members.length!==1?'s':'') + '</div></div>' +
+      '<button onclick="showAddToCohort(\''+co.id+'\')" style="background:#EC2C8A;color:white;border:none;padding:6px 12px;border-radius:99px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">+ Assign</button>' +
+      '</div>';
+
+    // Next session row
+    html += '<div style="background:#FDEFF5;border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+    if (nextSessionLabel) {
+      html += '<span style="font-size:11px;color:#ACA495;text-transform:uppercase;font-weight:700;letter-spacing:0.06em">Next session</span>' +
+              '<span style="font-size:13px;color:#C9266B;font-weight:600">' + nextSessionLabel + '</span>';
+    } else {
+      html += '<span style="font-size:11px;color:#ACA495">No next session scheduled</span>';
+    }
+    html += '<button onclick="setCohortDates(\''+co.id+'\')" class="btn-sm" style="margin-left:auto;padding:3px 10px;font-size:11px;background:white;border:1.5px solid #F5D5E3;color:#C9266B;border-radius:99px;cursor:pointer">📅 Edit dates</button>';
+    html += '</div>';
+
+    // Action chips row — Zoom + WhatsApp
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+    if (co.zoomLink) {
+      html += '<a href="'+co.zoomLink+'" target="_blank" style="font-size:11px;background:#2D8CFF;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">🎬 Open Zoom</a>';
+      html += '<button onclick="setCohortZoom(\''+co.id+'\')" style="background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer">Edit</button>';
+    } else {
+      html += '<button onclick="setCohortZoom(\''+co.id+'\')" style="background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer">+ Add Zoom link</button>';
+    }
+    if (co.whatsapp) {
+      html += '<a href="'+co.whatsapp+'" target="_blank" style="font-size:11px;background:#25D366;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">💬 Open WhatsApp</a>';
+      html += '<button onclick="setCohortWhatsApp(\''+co.id+'\')" style="background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer">Edit</button>';
+    } else {
+      html += '<button onclick="setCohortWhatsApp(\''+co.id+'\')" style="background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer">+ Add WhatsApp link</button>';
+    }
+    html += '</div>';
 
     if (members.length === 0) {
       html += '<div style="color:#ACA495;font-size:12px;padding:12px;text-align:center;background:#FDEFF5;border-radius:8px">No clients assigned yet</div>';
@@ -4329,10 +4373,50 @@ function removeFromCohort(clientId, cohortId) {
 }
 
 function setCohortWhatsApp(cohortId) {
-  var url = prompt('WhatsApp group invite link:');
-  if (!url) return;
-  var co = MDC_COHORTS.find(function(x) { return x.id === cohortId; });
-  if (co) co.whatsapp = url;
+  var co = (MDC_COHORTS||[]).find(function(x) { return x.id === cohortId; });
+  if (!co) return;
+  var url = prompt('WhatsApp group invite link:', co.whatsapp || '');
+  if (url === null) return; // user cancelled
+  co.whatsapp = url.trim();
+  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
+  renderCohortManager();
+}
+
+function setCohortZoom(cohortId) {
+  var co = (MDC_COHORTS||[]).find(function(x) { return x.id === cohortId; });
+  if (!co) return;
+  var url = prompt('Zoom meeting link for this cohort:', co.zoomLink || '');
+  if (url === null) return;
+  co.zoomLink = url.trim();
+  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
+  renderCohortManager();
+}
+
+function setCohortDates(cohortId) {
+  var co = (MDC_COHORTS||[]).find(function(x) { return x.id === cohortId; });
+  if (!co) return;
+  var start = prompt('Cohort start date (YYYY-MM-DD):', co.start || '');
+  if (start === null) return;
+  var end = prompt('Cohort end date (YYYY-MM-DD):', co.end || '');
+  if (end === null) return;
+  var nextDate = prompt('Next session date (YYYY-MM-DD, leave blank for none):', co.nextSessionDate || '');
+  if (nextDate === null) return;
+  var nextTime = '';
+  if (nextDate) {
+    nextTime = prompt('Next session time (e.g. "10:00am" or "14:00", leave blank if not set):', co.nextSessionTime || '');
+    if (nextTime === null) return;
+  }
+  co.start = start.trim();
+  co.end = end.trim();
+  co.nextSessionDate = nextDate.trim();
+  co.nextSessionTime = nextTime.trim();
+  // Refresh the legacy "dates" label so older code still has something
+  if (co.start && co.end) {
+    try {
+      var s = new Date(co.start), e = new Date(co.end);
+      co.dates = s.toLocaleDateString('en-AU', {month:'short',year:'numeric'}) + ' – ' + e.toLocaleDateString('en-AU', {month:'short',year:'numeric'});
+    } catch(_) {}
+  }
   try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
   renderCohortManager();
 }
@@ -4340,9 +4424,29 @@ function setCohortWhatsApp(cohortId) {
 function addNewCohort() {
   var name = prompt('Cohort name:');
   if (!name) return;
-  var dates = prompt('Dates (e.g. "Jul–Sep 2026"):') || '';
+  var start = prompt('Start date (YYYY-MM-DD, optional):') || '';
+  var end   = prompt('End date (YYYY-MM-DD, optional):') || '';
+  var zoomLink = prompt('Zoom link for cohort sessions (optional):') || '';
+  var legacyDates = '';
+  if (start && end) {
+    try {
+      var s = new Date(start), e = new Date(end);
+      legacyDates = s.toLocaleDateString('en-AU', {month:'short',year:'numeric'}) + ' – ' + e.toLocaleDateString('en-AU', {month:'short',year:'numeric'});
+    } catch(_) {}
+  }
   if (!Array.isArray(MDC_COHORTS)) window.MDC_COHORTS = [];
-  MDC_COHORTS.push({ id:'cohort-'+Date.now(), name:name, dates:dates, whatsapp:'' });
+  MDC_COHORTS.push({
+    id: 'cohort-' + Date.now(),
+    name: name.trim(),
+    start: start.trim(),
+    end: end.trim(),
+    dates: legacyDates,
+    whatsapp: '',
+    zoomLink: zoomLink.trim(),
+    nextSessionDate: '',
+    nextSessionTime: '',
+    active: true,
+  });
   try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
   renderCohortManager();
 }
