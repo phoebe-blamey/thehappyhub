@@ -73,20 +73,38 @@ export default async (req: Request) => {
       }
       meeting = directData;
     } else {
-      // Fall back to list-by-date and pick most recent
+      // Fall back to list-by-date — search a ±7 day window centred on
+      // sessionDate, then pick the recording closest to the session date.
+      // (Was a single-day query before, which missed sessions that ran late
+      // / over midnight UTC / where the program's stored sessionDate didn't
+      // exactly match the actual call date.)
+      const target = new Date(sessionDate);
+      const fromD = new Date(target.getTime() - 7 * 86400000);
+      const toD   = new Date(target.getTime() + 7 * 86400000);
+      const fromStr = fromD.toISOString().split("T")[0];
+      const toStr   = toD.toISOString().split("T")[0];
       const recResp = await fetch(
-        `https://api.zoom.us/v2/users/me/recordings?from=${sessionDate}&to=${sessionDate}&page_size=30`,
+        `https://api.zoom.us/v2/users/me/recordings?from=${fromStr}&to=${toStr}&page_size=100`,
         { headers: { "Authorization": `Bearer ${accessToken}` } }
       );
       const recData = await recResp.json();
       const recordings = recData.meetings || [];
       if (!recordings.length) {
         return new Response(JSON.stringify({
-          error: "No Zoom recordings found for " + sessionDate,
-          hint: "Make sure cloud recording is enabled in Zoom settings and the session has finished processing (usually 15-30 mins after the call ends)."
+          error: `No Zoom recordings found between ${fromStr} and ${toStr}`,
+          hint: "Searched a 14-day window around the session date. Check cloud recording is enabled in Zoom and the session has finished processing (usually 15-30 mins after the call ends).",
+          sessionDate: sessionDate,
+          searchedFrom: fromStr,
+          searchedTo: toStr,
         }), { status: 404 });
       }
-      recordings.sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+      // Pick the recording closest to the session date
+      const targetT = target.getTime();
+      recordings.sort((a: any, b: any) => {
+        const da = Math.abs(new Date(a.start_time).getTime() - targetT);
+        const db = Math.abs(new Date(b.start_time).getTime() - targetT);
+        return da - db;
+      });
       meeting = recordings[0];
     }
   } catch (err) {

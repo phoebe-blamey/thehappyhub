@@ -1,10 +1,10 @@
-<!-- HappyHub Deploy: phase-b1-modular -->
+﻿<!-- HappyHub Deploy: phase-b1-modular -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Happy Money Hub — Phoebe Blamey</title>
+<title>PeaBe Coaching Hub — Phoebe Blamey</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
@@ -13,12 +13,12 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v8600 — full sync (Calendly+Zoom+dedupe), client summary versioning, hero My Why fix">
+<meta name="hmh-build" content="v8700 — PeaBe rebrand, save-conflict fix, full-screen client portal, cohort notes, Zoom ±7d search, removable resources, less toast noise">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
 <div id="landing">
-  <div class="landing-logo">Happy Money<br>Hub</div>
+  <div class="landing-logo">PeaBe<br>Coaching Hub</div>
   <div class="landing-sub">Phoebe Blamey — Business Coaching Platform</div>
   <div class="access-grid" id="access-grid">
     <div class="access-card" id="coach-access-card" onclick="focusCoachPin()">
@@ -58,7 +58,7 @@
 <!-- ========== COACH HUB ========== -->
 <div class="hub" id="coach-hub">
   <div class="topbar">
-    <div class="topbar-logo">The Happy <span>Hub</span></div>
+    <div class="topbar-logo">PeaBe <span>Coaching Hub</span></div>
     <span class="topbar-badge badge-coach">Coach View</span>
     <span id="save-status-pill" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Save status — saves happen automatically as you type"></span>
     <button class="btn-logout" onclick="logout()">Sign out</button>
@@ -108,7 +108,7 @@
         <span class="item-icon">✅</span> Task sheet
       </div>
       <div class="sidebar-item" onclick="showPage('happy-hub'); renderHappyHub('','','')">
-        <span class="item-icon">💛</span> Happy Hub
+        <span class="item-icon">💛</span> Resources
       </div>
       <div class="sidebar-item" onclick="showPage('settings')">
         <span class="item-icon">⚙️</span> Settings
@@ -464,7 +464,7 @@
 
       <!-- HAPPY HUB — RESOURCE LIBRARY -->
       <div class="page" id="page-happy-hub">
-        <h1 class="page-title">💛 The Happy Hub</h1>
+        <h1 class="page-title">💛 Resources library</h1>
         <p class="page-sub">Your resource library — blogs, podcasts, courses, tools. Share anything with any client in one click.</p>
         <div id="happy-hub-content"></div>
       </div>
@@ -639,7 +639,7 @@
      The hero + topbar are persistent; only the content + sub-nav swap. -->
 <div class="hub" id="client-hub">
   <div class="topbar">
-    <div class="topbar-logo">The Happy <span>Hub</span></div>
+    <div class="topbar-logo">PeaBe <span>Coaching Hub</span></div>
     <span class="topbar-badge badge-client" id="client-topbar-prog">My Hub</span>
     <span class="save-status-pill-c" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Your work saves automatically as you go"></span>
     <button class="btn-logout" onclick="logout()">Sign out</button>
@@ -833,7 +833,7 @@
       <div style="font-size:24px;line-height:1">💛</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:13px">My resources</div>
-        <div style="font-size:11px;color:var(--stone);margin-top:1px">Worksheets, guides, podcasts — all in your Happy Hub</div>
+        <div style="font-size:11px;color:var(--stone);margin-top:1px">Worksheets, guides, podcasts — Phoebe's curated library</div>
       </div>
       <div style="color:var(--stone);font-size:14px">→</div>
     </a>
@@ -1328,7 +1328,7 @@ async function sendWelcomeEmail(client) {
       body: JSON.stringify({
         type: 'email',
         to: client.email,
-        subject: 'Welcome to The Happy Hub — let\'s get started',
+        subject: 'Welcome to PeaBe Coaching Hub — let\'s get started',
         message: body,
         clientName: client.name,
       }),
@@ -1696,7 +1696,29 @@ async function loadClients() {
   }
 }
 
-async function persistClient(client) {
+// Per-client save queue — prevents the "Conflicting update" modal from firing
+// when two persistClient calls run in parallel (e.g. tabbing between two
+// textareas, both onchange handlers fire). Each per-client save now waits
+// for the previous save to finish before starting, so expectedVersion is
+// always the freshly-confirmed server value, never a stale one from a
+// parallel-in-flight save.
+window._persistChain = window._persistChain || {};
+
+function persistClient(client) {
+  if (!client || !client.id) return Promise.resolve();
+  var prev = window._persistChain[client.id] || Promise.resolve();
+  var next = prev
+    .catch(function(){ /* swallow previous chain errors so they don't block this save */ })
+    .then(function(){ return _persistClientInner(client); });
+  window._persistChain[client.id] = next;
+  // Drop the chain reference once this save completes so we don't hold memory
+  next.finally(function(){
+    if (window._persistChain[client.id] === next) delete window._persistChain[client.id];
+  });
+  return next;
+}
+
+async function _persistClientInner(client) {
   // Capture what we believe the server's version is BEFORE we bump updatedAt,
   // so we can pass it as expectedVersion for optimistic concurrency. If the
   // server has a newer version (e.g. a webhook touched this client mid-edit)
@@ -2050,7 +2072,7 @@ function stopNotificationPolling() {
 // ============================================================
 var BADGES = {
   // Welcome
-  'welcome':         { icon:'🎉', name:'Welcome',          desc:'Joined The Happy Hub', tier:'bronze' },
+  'welcome':         { icon:'🎉', name:'Welcome',          desc:'Joined PeaBe Coaching Hub', tier:'bronze' },
   // Wins
   'win-1':           { icon:'🌱', name:'First Step',       desc:'Logged your first win', tier:'bronze' },
   'win-3':           { icon:'🌟', name:'On a Roll',        desc:'3 wins logged', tier:'silver' },
@@ -2481,7 +2503,7 @@ function renderReviewList() {
 function copyAllReviewNotes() {
   var notes = getReviewNotes();
   if (!notes.length) { branded.alert('No notes to copy yet.'); return; }
-  var build = '# The Happy Hub — Testing notes (' + notes.length + ')\n\n';
+  var build = '# PeaBe Coaching Hub — Testing notes (' + notes.length + ')\n\n';
   notes.forEach(function(n, i) {
     var d = new Date(n.ts);
     var when = d.toLocaleString('en-AU',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
@@ -4553,7 +4575,8 @@ async function saveClientSettingsField(key, value) {
   }
   client.updatedAt = new Date().toISOString();
   await persistClient(client);
-  branded.toast('Saved');
+  // Save status pill in the topbar already shows ✓ Saved — no toast needed,
+  // it would fire too often when typing in multiple fields and feel noisy.
   // Refresh hero name in case they changed it
   if (key === 'name') {
     var firstName = (client.name||'').split(' ')[0] || 'You';
@@ -4740,7 +4763,7 @@ async function saveClientWhy(value, progId) {
   if (!client) return;
   client.why = (value || '').trim();
   await persistClient(client);
-  branded.toast('Saved');
+  // Topbar pill already shows ✓ Saved — no toast spam.
   // Re-render the program so the pin reflects new state
   var prog = (client.programs||[]).find(function(p){ return p.id === progId; });
   if (prog) renderClientProgram(client, prog);
@@ -5550,8 +5573,11 @@ var HUB_RESOURCES = null; // lazy loaded
 
 async function loadHubResources() {
   if (HUB_RESOURCES) return HUB_RESOURCES;
-  // Fetch from WordPress + static resources
-  var resources = [
+  // Default-list resources. Phoebe can hide any of these by clicking 🗑 on
+  // the card; the IDs go into `hmh_resources_removed` localStorage and
+  // we filter them out below. Any resources Phoebe ADDS via the form go
+  // into `hmh_hub_resources` localStorage and merge with the defaults.
+  var defaults = [
     // Blogs — pulled from phoebeblamey.com.au
     { id:'r1', type:'blog', title:'How to Stop Leaking Money in Your Business', url:'https://phoebeblamey.com.au/blog/', tags:['money','revenue','business'], date:'2026-03-01', desc:'The exact spots where most small businesses lose revenue without realising it.' },
     { id:'r2', type:'blog', title:'Why Your Hourly Rate Is Lying to You', url:'https://phoebeblamey.com.au/blog/', tags:['pricing','money','revenue'], date:'2026-02-15', desc:'How to calculate your real rate and stop undercharging.' },
@@ -5572,6 +5598,20 @@ async function loadHubResources() {
     { id:'r13', type:'booking', title:'Book a Happy Hour', url:'https://calendly.com/phoebe-phoebeblamey/happy-hour', tags:['coaching','booking','happyhour'], date:'2026-01-01', desc:'90-minute strategy session — bring your questions.' },
     { id:'r14', type:'booking', title:'Book a Clarity Call', url:'https://calendly.com/phoebe-phoebeblamey/new-meeting', tags:['coaching','booking','free'], date:'2026-01-01', desc:'Free 15-minute call to see if we are a good fit.' },
   ];
+  // Merge with anything Phoebe added via the "+ Add resource" form
+  var custom = [];
+  try { custom = JSON.parse(localStorage.getItem('hmh_hub_resources') || '[]') || []; } catch(e) {}
+  var resources = defaults.concat(custom.filter(function(r){
+    // Custom array might have been used as the full list in older versions;
+    // de-dup against defaults by id
+    return !defaults.some(function(d){ return d.id === r.id; });
+  }));
+  // Filter out anything Phoebe has marked as removed
+  var removed = [];
+  try { removed = JSON.parse(localStorage.getItem('hmh_resources_removed') || '[]') || []; } catch(e) {}
+  if (removed.length) {
+    resources = resources.filter(function(r){ return removed.indexOf(r.id) === -1; });
+  }
   HUB_RESOURCES = resources;
   return resources;
 }
@@ -5646,9 +5686,10 @@ async function renderHappyHub(filterTag, searchTerm, typeFilter) {
         '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' +
         r.tags.map(function(t) { return '<span style="background:var(--marshmallow);color:var(--hot-pink);font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px">'+t+'</span>'; }).join('') +
         '</div>' +
-        '<div style="display:flex;gap:8px;margin-top:4px">' +
-        '<a href="'+r.url+'" target="_blank" class="btn-sm primary" style="flex:1;text-align:center;text-decoration:none">Open →</a>' +
-        '<button class="btn-sm" onclick="shareResourceWithClient(\''+r.id+'\',\''+r.title.replace(/'/g,"\\'")+'\')" title="Share with client">📤 Share</button>' +
+        '<div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">' +
+        '<a href="'+r.url+'" target="_blank" class="btn-sm primary" style="flex:1;min-width:80px;text-align:center;text-decoration:none">Open →</a>' +
+        '<button class="btn-sm" onclick="shareResourceWithClient(\''+r.id+'\',\''+r.title.replace(/\'/g,"\\\'")+'\')" title="Share with client">📤 Share</button>' +
+        '<button class="btn-sm" onclick="removeHubResource(\''+r.id+'\')" title="Remove from library" style="color:#C0392B;border-color:rgba(192,57,43,0.25)">🗑</button>' +
         '</div></div>';
     }).join('') : '<div style="grid-column:1/-1;color:var(--stone);font-size:13px;padding:20px 0;text-align:center">No resources match your search.</div>') +
     '</div>';
@@ -5657,6 +5698,31 @@ async function renderHappyHub(filterTag, searchTerm, typeFilter) {
 function showAddResourceForm() {
   var f = document.getElementById('add-resource-form');
   if (f) f.style.display = f.style.display==='none'?'block':'none';
+}
+
+// Remove a resource from the library. Custom resources (added via "+ Add
+// resource") are deleted outright. Default-list resources can't be deleted
+// from the source array, so we add their ID to a "removed" list in
+// localStorage and the loader filters them out on next load.
+async function removeHubResource(resourceId) {
+  var ok = await branded.confirm('Remove this resource from the library?', { title:'Remove resource?', okLabel:'Remove', danger:true });
+  if (!ok) return;
+  // First, try to remove from the in-memory array (custom resources)
+  if (Array.isArray(HUB_RESOURCES)) {
+    var idx = HUB_RESOURCES.findIndex(function(r){ return r.id === resourceId; });
+    if (idx >= 0) HUB_RESOURCES.splice(idx, 1);
+  }
+  // Also persist a "removed" set so default-list resources stay removed
+  // across page reloads (they re-appear in HUB_RESOURCES otherwise).
+  try {
+    var removed = JSON.parse(localStorage.getItem('hmh_resources_removed') || '[]');
+    if (removed.indexOf(resourceId) === -1) removed.push(resourceId);
+    localStorage.setItem('hmh_resources_removed', JSON.stringify(removed));
+  } catch(e) {}
+  // Save the in-memory custom additions too
+  try { localStorage.setItem('hmh_hub_resources', JSON.stringify(HUB_RESOURCES || [])); } catch(e) {}
+  branded.toast('Removed');
+  renderHappyHub('','','');
 }
 
 function addHubResource() {
@@ -7425,34 +7491,19 @@ function renderCohortCard(co) {
       (members.length && co.whatsapp ? '<a href="'+co.whatsapp+'" target="_blank" class="btn-sm" style="text-decoration:none">💬 WhatsApp group</a>' : '') +
     '</div>';
 
-  // Sessions list — collected from each member's sessionNotes for this cohort prog
-  var allSessions = [];
-  members.forEach(function(m) {
-    var prog = (m.programs||[]).find(function(p){ return p.cohort === co.id; });
-    if (!prog) return;
-    (prog.sessionNotes||[]).forEach(function(n) {
-      allSessions.push({ date: n.date, member: m.name, text: n.text||'', zoomUrl: n.zoomUrl||'', shared: !!n.sharedWithClient });
-    });
-  });
-  allSessions.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-
-  var sessionsHtml = allSessions.length === 0
-    ? '<div style="color:var(--stone);font-size:12px;padding:10px;text-align:center">No sessions logged for this cohort yet.</div>'
-    : '<div style="display:flex;flex-direction:column;gap:6px">' + allSessions.slice(0, 20).map(function(s) {
-        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--paper);border:1px solid var(--border-soft);border-radius:8px;font-size:12px">' +
-          '<span style="font-weight:700;color:var(--hot-pink);min-width:80px">' + (_formatCohortDate(s.date,{day:'numeric',month:'short'})||'No date') + '</span>' +
-          '<span style="color:var(--magenta);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.member + ' — ' + (s.text.slice(0,80) + (s.text.length>80?'…':'')) + '</span>' +
-          (s.zoomUrl ? '<a href="'+s.zoomUrl+'" target="_blank" style="color:#2D8CFF;font-weight:600;text-decoration:none">🎥</a>' : '') +
-        '</div>';
-      }).join('') + (allSessions.length > 20 ? '<div style="font-size:11px;color:var(--stone);text-align:center;margin-top:4px">Showing 20 most recent</div>' : '') + '</div>';
+  // Phoebe's reference notes for this cohort — free-form, autosaves on blur.
+  // Stored on the cohort object as `notes`. NOT visible to members.
+  var phoebeNotes = (co.notes || '').replace(/</g,'&lt;');
+  var notesBlock = '<div style="margin-top:18px"><div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">📝 Phoebe\'s notes for this cohort</div>' +
+    '<textarea onchange="updateCohortField(\''+co.id+'\',\'notes\',this.value)" placeholder="Anything you want to remember about this cohort — group dynamics, recurring themes, who needs extra support, decisions you\'ve made…" style="width:100%;min-height:100px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6">' + phoebeNotes + '</textarea>' +
+  '</div>';
 
   return '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:16px 18px">' +
     head +
     detailFields +
     '<div style="margin-top:18px;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Members</div>' +
     memberList + memberActions +
-    '<div style="margin-top:18px;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Recent sessions</div>' +
-    sessionsHtml +
+    notesBlock +
     '</div>';
 }
 
@@ -7484,8 +7535,14 @@ function updateCohortField(cohortId, field, value) {
     }
   }
   _saveCohorts();
-  branded.toast('Saved');
-  renderCohortManager();
+  // Skip the re-render + toast for free-form text fields where typing benefits
+  // from keeping focus and we don't need a "Saved" confirmation on every change.
+  // Display fields (name, dates) re-render so chips reflect the new value.
+  var quietFields = ['notes', 'whatsapp', 'zoomLink', 'nextSessionTime'];
+  if (quietFields.indexOf(field) === -1) {
+    branded.toast('Saved');
+    renderCohortManager();
+  }
 }
 
 async function showAddToCohort(cohortId) {
