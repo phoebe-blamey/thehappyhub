@@ -890,3 +890,338 @@ body.workbook-design-view #help-fab { opacity: 0.4; }
   a { color: var(--magenta) !important; }
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   v10200 — MOBILE-FIRST + POLISH PASS
+   ════════════════════════════════════════════════════════════════════
+   Goals:
+   - Phone (≤600px) feels like a real app, not a desktop site squashed
+   - Min 44×44 tap targets (iOS Human Interface Guideline)
+   - Bottom tab bar on the client portal so primary nav lives in the
+     thumb zone
+   - Bottom-sheet modals on phone (slide up from below)
+   - Subtle entrance animations so content arrives, not pops
+   - Decorative hero accent for personality without noise
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Tap targets — applied broadly via min-height on actionable
+   elements. 36px (the previous min) is RIGHT at iOS's 44px floor and
+   feels cramped on a phone. ── */
+@media (hover: none) and (pointer: coarse) {
+  button, .btn-sm, a.btn-sm, .filter-tab, .client-tab, .tab-btn,
+  .sidebar-item, .access-card button, .topbar-badge {
+    min-height: 44px;
+  }
+  /* Inputs taller too so the keyboard lands on something touchable */
+  input[type="text"], input[type="email"], input[type="tel"],
+  input[type="number"], input[type="date"], input[type="url"],
+  input[type="password"], select, textarea {
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS Safari from auto-zooming on focus */
+  }
+  textarea { min-height: 88px; }
+}
+
+/* ── 2. Animation library — one-line classes used by JS to fade content
+   in. Respects prefers-reduced-motion. ── */
+@keyframes hubFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes hubFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes hubShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.hub-fade-up { animation: hubFadeUp 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+.hub-fade-in { animation: hubFadeIn 0.32s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-fade-up, .hub-fade-in, [class*="badge"], [class*="anim"] { animation: none !important; }
+}
+
+/* ── 3. Decorative hero accent — gentle sunshine blob in the top-right
+   corner of the client hero. CSS-only, scales with vw so it doesn't
+   distort. Adds personality without adding payload. ── */
+#client-hub .client-hero { position: relative; overflow: hidden; }
+#client-hub .client-hero::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  width: 60vw;
+  max-width: 380px;
+  aspect-ratio: 1;
+  background: radial-gradient(circle at 50% 50%, rgba(251,242,25,0.18) 0%, rgba(251,242,25,0.08) 40%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+#client-hub .client-hero::after {
+  content: '';
+  position: absolute;
+  bottom: -50%;
+  left: -10%;
+  width: 50vw;
+  max-width: 320px;
+  aspect-ratio: 1;
+  background: radial-gradient(circle at 50% 50%, rgba(240,163,199,0.22) 0%, rgba(240,163,199,0.10) 40%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+#client-hub .client-hero-inner { position: relative; z-index: 1; }
+
+/* ── 4. Loading skeleton — subtle gradient sweep used while client list /
+   home feed are hydrating. Drop-in via .hub-skeleton class. ── */
+.hub-skeleton {
+  background: linear-gradient(90deg, var(--marshmallow) 0%, rgba(255,255,255,0.6) 50%, var(--marshmallow) 100%);
+  background-size: 200% 100%;
+  animation: hubShimmer 1.4s ease-in-out infinite;
+  border-radius: 10px;
+  height: 14px;
+  width: 100%;
+  display: block;
+  margin-bottom: 8px;
+}
+.hub-skeleton.tall { height: 70px; }
+.hub-skeleton.wide { width: 100%; }
+
+/* ── 5. Bottom tab bar (client portal, phone only) ─────────────────────
+   On phones we hide the existing top tab nav and surface a fixed
+   bottom bar that's safe-area-aware. Three primary tabs always visible;
+   Settings becomes a meatballs/overflow icon. ── */
+@media (max-width: 600px) {
+  /* Hide the existing top tabs strip — we'll use the bottom bar instead.
+     Keep the data-ctab buttons in DOM (still drives switchClientTab). */
+  #client-hub .client-tabs {
+    display: none !important;
+  }
+  /* Push content up so the bottom bar doesn't cover the last item */
+  #client-hub .client-content { padding-bottom: 92px !important; }
+
+  /* The bottom bar itself — a fixed strip, four tab buttons, plus
+     iPhone home-indicator clearance. */
+  .client-bottom-tabs {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 95;
+    background: white;
+    border-top: 1px solid var(--border);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom)) 4px;
+    box-shadow: 0 -4px 16px rgba(201,38,107,0.06);
+  }
+  .client-bottom-tabs > button {
+    flex: 1;
+    border: none;
+    background: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px 4px;
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--stone);
+    cursor: pointer;
+    border-radius: 10px;
+    min-height: 52px;
+    transition: color 0.15s, background 0.15s;
+    position: relative;
+  }
+  .client-bottom-tabs > button > .bt-icon {
+    font-size: 22px;
+    line-height: 1;
+  }
+  .client-bottom-tabs > button.active {
+    color: var(--hot-pink);
+    background: var(--marshmallow);
+  }
+  .client-bottom-tabs > button .bt-badge {
+    position: absolute;
+    top: 4px;
+    right: 25%;
+    background: var(--hot-pink);
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 99px;
+    line-height: 1.4;
+  }
+
+  /* Hide the help FAB on phones when the bottom bar is up — too much
+     thumb-zone clutter. Move the help into the Settings tab instead. */
+  #help-fab { display: none !important; }
+  #help-panel { display: none !important; }
+}
+.client-bottom-tabs { display: none; } /* hidden on desktop */
+
+/* ── 6. Bottom-sheet modal on phone ────────────────────────────────────
+   The branded modal overlay drops down from desktop center to a slide-up
+   bottom sheet on phones. Feels more native, easier to dismiss with a
+   downward gesture. ── */
+@media (max-width: 600px) {
+  #branded-modal-host {
+    align-items: flex-end !important;
+  }
+  #branded-modal-host > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 18px 18px 0 0 !important;
+    max-height: 88vh !important;
+    overflow-y: auto;
+    animation: hubSheetUp 0.28s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom)) !important;
+  }
+  /* Drag-handle indicator at the top of the sheet */
+  #branded-modal-host > *::before {
+    content: '';
+    position: sticky;
+    top: 6px;
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 99px;
+    margin: 0 auto 8px;
+  }
+}
+@keyframes hubSheetUp {
+  from { transform: translateY(100%); opacity: 0.6; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ── 7. Topbar — phone reflow. Logo + sync date dot + sign out. The
+   coach search button moves into the search drawer, hidden on phones
+   (⌘K still works on attached keyboards). ── */
+@media (max-width: 600px) {
+  .topbar { padding: 0 12px; gap: 6px; }
+  #coach-search-trigger .search-trigger-label,
+  #coach-search-trigger .search-trigger-shortcut { display: none !important; }
+  #coach-search-trigger { padding: 8px 10px !important; min-width: 38px; }
+  /* Save status pill compresses to dot-only on phone */
+  #save-status-pill, .save-status-pill-c { font-size: 0; padding: 4px 8px; }
+  #save-status-pill::before, .save-status-pill-c::before {
+    content: '●'; font-size: 10px; opacity: 0.85;
+  }
+}
+
+/* ── 8. Bigger logo on phone — make the PB pebble feel like an icon, not
+   a small affordance. Drops the "Hub" subtitle (already hidden via JS
+   media query) and bumps the SVG to 36px. ── */
+@media (max-width: 600px) {
+  .topbar-logo img { width: 36px !important; height: 36px !important; }
+  .topbar-logo-text { display: none !important; }
+}
+
+/* ── 9. Three-card story on phone — actually stack with proper spacing
+   (the previous rule conflicted with itself) ── */
+@media (max-width: 600px) {
+  #client-hub .three-card-story { grid-template-columns: 1fr; gap: 10px; }
+  #client-hub .story-card { padding: 14px 16px; }
+  #client-hub .story-card-title { font-size: 10px; }
+  #client-hub .story-card-icon { font-size: 22px; }
+}
+
+/* ── 10. Coach client detail — the in-page tab strip overflows on phone.
+   Make it horizontal-scroll with snap points + softer fade edges. ── */
+@media (max-width: 600px) {
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    scroll-snap-type: x mandatory;
+    padding: 0 8px !important;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab-btn {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+}
+
+/* ── 11. Coach status strip — let it wrap better on phone. Pills shrink
+   to 2 columns instead of all 4 on one row. ── */
+@media (max-width: 600px) {
+  #client-status-strip > div { gap: 8px !important; padding: 12px !important; }
+  #client-status-strip > div > div:first-child {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px !important;
+    width: 100%;
+  }
+}
+
+/* ── 12. Empty states — give them room and a friendly tone ── */
+.hub-empty {
+  text-align: center;
+  padding: 36px 20px;
+  color: var(--stone);
+}
+.hub-empty .empty-emoji {
+  font-size: 38px;
+  margin-bottom: 8px;
+  display: block;
+  opacity: 0.85;
+}
+.hub-empty .empty-title {
+  font-family: var(--f-head);
+  font-size: 16px;
+  color: var(--magenta);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.hub-empty .empty-sub {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--stone);
+  max-width: 320px;
+  margin: 0 auto 14px;
+}
+
+/* ── 13. Press states — subtle scale-down on touch for tactile feedback
+   on phones. Skip on desktop where hover is the affordance. ── */
+@media (hover: none) and (pointer: coarse) {
+  button:active, .btn-sm:active, a.btn-sm:active {
+    transform: scale(0.97);
+    transition: transform 0.08s;
+  }
+}
+
+/* ── 14. Focus ring (a11y) — visible only on keyboard focus, not mouse.
+   Currently buttons have NO focus indicator. ── */
+button:focus-visible, .btn-sm:focus-visible, a:focus-visible,
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(236,44,138,0.4);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── 15. Pull-to-refresh — handled in JS but the visual indicator lives
+   here. A horizontal bar at the top of the active hub. ── */
+.hub-ptr-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: linear-gradient(90deg, transparent, var(--hot-pink) 50%, transparent);
+  background-size: 200% 100%;
+  z-index: 200;
+  pointer-events: none;
+  transition: height 0.18s ease-out;
+}
+.hub-ptr-indicator.pulling { height: 3px; opacity: 0.55; }
+.hub-ptr-indicator.refreshing { height: 3px; animation: hubShimmer 0.8s linear infinite; }
+
+/* ── 16. iPhone safe area top — already partially handled, ensure we
+   also pad the bottom of the body when there's no fixed bottom-tabs ── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}
+
