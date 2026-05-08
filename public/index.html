@@ -28,7 +28,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v10300 — offline mode (service worker) · auto-update prompt · offline banner · loading skeletons · empty-state sweep · icon-export page · PNG manifest entries">
+<meta name="hmh-build" content="v10310 — escape the session-restore trap: ?logout URL handler · 14-day stale session expiry · LAST_ACTIVE_AT tracking · prominent Sign Out on phone">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -2686,7 +2686,8 @@ var HMH_SESSION = {
   OPEN_CLIENT: 'hmh_session_openClientId',   // coach: client whose detail is open
   COACH_TAB: 'hmh_session_coachTab',         // coach: active tab inside client detail
   PORTAL_TAB: 'hmh_session_portalTab',       // client portal: summary/programs/settings
-  PORTAL_PROG: 'hmh_session_portalProgId'    // client portal: which program tab
+  PORTAL_PROG: 'hmh_session_portalProgId',   // client portal: which program tab
+  LAST_ACTIVE_AT: 'hmh_session_lastActiveAt' // ISO of last meaningful activity — drives stale-session expiry
 };
 function sessionSet(key, val) {
   try { if (val == null) localStorage.removeItem(key); else localStorage.setItem(key, String(val)); } catch (e) {}
@@ -2771,6 +2772,7 @@ async function enterCoach() {
   var pin = document.getElementById('coach-pin').value.toUpperCase();
   if (pin === getCoachPin()) {
     sessionSet(HMH_SESSION.ROLE, 'coach');
+    sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
     document.getElementById('landing').style.display = 'none';
     document.getElementById('coach-hub').classList.add('active');
     // Pull all shared state from Netlify Blobs in parallel with the client list
@@ -2807,6 +2809,7 @@ async function enterClient() {
   if (client) {
     sessionSet(HMH_SESSION.ROLE, 'client');
     sessionSet(HMH_SESSION.CLIENT_CODE, client.clientAccess);
+    sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
     document.getElementById('landing').style.display = 'none';
     document.getElementById('client-hub').classList.add('active');
     currentClientId = client.id;
@@ -2859,14 +2862,44 @@ window.addEventListener('load', async function() {
     var grid = document.getElementById('access-grid');
     if (grid) grid.style.gridTemplateColumns = '1fr'; // centre the client card
   }
+  // ?logout — explicit sign-out URL, clears session + shows landing. Useful
+  // when a coach has been testing as a client and wants to escape the
+  // session-restore loop without hunting for the Sign Out button.
+  if (params.has('logout')) {
+    try { clearSession(); } catch (e) {}
+    var u = new URL(window.location.href);
+    u.searchParams.delete('logout');
+    window.history.replaceState({}, document.title, u.toString());
+    // Fall through to landing — no return needed
+  }
+  // ?landing — one-shot bypass of session restore. Useful for "I just want
+  // to see the landing page once without losing my session".
+  var bypassRestore = params.has('landing');
+
   if (code) {
     await loadClients();
     document.getElementById('client-code').value = code;
     enterClient();
-  } else {
+  } else if (!bypassRestore && !params.has('logout')) {
     // No URL access code — try to restore the previous session (coach or
     // client) so a refresh doesn't kick anyone back to the landing page.
-    try { await restoreSession(); } catch (e) { console.warn('[Session] restore error:', e); }
+    // Two safeguards against the "Sarah's hub forever" trap:
+    //   1. ?logout / ?landing in the URL bypass restore entirely (above)
+    //   2. Sessions older than 14 days are treated as stale → landing
+    var lastActiveAt = sessionGet(HMH_SESSION.LAST_ACTIVE_AT);
+    var stale = false;
+    if (lastActiveAt) {
+      try {
+        var age = Date.now() - new Date(lastActiveAt).getTime();
+        if (age > 14 * 86400000) stale = true;
+      } catch (e) {}
+    }
+    if (stale) {
+      console.log('[Session] last active >14 days ago — clearing stale session');
+      clearSession();
+    } else {
+      try { await restoreSession(); } catch (e) { console.warn('[Session] restore error:', e); }
+    }
   }
   // If we had any saves that failed to reach the server last time (offline,
   // server hiccup, etc.) flush them now that the page is loading and we
@@ -4027,6 +4060,7 @@ function showPage(id) {
   if (typeof sessionSet === 'function' && sessionGet(HMH_SESSION.ROLE) === 'coach') {
     sessionSet(HMH_SESSION.PAGE, id);
     if (id !== 'client-detail') sessionSet(HMH_SESSION.OPEN_CLIENT, null);
+    sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
   }
   // Auto-render page content when shown
   setTimeout(function() {
@@ -6198,7 +6232,10 @@ function switchClientTab(which) {
   if (which === 'todos')    renderClientTodosTab(client);
   if (which === 'wins')     renderClientWinsTab(client);
   if (which === 'settings') renderClientSettings(client);
-  if (typeof sessionSet === 'function') sessionSet(HMH_SESSION.PORTAL_TAB, which);
+  if (typeof sessionSet === 'function') {
+    sessionSet(HMH_SESSION.PORTAL_TAB, which);
+    sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
+  }
 }
 
 // Switch program in the client portal. Looks up the live client from currentClientId
