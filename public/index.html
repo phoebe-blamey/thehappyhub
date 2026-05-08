@@ -25,7 +25,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v10000 — full outstandings batch: tab reorder · zoom in hero · auto-nurture · PB logo · per-client settings · ask-phoebe AI · inline reply · cohort email broadcast · badge image upload · reminder cron · tighter voice · web-design pass">
+<meta name="hmh-build" content="v10100 — multi-user concurrency-safe · 'Help me identify' AI match for Misc · cohort propagation (Zoom+dates → all member programs) · per-client Tools Zoom section · cohort sync button">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -1965,6 +1965,11 @@ window._activityLog = null;
 window._coachSettingsDirty = false;
 window._activityLogDirty = false;
 
+// Snapshot of last-known-server-state. Used to compute deltas at flush
+// time so two devices editing different parts of coach-settings don't
+// clobber each other. (See flushCoachSettings comment for the race.)
+window._coachSettingsBaseline = null;
+
 async function loadCoachSettingsRemote() {
   // Hydrate from server. Falls back to localStorage cache if the call fails
   // so Phoebe at least sees something on a flaky connection.
@@ -1981,6 +1986,9 @@ async function loadCoachSettingsRemote() {
     catch (_) { window._coachSettings = {}; }
   }
   if (!window._coachSettings || typeof window._coachSettings !== 'object') window._coachSettings = {};
+  // Capture the baseline so subsequent flushes can compute deltas
+  try { window._coachSettingsBaseline = JSON.parse(JSON.stringify(window._coachSettings)); }
+  catch (e) { window._coachSettingsBaseline = {}; }
   // First-time migration — pull any legacy localStorage values into the
   // fresh blob so nothing is lost on the cutover.
   var migrated = false;
@@ -2006,18 +2014,58 @@ async function loadCoachSettingsRemote() {
   try { localStorage.setItem('hmh_coach_settings_cache', JSON.stringify(window._coachSettings)); } catch (e) {}
 }
 
-// Debounced server flush — settings change rarely, so a 600ms tail is plenty.
+// Debounced server flush — sends ONLY the top-level keys that have changed
+// since the last server roundtrip. Critical for multi-device safety:
+//
+//   T0: Laptop loads {hourlyRate:297, customBadges:[X]}, baseline = same
+//   T1: iPad adds badge Y → server now {hourlyRate:297, customBadges:[X,Y]}
+//   T2: Laptop changes hourlyRate to 350 (laptop _coachSettings still has only [X])
+//   T3: Laptop flushes → if it sent FULL state, Y would be lost
+//   →   With delta mode: laptop sends {patch:{hourlyRate:350}}. Server reads
+//       current state {…[X,Y]}, merges patch, writes {hourlyRate:350, …[X,Y]}.
+//       Y survives. ✓
+//
+// On a successful save the response carries the merged state, which we use
+// to refresh the baseline so the NEXT flush computes deltas correctly.
 var _coachSettingsFlushTimer = null;
 function flushCoachSettings() {
   if (!window._coachSettings) return;
   try { localStorage.setItem('hmh_coach_settings_cache', JSON.stringify(window._coachSettings)); } catch (e) {}
   if (_coachSettingsFlushTimer) clearTimeout(_coachSettingsFlushTimer);
-  _coachSettingsFlushTimer = setTimeout(function() {
-    fetch('/api/coach-settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(window._coachSettings),
-    }).catch(function(err) { console.warn('[coach-settings] save failed:', err); });
+  _coachSettingsFlushTimer = setTimeout(async function() {
+    var baseline = window._coachSettingsBaseline || {};
+    var current  = window._coachSettings || {};
+    var patch = {};
+    // Keys that exist in current but differ from baseline
+    Object.keys(current).forEach(function(k) {
+      try {
+        if (JSON.stringify(current[k]) !== JSON.stringify(baseline[k])) patch[k] = current[k];
+      } catch (e) { patch[k] = current[k]; }
+    });
+    // Keys that existed in baseline but were deleted from current — represent
+    // as null so the server's Object.assign clears them. (Rare but possible.)
+    Object.keys(baseline).forEach(function(k) {
+      if (!(k in current)) patch[k] = null;
+    });
+    if (!Object.keys(patch).length) return; // nothing changed
+    try {
+      var r = await fetch('/api/coach-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patch: patch }),
+      });
+      if (r.ok) {
+        var data = await r.json();
+        // Update baseline + in-memory state to the server's merged version
+        if (data && data.settings) {
+          window._coachSettings = data.settings;
+          try { window._coachSettingsBaseline = JSON.parse(JSON.stringify(data.settings)); }
+          catch (e) {}
+        }
+      }
+    } catch (err) {
+      console.warn('[coach-settings] save failed:', err);
+    }
   }, 600);
 }
 
@@ -2065,16 +2113,48 @@ async function loadCohortsRemote() {
   try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch (e) {}
 }
 
+// Cohort flush — read-modify-write so two devices editing different cohorts
+// don't clobber each other. Pulls the latest server state, merges in our
+// local changes by cohort.id (preferring whichever side has the newer
+// updatedAt), then writes the merged array back.
 var _cohortsFlushTimer = null;
 function flushCohorts() {
   try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch (e) {}
+  // Stamp every locally-edited cohort with updatedAt so the merge can
+  // pick the right side per cohort
+  var now = new Date().toISOString();
+  (MDC_COHORTS || []).forEach(function(co){ if (co) co.updatedAt = now; });
   if (_cohortsFlushTimer) clearTimeout(_cohortsFlushTimer);
-  _cohortsFlushTimer = setTimeout(function() {
-    fetch('/api/cohorts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(MDC_COHORTS),
-    }).catch(function(err) { console.warn('[cohorts] save failed:', err); });
+  _cohortsFlushTimer = setTimeout(async function() {
+    try {
+      // Pull server state first
+      var r = await fetch('/api/cohorts');
+      var serverArr = r.ok ? await r.json() : [];
+      if (!Array.isArray(serverArr)) serverArr = [];
+      // Build merged array: union by id, keep newer updatedAt
+      var byId = {};
+      serverArr.forEach(function(co){ if (co && co.id) byId[co.id] = co; });
+      (MDC_COHORTS || []).forEach(function(local) {
+        if (!local || !local.id) return;
+        var server = byId[local.id];
+        if (!server) { byId[local.id] = local; return; }
+        // Both sides have it — pick by updatedAt, fallback to local
+        var localT  = new Date(local.updatedAt  || 0).getTime();
+        var serverT = new Date(server.updatedAt || 0).getTime();
+        byId[local.id] = (localT >= serverT) ? local : server;
+      });
+      var merged = Object.values(byId);
+      // Sync the merged result back into MDC_COHORTS so subsequent renders see it
+      MDC_COHORTS = merged;
+      try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch (e) {}
+      await fetch('/api/cohorts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(merged),
+      });
+    } catch (err) {
+      console.warn('[cohorts] save failed:', err);
+    }
   }, 600);
 }
 
@@ -6324,12 +6404,14 @@ function renderInlineWisdom() {
 }
 
 // Returns { date, label, prog } for the soonest CONFIRMED upcoming session,
-// or null. We only count a program's sessionDate as a real "next session"
-// when there's evidence it came from a confirmed booking source — Calendly,
-// Zoom, or a manual edit by Phoebe. Defensive against stale fallback dates
-// (a Scott Taylor situation where today's date was accidentally inherited
-// from program-creation and surfaced as "next session today" with no real
-// booking behind it).
+// or null. Sources considered (in priority order):
+//   1. prog.cohortNextSessionAt (set by cohort propagation — group sessions)
+//   2. prog.sessionDate IF prog.sessionDateConfirmed === true OR the program
+//      came from Calendly/Zoom (legacy data without the flag inferred via
+//      source markers)
+// Defensive against stale fallback dates (a Scott Taylor situation where
+// today's date was accidentally inherited from program-creation and
+// surfaced as "next session today" with no real booking behind it).
 function computeNextSession(client) {
   var today = new Date(); today.setHours(0,0,0,0);
   var todayStr = today.toISOString().split('T')[0];
@@ -6765,12 +6847,147 @@ function renderUnmatchedZooms(unmatched) {
           '<span style="font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:700">Or</span>' +
           '<button class="btn-sm" onclick="createClientFromZoom(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'').replace(/[<>]/g,'') + '\')" style="font-size:11px;background:white;color:var(--magenta);border-color:var(--hot-pink)">+ New client</button>' +
           '<button class="btn-sm" onclick="saveZoomAsResource(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'').replace(/[<>]/g,'') + '\')" style="font-size:11px;background:white;color:var(--teal);border-color:var(--teal)">+ Save as resource</button>' +
+          '<button class="btn-sm" onclick="askAiToIdentifyZoom(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'').replace(/[<>]/g,'') + '\',\'' + (r.hostEmail||'').replace(/[\'"]/g,'') + '\')" style="font-size:11px;background:white;color:var(--hot-pink);border-color:var(--hot-pink)" title="Ask AI to match this recording to one of your existing clients">🔎 Help me identify</button>' +
           '<button class="btn-sm" onclick="dismissUnmatchedZoom(\'' + (r.id || r.uuid) + '\')" style="font-size:11px;background:white;color:var(--stone);margin-left:auto" title="Hide from this list — internal/test/non-client recordings">📦 Misc / dismiss</button>' +
         '</div>' +
       '</div>';
     }).join('') +
     '<div style="font-size:11px;color:var(--stone);margin-top:6px;font-style:italic">Recordings auto-match when the date is within ±1 day of a client\'s session date. Otherwise pick where it should go — assign to an existing client, spin up a new client from the topic, save it as a resource in the Happy Hub, or dismiss it to Misc if it\'s a test / internal call you don\'t need on file.</div>' +
   '</div>';
+}
+
+// "Help me identify" — for an unmatched Zoom recording, ask Claude to match
+// the topic + date + host email against Phoebe's existing client roster.
+// Returns top 3 candidates with confidence + reasoning. Each candidate has
+// a one-tap "Yes, assign" button that pre-fills the legacy assign dropdown.
+async function askAiToIdentifyZoom(meetingId, startTime, topic, hostEmail) {
+  var apiKey = null; // server proxies the call, no key needed here
+  // Build a compact roster the AI can match against — name, business, email,
+  // recent program label, recent session date (within 60 days).
+  var roster = (clients || [])
+    .filter(function(c){ return c && !c.archived; })
+    .map(function(c) {
+      var lastProgram = (c.programs || []).slice(-1)[0] || {};
+      return {
+        id: c.id,
+        name: c.name || '',
+        biz: c.biz || '',
+        email: c.email || '',
+        lastProgramLabel: lastProgram.label || lastProgram.program || '',
+        lastSessionDate: lastProgram.sessionDate || '',
+      };
+    });
+  if (!roster.length) {
+    branded.alert('No clients on file to match against. Add one first or use "+ New client".');
+    return;
+  }
+
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '🔎';
+  document.getElementById('branded-modal-title').textContent = 'Identify this recording';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="background:var(--marshmallow);border-radius:10px;padding:10px 12px;margin-bottom:14px">' +
+      '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Recording</div>' +
+      '<div style="font-size:13px;color:var(--magenta);font-weight:600">' + escapeHtml(topic || 'Untitled') + '</div>' +
+      '<div style="font-size:11px;color:var(--stone);margin-top:2px">' +
+        (startTime ? new Date(startTime).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}) : 'No date') +
+        (hostEmail ? ' · host: ' + escapeHtml(hostEmail) : '') +
+      '</div>' +
+    '</div>' +
+    '<div id="zoom-id-output" style="min-height:80px;font-size:13px;color:var(--magenta);line-height:1.6">' +
+      '<em style="color:var(--stone)">Looking through your client roster…</em>' +
+    '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var close = document.createElement('button'); close.className = 'btn-sm'; close.textContent = 'Close';
+  close.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(close);
+  host.style.display = 'flex';
+
+  try {
+    var prompt = (typeof phoebeVoice === 'function' ? phoebeVoice : function(s){ return s; })(
+      'You are helping Phoebe identify a Zoom recording she can\'t place. The recording metadata is:\n\n' +
+      'Topic: ' + (topic || '(none)') + '\n' +
+      'Date: ' + (startTime || '(unknown)') + '\n' +
+      'Host email: ' + (hostEmail || '(unknown)') + '\n\n' +
+      'Phoebe\'s active client roster (' + roster.length + ' people):\n' +
+      JSON.stringify(roster).slice(0, 14000) + '\n\n' +
+      'Match the recording to up to 3 most-likely clients. Consider:\n' +
+      '- Name fragments in the topic (first names, surnames, nicknames)\n' +
+      '- Business name in the topic\n' +
+      '- Email domain in host_email matching client.email domain\n' +
+      '- Date proximity to lastSessionDate\n\n' +
+      'Return STRICT JSON only — no prose, no markdown fences. Schema:\n' +
+      '{ "candidates": [ { "clientId": "...", "name": "...", "confidence": "high"|"medium"|"low", "reason": "1 short sentence why" } ], "verdict": "one short sentence summary" }\n\n' +
+      'If you\'re genuinely confident NONE match (e.g. a podcast recording, internal call), return { "candidates": [], "verdict": "Looks like a non-client recording — could be …" }'
+    );
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) data.content.forEach(function(b){ if (b && b.type === 'text' && b.text) text += b.text; });
+    var parsed = null;
+    try { parsed = JSON.parse(text.replace(/^```(?:json)?|```$/g, '').trim()); } catch (e) {}
+    var out = document.getElementById('zoom-id-output');
+    if (!out) return;
+    if (!parsed || !parsed.candidates) {
+      out.innerHTML = '<em style="color:var(--stone)">Couldn\'t parse a clear answer. Try assigning manually.</em>';
+      return;
+    }
+    if (!parsed.candidates.length) {
+      out.innerHTML = '<div style="font-size:13px;line-height:1.6">' + escapeHtml(parsed.verdict || 'No client match found.') + '</div>' +
+        '<div style="margin-top:12px"><button class="btn-sm" onclick="dismissUnmatchedZoom(\'' + meetingId + '\');document.getElementById(\'branded-modal-host\').style.display=\'none\'">📦 Move to Misc</button></div>';
+      return;
+    }
+    var html = '<div style="font-size:12px;color:var(--stone);font-style:italic;margin-bottom:10px">' + escapeHtml(parsed.verdict || '') + '</div>';
+    parsed.candidates.slice(0, 3).forEach(function(c) {
+      var conf = (c.confidence || 'medium').toLowerCase();
+      var badgeColor = conf === 'high' ? 'var(--teal)' : conf === 'low' ? 'var(--stone)' : '#E8A020';
+      html += '<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:white;border:1.5px solid var(--border);border-radius:10px;margin-bottom:6px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">' +
+            '<span style="font-size:13px;color:var(--magenta);font-weight:700">' + escapeHtml(c.name || c.clientId) + '</span>' +
+            '<span style="font-size:10px;font-weight:700;color:white;background:' + badgeColor + ';padding:2px 8px;border-radius:99px;text-transform:uppercase">' + conf + ' confidence</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--stone);line-height:1.5">' + escapeHtml(c.reason || '') + '</div>' +
+        '</div>' +
+        '<button class="btn-sm primary" onclick="confirmIdentifiedZoom(\'' + escapeHtml(c.clientId) + '\',\'' + meetingId + '\',\'' + (startTime || '').replace(/[\'"]/g,'') + '\',\'' + (topic||'').replace(/[\'"]/g,'').replace(/[<>]/g,'') + '\')" style="font-size:11px;flex-shrink:0;align-self:center">✓ Yes, assign</button>' +
+      '</div>';
+    });
+    out.innerHTML = html;
+  } catch (err) {
+    var out2 = document.getElementById('zoom-id-output');
+    if (out2) out2.innerHTML = '<em style="color:var(--stone)">AI lookup failed. Try assigning manually.</em>';
+  }
+}
+
+// Called when Phoebe taps "✓ Yes, assign" on an AI-suggested match.
+// Routes through the existing assign flow so transcript-pull + AI summary
+// fire the same way.
+async function confirmIdentifiedZoom(clientId, meetingId, startTime, topic) {
+  document.getElementById('branded-modal-host').style.display = 'none';
+  // Mock the dropdown the existing assignZoomToClient expects
+  var compatSel = document.createElement('select');
+  compatSel.id = 'zoom-assign-client-' + meetingId;
+  compatSel.style.display = 'none';
+  var opt = document.createElement('option'); opt.value = clientId; opt.selected = true;
+  compatSel.appendChild(opt);
+  document.body.appendChild(compatSel);
+  try {
+    await assignZoomToClient(meetingId, startTime, topic);
+  } finally {
+    if (compatSel.parentNode) compatSel.parentNode.removeChild(compatSel);
+  }
 }
 
 // Hide an unmatched Zoom recording from the home-page panel. Used for
@@ -9536,7 +9753,71 @@ function renderToolsPanel(client, prog) {
   var daysSince = prog.sessionDate ? Math.floor((Date.now()-new Date(prog.sessionDate))/86400000) : null;
   var needsCheckin = daysSince !== null && daysSince > 14;
 
-  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px">';
+  // ── 🎬 ZOOM SECTION (moved out of Settings, lives prominently in Tools) ──
+  // Shows the active program's Zoom join link with copy button, the count
+  // of attached recordings + most recent one, and quick-action buttons to
+  // create a new meeting / pull a transcript / open the recording browser.
+  var attachedRecordings = [];
+  (client.programs || []).forEach(function(p) {
+    (p.sessionNotes || []).forEach(function(n) {
+      if (n && n.zoomMeetingId) attachedRecordings.push({ note: n, prog: p });
+    });
+  });
+  attachedRecordings.sort(function(a, b) { return (b.note.date || b.note.createdAt || '').localeCompare(a.note.date || a.note.createdAt || ''); });
+  var zoomHtml =
+    '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:16px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
+        '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700">🎬 Zoom</div>' +
+        (prog.zoomJoin
+          ? '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+              '<a href="' + prog.zoomJoin + '" target="_blank" class="btn-sm primary" style="font-size:11px;text-decoration:none">▶ Join meeting</a>' +
+              '<button class="btn-sm" style="font-size:11px" onclick="copyToClipboard(\'' + prog.zoomJoin.replace(/\'/g,'') + '\')">📋 Copy link</button>' +
+            '</div>'
+          : '<button class="btn-sm primary" style="font-size:11px" onclick="openCreateClientZoom(\'' + cid + '\',\'' + pid + '\')">+ Create from template</button>') +
+      '</div>' +
+      // Current join link details
+      (prog.zoomJoin
+        ? '<div style="background:var(--paper);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--magenta);line-height:1.6">' +
+            '<div><strong>Join URL:</strong> <a href="' + prog.zoomJoin + '" target="_blank" style="color:var(--hot-pink);word-break:break-all">' + escapeHtml(prog.zoomJoin) + '</a></div>' +
+            (prog.zoomMeetingId ? '<div><strong>Meeting ID:</strong> <code style="font-family:monospace">' + escapeHtml(prog.zoomMeetingId) + '</code></div>' : '') +
+            (prog.zoomPasscode ? '<div><strong>Passcode:</strong> <code style="font-family:monospace">' + escapeHtml(prog.zoomPasscode) + '</code></div>' : '') +
+            (prog.zoomTemplate ? '<div style="color:var(--stone);font-size:11px;margin-top:4px">Created from template: ' + escapeHtml(prog.zoomTemplate) + '</div>' : '') +
+          '</div>'
+        : '<div style="background:var(--marshmallow);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--stone);font-style:italic">No Zoom meeting linked yet. Create one from a Phoebe-branded template — captions, recording, and the right waiting-room rules are baked in.</div>') +
+      // Attached recordings strip
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
+        '<div style="font-size:11px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:700">Attached recordings (' + attachedRecordings.length + ')</div>' +
+        (attachedRecordings.length > 0 ? '<button class="btn-sm" style="font-size:10px" onclick="switchTab(\'session-notes\')">View all →</button>' : '') +
+      '</div>' +
+      (attachedRecordings.length === 0
+        ? '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:8px 0">No recordings yet. The webhook will auto-attach + summarise once your next session ends.</div>'
+        : attachedRecordings.slice(0, 3).map(function(item) {
+            var date = item.note.date ? new Date(item.note.date).toLocaleDateString('en-AU', { day:'numeric', month:'short' }) : '—';
+            var statusPill = item.note.aiSummaryStatus === 'pending-review'
+              ? '<span style="font-size:10px;background:#FFF5D6;color:#A07030;padding:2px 7px;border-radius:99px;font-weight:700">✨ summary ready</span>'
+              : item.note.aiSummaryStatus === 'approved'
+                ? '<span style="font-size:10px;background:var(--mist);color:var(--teal);padding:2px 7px;border-radius:99px;font-weight:700">✓ shared</span>'
+                : item.note.zoomTranscript ? '<span style="font-size:10px;background:white;border:1px solid var(--border);color:var(--stone);padding:2px 7px;border-radius:99px">transcript</span>' : '';
+            return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--paper);border-radius:8px;margin-bottom:4px">' +
+              '<span style="font-size:14px">🎬</span>' +
+              '<div style="flex:1;min-width:0">' +
+                '<div style="font-size:12px;color:var(--magenta);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(item.note.zoomTopic || 'Session') + '</div>' +
+                '<div style="font-size:10px;color:var(--stone)">' + date + ' · ' + (item.note.zoomDuration || 0) + ' min</div>' +
+              '</div>' +
+              statusPill +
+              (item.note.zoomVideoUrl ? '<a href="' + item.note.zoomVideoUrl + '" target="_blank" class="btn-sm" style="font-size:10px;padding:3px 8px">▶ Watch</a>' : '') +
+            '</div>';
+          }).join('')) +
+      // Quick actions footer
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-soft)">' +
+        '<button class="btn-sm" style="font-size:11px" onclick="switchTab(\'plan\'); setTimeout(function(){if(!builderVisible)toggleBuilder();setTimeout(fetchZoomTranscript,200);},200)">⚡ Pull transcript now</button>' +
+        (prog.zoomJoin ? '<button class="btn-sm" style="font-size:11px" onclick="openCreateClientZoom(\'' + cid + '\',\'' + pid + '\')">+ New from template</button>' : '') +
+        '<button class="btn-sm" style="font-size:11px" onclick="editZoomLink()">✏️ Edit link manually</button>' +
+        '<button class="btn-sm" style="font-size:11px;margin-left:auto" onclick="showPage(\'settings\')" title="Account-wide recording browser + sync controls">🌐 All recordings →</button>' +
+      '</div>' +
+    '</div>';
+
+  var html = zoomHtml + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px">';
 
   // AI Tools
   html += toolCard('✦ Research brief',     'AI-analyse website, intake, social',       'var(--hot-pink)', 'switchTab("intake")');
@@ -9548,13 +9829,8 @@ function renderToolsPanel(client, prog) {
   html += toolCard('📋 Session prep',      'All client info on one screen',             'var(--magenta)',  'showSessionPrep("'+cid+'","'+pid+'")');
   html += toolCard('📝 Add session note',  'Log a timestamped note from today',         'var(--magenta)',  'switchTab("session-notes"); setTimeout(function(){addSessionNote("'+cid+'","'+pid+'");},200)');
 
-  // Zoom
-  if (prog.zoomJoin) {
-    html += '<a href="'+prog.zoomJoin+'" target="_blank" style="text-decoration:none">'+toolCard('🎬 Open Zoom','Join session','var(--teal)','')+'</a>';
-  } else {
-    html += toolCard('🎬 Set Zoom link','Add Zoom meeting link','var(--stone)','editZoomLink()');
-  }
-  html += toolCard('⚡ Pull Zoom transcript','Auto-fetch transcript from cloud','var(--teal)','switchTab("plan"); setTimeout(function(){if(!builderVisible)toggleBuilder();setTimeout(fetchZoomTranscript,200);},200)');
+  // (Zoom moved to its own dedicated section above the tool grid — keeps
+  // recording history + meeting details + quick actions together.)
 
   // Communication
   html += toolCard('📧 Send email',  'Email client directly',    'var(--teal)', 'switchTab("message"); setTimeout(function(){var t=document.getElementById("msg-type");if(t)t.value="email";},200)');
@@ -11451,6 +11727,7 @@ function renderCohortCard(co) {
       (co.zoomPasscode ? '<span style="font-size:11px;background:white;border:1px solid var(--border);padding:4px 10px;border-radius:99px;color:var(--magenta)">Passcode: <strong>'+escapeHtml(co.zoomPasscode)+'</strong></span>' : '') +
       (!co.zoomLink ? '<button onclick="createCohortZoomMeeting(\''+co.id+'\')" class="btn-sm primary" style="font-size:11px">+ Create Zoom meeting</button>' : '') +
       (co.whatsapp ? '<a href="'+co.whatsapp+'" target="_blank" style="font-size:11px;background:#25D366;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">💬 Open WhatsApp</a>' : '') +
+      (members.length ? '<button class="btn-sm" onclick="resyncCohortToMembers(\''+co.id+'\')" style="font-size:11px" title="Push the cohort\'s Zoom link + next session date to every member\'s MDC program record">↻ Sync to members</button>' : '') +
       '<button class="btn-sm" onclick="confirmDeleteCohort(\''+co.id+'\')" style="margin-left:auto;color:#C0392B;border-color:rgba(192,57,43,0.3);background:white">🗑 Delete cohort</button>' +
     '</div>';
 
@@ -11508,7 +11785,7 @@ function toggleCohortExpand(cohortId) {
   renderCohortManager();
 }
 
-function updateCohortField(cohortId, field, value) {
+async function updateCohortField(cohortId, field, value) {
   var co = _findCohort(cohortId);
   if (!co) return;
   co[field] = (value || '').trim();
@@ -11520,6 +11797,12 @@ function updateCohortField(cohortId, field, value) {
         co.dates = s.toLocaleDateString('en-AU',{month:'short',year:'numeric'}) + ' – ' + e.toLocaleDateString('en-AU',{month:'short',year:'numeric'});
       } catch(_) {}
     }
+  }
+  // Propagate cohort-level fields to every member's MDC program record.
+  // Phoebe expects the cohort Zoom link + next-session date to appear
+  // automatically on member client portals — this is what makes that work.
+  if (field === 'zoomLink' || field === 'zoomMeetingId' || field === 'zoomPasscode' || field === 'nextSessionDate' || field === 'nextSessionTime') {
+    await propagateCohortToMembers(co);
   }
   _saveCohorts();
   // Skip the re-render + toast for free-form text fields where typing benefits
@@ -11568,6 +11851,7 @@ async function showAddToCohort(cohortId) {
 async function confirmAddToCohort(clientId, cohortId) {
   var c = (clients||[]).find(function(x){ return x.id === clientId; });
   if (!c) return;
+  var co = _findCohort(cohortId);
   var prog = (c.programs||[]).find(function(p){ return p.workbook === 'mdc'; });
   if (!prog) {
     if (!c.programs) c.programs = [];
@@ -11578,10 +11862,20 @@ async function confirmAddToCohort(clientId, cohortId) {
     };
     c.programs.push(prog);
   } else { prog.cohort = cohortId; }
+  // Inherit cohort-level Zoom + scheduling immediately so this member's
+  // portal shows the right join link / next session as soon as they sign in
+  if (co) {
+    if (co.zoomLink)      prog.zoomJoin       = co.zoomLink;
+    if (co.zoomMeetingId) prog.zoomMeetingId  = co.zoomMeetingId;
+    if (co.zoomPasscode)  prog.zoomPasscode   = co.zoomPasscode;
+    if (co.nextSessionDate) {
+      prog.cohortNextSessionAt = co.nextSessionDate + (co.nextSessionTime ? 'T' + parseTimeFlexible(co.nextSessionTime) : '');
+    }
+  }
   if (typeof persistClient === 'function') await persistClient(c);
   document.getElementById('branded-modal-host').style.display = 'none';
   document.getElementById('branded-modal-body').style.whiteSpace = 'pre-wrap';
-  branded.toast(c.name + ' added to cohort');
+  branded.toast(c.name + ' added to cohort' + (co && co.zoomLink ? ' · Zoom link applied' : ''));
   renderCohortManager();
 }
 
@@ -11660,6 +11954,7 @@ async function addNewCohort() {
         newCo.zoomMeetingId = String(data.meetingId || '');
         newCo.zoomPasscode = data.passcode || '';
         newCo.zoomTemplate = data.templateUsed || 'mdc';
+        await propagateCohortToMembers(newCo);
         _saveCohorts();
         renderCohortManager();
         branded.success('Cohort + Zoom created. Share the join link with members or copy from the cohort card.');
@@ -11708,6 +12003,60 @@ function openCreateClientZoom(clientId, progId) {
   });
 }
 
+// Manual re-sync trigger from the cohort row
+async function resyncCohortToMembers(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  await propagateCohortToMembers(co);
+}
+
+// Push cohort-level Zoom + scheduling fields onto every member's MDC
+// program so the client portal hero, the per-program tab, and the
+// session reminders all see the latest. Idempotent — only persists a
+// client if something actually changed for them.
+async function propagateCohortToMembers(co) {
+  if (!co || !co.id) return;
+  var members = _cohortMembers(co.id);
+  for (var i = 0; i < members.length; i++) {
+    var m = members[i];
+    var changed = false;
+    (m.programs || []).forEach(function(p) {
+      if (!p || p.cohort !== co.id) return;
+      if (co.zoomLink     && p.zoomJoin      !== co.zoomLink)     { p.zoomJoin      = co.zoomLink;     changed = true; }
+      if (co.zoomMeetingId && p.zoomMeetingId !== co.zoomMeetingId) { p.zoomMeetingId = co.zoomMeetingId; changed = true; }
+      if (co.zoomPasscode && p.zoomPasscode  !== co.zoomPasscode) { p.zoomPasscode  = co.zoomPasscode; changed = true; }
+      // Cohort next-session: store on the program as cohortNextSessionAt
+      // so it doesn't overwrite the program's own first-session sessionDate.
+      if (co.nextSessionDate) {
+        var nextIso = co.nextSessionDate + (co.nextSessionTime ? 'T' + parseTimeFlexible(co.nextSessionTime) : '');
+        if (p.cohortNextSessionAt !== nextIso) { p.cohortNextSessionAt = nextIso; changed = true; }
+      }
+    });
+    if (changed) {
+      m.updatedAt = new Date().toISOString();
+      try { await persistClient(m); } catch (e) { console.warn('[cohort-propagate] save failed', m.id, e); }
+    }
+  }
+  if (members.length) {
+    branded.toast('Updated ' + members.length + ' cohort member' + (members.length === 1 ? '' : 's'));
+  }
+}
+
+// Best-effort time parse: "10:00am" / "9:30 PM" / "2pm" → "10:00:00" / "21:30:00"
+// Returns "00:00:00" if it can't parse so the date sticks but time is approximate.
+function parseTimeFlexible(input) {
+  if (!input) return '00:00:00';
+  var m = String(input).trim().match(/^(\d{1,2})[:.]?(\d{0,2})\s*(am|pm)?$/i);
+  if (!m) return '00:00:00';
+  var h = parseInt(m[1], 10);
+  var mins = m[2] ? parseInt(m[2], 10) : 0;
+  var ampm = (m[3] || '').toLowerCase();
+  if (ampm === 'pm' && h < 12) h += 12;
+  if (ampm === 'am' && h === 12) h = 0;
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+  return pad(h) + ':' + pad(mins) + ':00';
+}
+
 // Spin up a Zoom meeting for an existing cohort that doesn't have one yet
 // (Phoebe said "no" earlier, or the meeting was deleted on Zoom's side).
 // Uses the MDC built-in template by default; offers a picker if she wants
@@ -11725,8 +12074,10 @@ async function createCohortZoomMeeting(cohortId) {
       co.zoomMeetingId = String(data.meetingId || '');
       co.zoomPasscode = data.passcode || '';
       co.zoomTemplate = data.templateUsed || '';
-      _saveCohorts();
-      renderCohortManager();
+      propagateCohortToMembers(co).then(function() {
+        _saveCohorts();
+        renderCohortManager();
+      });
     }
   });
 }
