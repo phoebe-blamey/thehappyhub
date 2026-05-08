@@ -122,6 +122,7 @@ export default async (req: Request) => {
     workbook:    programInfo.workbook,
     isGroup:     programInfo.isGroup,
     sessionDate: sessionDate,
+    sessionDateConfirmed: true,  // Calendly bookings are real, future-dated sessions
     zoomJoin:    zoomJoin,
     eventTypeId: eventTypeId,
     intake:      intake,

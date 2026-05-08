@@ -197,6 +197,33 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   30%  { background: #FFFBE8; transform: scale(1.02); }
   100% { background: white;   transform: scale(1); }
 }
+/* Custom badge animations — Phoebe picks one when she creates a custom badge.
+   Each runs on the toast itself + the icon when the badge unlocks. */
+@keyframes badgeBounce {
+  0%   { opacity: 0; transform: translateY(-50px) scale(0.6); }
+  50%  { opacity: 1; transform: translateY(8px)   scale(1.1); }
+  70%  { transform: translateY(-3px) scale(0.96); }
+  85%  { transform: translateY(2px)  scale(1.02); }
+  100% { transform: translateY(0)    scale(1); }
+}
+@keyframes badgeSpin {
+  0%   { opacity: 0; transform: rotate(-360deg) scale(0.4); }
+  60%  { opacity: 1; transform: rotate(20deg)   scale(1.08); }
+  100% { transform: rotate(0deg)   scale(1); }
+}
+@keyframes badgePulse {
+  0%   { opacity: 0; transform: scale(0.85); }
+  50%  { opacity: 1; transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+@keyframes badgeWiggleStrong {
+  0%, 100% { transform: rotate(0) scale(1); }
+  15%      { transform: rotate(-12deg) scale(1.05); }
+  30%      { transform: rotate(10deg)  scale(1.02); }
+  45%      { transform: rotate(-7deg); }
+  60%      { transform: rotate(5deg); }
+  75%      { transform: rotate(-3deg); }
+}
 
 /* ========== NOTES / FORMS ========== */
 .notes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

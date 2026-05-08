@@ -107,6 +107,7 @@ export default async (req: Request) => {
       let client: any;
       try { client = JSON.parse(raw); } catch { continue; }
       if (!client.email || !client.clientAccess) continue;
+      if (client.archived) continue; // archived clients don't get reminders
       const firstName = String(client.name || "there").split(" ")[0] || "there";
       for (const prog of client.programs || []) {
         if (!prog.sessionDate) continue;

@@ -13,7 +13,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v9100 — to-dos &amp; wins as own tabs · share-a-win · key-actions summary · today’s one thing · tick sparkle &amp; badge fanfare · today’s date in header · Zoom join links for clients · why-suggest · deep dive empty-state · Phoebe edits why · no auto session date">
+<meta name="hmh-build" content="v9200 — keep-alive heartbeat fixes 504 properly · view-as-client · archive clients · custom badges with animation picker · award-badge modal · unmatched Zoom can spawn new client · conservative next-session">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -137,7 +137,10 @@
             <button class="filter-tab" onclick="filterClients('audit',this)">Audit</button>
             <button class="filter-tab" onclick="filterClients('happyhour',this)">Happy Hour</button>
           </div>
-          <button class="btn-sm primary" style="margin-left:auto" onclick="openAddClient()">+ Add client</button>
+          <button id="show-archived-toggle" class="btn-sm" style="display:none;margin-left:auto;align-items:center;gap:6px;font-size:12px" onclick="toggleShowArchived()" title="Toggle archived clients">
+            📦 <span class="toggle-state">Show archived</span> · <span class="toggle-count" style="font-weight:700">0</span>
+          </button>
+          <button class="btn-sm primary" onclick="openAddClient()">+ Add client</button>
         </div>
         <div class="clients-grid" id="clients-grid"></div>
       </div>
@@ -481,6 +484,49 @@
       <div class="page" id="page-settings">
         <h1 class="page-title">Settings & Setup</h1>
         <p class="page-sub">Configure integrations and test your automations</p>
+
+        <!-- Custom badges — Phoebe defines her own celebration moments and
+             awards them to clients ad-hoc. Built-in badges fire automatically
+             from BADGES + checkAllBadges; custom ones get merged in at load. -->
+        <div class="settings-card" id="custom-badges-card">
+          <h4>🎖 Custom badges</h4>
+          <p style="margin-bottom:10px">Make your own. Pick an emoji, name it, choose how it animates when it unlocks. Award them to clients from their detail page.</p>
+          <div id="custom-badge-list" style="margin-bottom:12px"></div>
+          <details>
+            <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600;list-style:none">+ New custom badge</summary>
+            <div style="margin-top:10px;padding:14px;background:var(--marshmallow);border-radius:10px">
+              <div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:10px;margin-bottom:8px">
+                <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px">Emoji</label>
+                  <input id="cb-icon" maxlength="3" placeholder="🌸" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-size:20px;text-align:center;background:var(--paper);outline:none"></div>
+                <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px">Badge name</label>
+                  <input id="cb-name" placeholder="e.g. Brave Moment" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none"></div>
+                <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px">Tier</label>
+                  <select id="cb-tier" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;cursor:pointer">
+                    <option value="bronze">Bronze</option>
+                    <option value="silver">Silver</option>
+                    <option value="gold" selected>Gold</option>
+                    <option value="platinum">Platinum</option>
+                  </select></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px">Description (1 line)</label>
+                  <input id="cb-desc" placeholder="What it celebrates" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none"></div>
+                <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px">Animation</label>
+                  <select id="cb-anim" onchange="previewBadgeAnim()" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;cursor:pointer">
+                    <option value="pop">Pop (bouncy)</option>
+                    <option value="bounce">Bounce (springy)</option>
+                    <option value="spin">Spin (rotating)</option>
+                    <option value="pulse">Pulse (gentle)</option>
+                    <option value="wiggle">Wiggle (cheeky)</option>
+                  </select></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <button class="btn-sm" onclick="previewBadgeAnim()">▶ Preview animation</button>
+                <button class="btn-sm primary" onclick="saveCustomBadge()">+ Save badge</button>
+              </div>
+            </div>
+          </details>
+        </div>
 
         <div class="settings-card">
           <h4>🔌 Calendly webhook</h4>
@@ -2463,6 +2509,169 @@ var BADGE_TIER_COLORS = {
   platinum: { bg:'#F0E8FF', border:'#A78BFA', text:'#7C3AED' },
 };
 
+// Animation registry for badge unlock — names map to CSS keyframes defined
+// in styles.css. Phoebe picks one when creating a custom badge.
+var BADGE_ANIMATIONS = {
+  pop:    { label:'Pop',    css:'badgePop 0.5s cubic-bezier(0.34,1.56,0.64,1) both' },
+  bounce: { label:'Bounce', css:'badgeBounce 0.7s cubic-bezier(0.28,0.84,0.42,1) both' },
+  spin:   { label:'Spin',   css:'badgeSpin 0.9s cubic-bezier(0.4,0,0.2,1) both' },
+  pulse:  { label:'Pulse',  css:'badgePulse 1.1s ease-in-out both' },
+  wiggle: { label:'Wiggle', css:'badgeWiggleStrong 0.7s ease-in-out both' },
+};
+
+// Load Phoebe-defined custom badges from localStorage and merge them into
+// the BADGES map. Called once at script start so awardBadge() works for
+// custom IDs the same as built-ins.
+function loadCustomBadges() {
+  try {
+    var raw = localStorage.getItem('hmh_custom_badges');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) { return []; }
+}
+function saveCustomBadgesArr(arr) {
+  try { localStorage.setItem('hmh_custom_badges', JSON.stringify(arr)); } catch (e) {}
+}
+function mergeCustomBadgesIntoRegistry() {
+  var customs = loadCustomBadges();
+  customs.forEach(function(b) {
+    if (!b || !b.id) return;
+    BADGES[b.id] = {
+      icon: b.icon || '⭐',
+      name: b.name || 'Custom badge',
+      desc: b.desc || '',
+      tier: b.tier || 'gold',
+      manual: true,
+      animation: b.animation || 'pop',
+      isCustom: true,
+    };
+  });
+}
+mergeCustomBadgesIntoRegistry();
+
+// Phoebe's UI handlers — render the list of custom badges, save a new one,
+// preview an animation. The list lives in the Settings card we added above.
+function renderCustomBadgeList() {
+  var el = document.getElementById('custom-badge-list');
+  if (!el) return;
+  var customs = loadCustomBadges();
+  if (!customs.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--stone);font-style:italic">None yet — fill in the form below to make your first.</div>';
+    return;
+  }
+  el.innerHTML = customs.map(function(b) {
+    var anim = BADGE_ANIMATIONS[b.animation || 'pop'];
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px;background:white;border:1px solid var(--border);border-radius:10px;margin-bottom:6px">' +
+      '<div style="font-size:28px;line-height:1">' + (b.icon || '⭐') + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;color:var(--magenta);font-weight:700">' + (b.name || 'Custom badge') + '</div>' +
+        '<div style="font-size:11px;color:var(--stone)">' + (b.desc || '') + ' · ' + (b.tier || 'gold') + ' · ' + (anim ? anim.label : 'Pop') + '</div>' +
+      '</div>' +
+      '<button class="btn-sm" style="font-size:11px" onclick="previewCustomBadge(\'' + b.id + '\')">▶ Preview</button>' +
+      '<button class="btn-sm" style="font-size:11px;background:white;color:var(--stone)" onclick="deleteCustomBadge(\'' + b.id + '\')">🗑</button>' +
+    '</div>';
+  }).join('');
+}
+
+function saveCustomBadge() {
+  var icon = (document.getElementById('cb-icon').value || '').trim() || '⭐';
+  var name = (document.getElementById('cb-name').value || '').trim();
+  var desc = (document.getElementById('cb-desc').value || '').trim();
+  var tier = document.getElementById('cb-tier').value || 'gold';
+  var anim = document.getElementById('cb-anim').value || 'pop';
+  if (!name) { branded.alert('Give the badge a name first.'); return; }
+  var customs = loadCustomBadges();
+  var b = {
+    id: 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+    icon: icon, name: name, desc: desc, tier: tier, animation: anim,
+    createdAt: new Date().toISOString(),
+  };
+  customs.push(b);
+  saveCustomBadgesArr(customs);
+  mergeCustomBadgesIntoRegistry();
+  renderCustomBadgeList();
+  // Reset the form
+  ['cb-icon','cb-name','cb-desc'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+  branded.success('Badge saved — find it in the "Award badge" picker on each client.');
+}
+
+function deleteCustomBadge(id) {
+  var customs = loadCustomBadges().filter(function(b){ return b.id !== id; });
+  saveCustomBadgesArr(customs);
+  // Don't yank the entry from BADGES — clients who already earned it should
+  // still see it in their ribbon. We just stop offering it for new awards.
+  renderCustomBadgeList();
+}
+
+function previewCustomBadge(id) {
+  var b = BADGES[id];
+  if (!b) return;
+  showBadgeToast(id);
+}
+
+// Live-preview the animation as Phoebe builds the badge — uses whatever's
+// currently in the form fields rather than a saved badge.
+function previewBadgeAnim() {
+  var icon = (document.getElementById('cb-icon').value || '').trim() || '⭐';
+  var name = (document.getElementById('cb-name').value || '').trim() || 'Preview';
+  var desc = (document.getElementById('cb-desc').value || '').trim() || 'How this will feel when it unlocks';
+  var anim = document.getElementById('cb-anim').value || 'pop';
+  var tempId = '__preview_' + Date.now();
+  BADGES[tempId] = { icon: icon, name: name, desc: desc, tier:'gold', manual:true, animation: anim };
+  showBadgeToast(tempId);
+  // Clean up the preview entry shortly after
+  setTimeout(function() { delete BADGES[tempId]; }, 5000);
+}
+
+// Award-a-badge picker for the coach side. Lets Phoebe celebrate a moment
+// for a specific client — built-ins or her custom badges, all in one list.
+function openAwardBadgeModal(clientId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '🎖';
+  document.getElementById('branded-modal-title').textContent = 'Award a badge to ' + client.name;
+  var body = document.getElementById('branded-modal-body');
+  // Manual + custom badges — auto-earned ones are already handled by checkAllBadges
+  var manual = Object.keys(BADGES).filter(function(k) {
+    var b = BADGES[k]; return b && (b.manual || b.isCustom);
+  });
+  var owned = (client.badges || []).map(function(b){ return b.id; });
+  var rows = manual.map(function(id) {
+    var b = BADGES[id];
+    var has = owned.indexOf(id) >= 0;
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px;background:' + (has ? '#F5F5F5' : 'white') + ';border:1px solid var(--border);border-radius:10px;margin-bottom:6px">' +
+      '<div style="font-size:28px;line-height:1">' + b.icon + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;color:var(--magenta);font-weight:700">' + b.name + (has ? ' <span style="font-size:10px;color:var(--teal);font-weight:600">— already earned</span>' : '') + '</div>' +
+        '<div style="font-size:11px;color:var(--stone)">' + (b.desc || '') + '</div>' +
+      '</div>' +
+      (has ? '' : '<button class="btn-sm primary" style="font-size:11px" onclick="grantBadgeFromModal(\'' + clientId + '\',\'' + id + '\')">Award</button>') +
+      '</div>';
+  }).join('');
+  body.innerHTML =
+    '<div style="font-size:12px;color:var(--stone);margin-bottom:10px">Pick a badge to award. The client sees it instantly with the animation you set.</div>' +
+    (manual.length ? rows : '<div style="font-size:12px;color:var(--stone);font-style:italic">No manual badges yet — make custom ones in Settings → Custom badges.</div>');
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var close = document.createElement('button'); close.className = 'btn-sm'; close.textContent = 'Close';
+  close.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(close);
+  host.style.display = 'flex';
+}
+
+async function grantBadgeFromModal(clientId, badgeId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var awarded = awardBadge(client, badgeId);
+  if (awarded) {
+    await persistClient(client);
+    if (typeof renderHome === 'function') renderHome();
+  }
+  document.getElementById('branded-modal-host').style.display = 'none';
+}
+
 // Update the rolling engagement streak. Called by persistClient on any client change.
 function updateClientStreak(client) {
   if (!client) return;
@@ -2578,17 +2787,21 @@ function showBadgeToast(badgeId) {
   if (!b) return;
   // Big confetti — bigger than the per-task tick celebration
   if (typeof fireConfetti === 'function') fireConfetti(120);
+  // Pick the animation for the toast itself + the icon. Custom badges carry
+  // their own animation choice; built-ins use the default pop+wiggle combo.
+  var animName = b.animation || 'pop';
+  var animSpec = (typeof BADGE_ANIMATIONS !== 'undefined' && BADGE_ANIMATIONS[animName]) ? BADGE_ANIMATIONS[animName].css : 'badgePop 0.5s cubic-bezier(0.34,1.56,0.64,1) both';
   var toast = document.createElement('div');
   toast.style.cssText = 'position:fixed;top:24px;right:24px;z-index:9600;background:white;' +
     'border:2.5px solid var(--hot-pink);border-radius:16px;padding:16px 20px;' +
     'box-shadow:0 16px 40px rgba(201,38,107,0.4),0 0 0 4px rgba(251,242,25,0.3);' +
     'font-family:var(--f-body);min-width:280px;max-width:360px;' +
-    'animation:badgePop 0.5s cubic-bezier(0.34,1.56,0.64,1) both;' +
+    'animation:' + animSpec + ';' +
     'display:flex;align-items:center;gap:14px';
   toast.innerHTML =
     '<div class="badge-ring" style="position:relative;width:54px;height:54px;flex-shrink:0;display:flex;align-items:center;justify-content:center">' +
       '<span style="position:absolute;inset:0;border-radius:99px;border:3px solid var(--hot-pink);animation:badgeRing 1.4s ease-out 0.15s 2 both;opacity:0"></span>' +
-      '<div style="font-size:36px;line-height:1;animation:badgeWiggle 0.7s ease-in-out 0.3s 1 both">' + b.icon + '</div>' +
+      '<div style="font-size:36px;line-height:1;animation:' + animSpec + ' 0.3s">' + b.icon + '</div>' +
     '</div>' +
     '<div style="flex:1">' +
       '<div style="font-size:11px;color:var(--hot-pink);font-weight:700;text-transform:uppercase;letter-spacing:0.08em">🎉 Badge unlocked</div>' +
@@ -3136,6 +3349,7 @@ function showPage(id) {
       else if (id === 'happy-hub')  renderHappyHub('','','');
       else if (id === 'planner')    { if (typeof renderPlanBuilderPage==='function') renderPlanBuilderPage(); }
       else if (id === 'research')   { if (typeof renderResearchPage==='function') renderResearchPage(); }
+      else if (id === 'settings')   { if (typeof renderCustomBadgeList==='function') renderCustomBadgeList(); }
       else if (id === 'tasks')      { if (typeof renderAllTasks==='function') renderAllTasks(); }
       else if (id === 'settings')   { if (typeof initNotificationsToggle==='function') initNotificationsToggle(); }
     } catch(e) { console.error('Page render error:', id, e); }
@@ -3160,6 +3374,56 @@ function filterClients(prog, btn) {
   renderClients();
   showPage('clients');
 }
+// Flip the "Show archived" toggle on the Clients page. Persists the choice
+// across reloads so Phoebe doesn't have to re-flip every visit.
+function toggleShowArchived() {
+  var current = localStorage.getItem('hmh_show_archived') === '1';
+  localStorage.setItem('hmh_show_archived', current ? '0' : '1');
+  if (typeof renderClients === 'function') renderClients();
+}
+
+// Opens a client's portal in a new tab using their access code. Lets Phoebe
+// preview exactly what the client sees without signing out of the coach view.
+function openClientPortalAsClient(clientId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  if (!client.clientAccess) {
+    branded.alert('This client doesn\'t have an access code yet.');
+    return;
+  }
+  var url = window.location.origin + window.location.pathname + '?client=' + encodeURIComponent(client.clientAccess);
+  window.open(url, '_blank', 'noopener');
+}
+
+// Archive / unarchive a client. Soft-hide — the record stays in storage, just
+// gets filtered out of the active client grid by default. Phoebe can flip the
+// "Show archived" toggle on the Clients page to dig them back up.
+async function toggleArchiveClient(clientId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var willArchive = !client.archived;
+  if (willArchive) {
+    var confirmed = await branded.confirm(
+      'Archive ' + client.name + '? They\'ll be hidden from your active list. ' +
+      'You can flip "Show archived" on the Clients page to bring them back.',
+      { title: 'Archive client?', okLabel: 'Archive', danger: false }
+    );
+    if (!confirmed) return;
+  }
+  client.archived = willArchive;
+  client.archivedAt = willArchive ? new Date().toISOString() : null;
+  await persistClient(client);
+  branded.toast(willArchive ? client.name + ' archived' : client.name + ' restored');
+  if (typeof renderClients === 'function') renderClients();
+  // If we're sitting on the archived client's detail page, kick back to the list
+  if (willArchive && currentClientId === clientId) {
+    showPage('clients');
+  } else {
+    // Re-render the detail panel so the Archive button label flips
+    if (typeof openClient === 'function' && currentClientId === clientId) openClient(clientId);
+  }
+}
+
 // ========== OPEN CLIENT ==========
 function openClient(id) {
   var client = clients.find(function(c) { return c.id === id; });
@@ -3492,6 +3756,27 @@ async function createClient() {
   document.getElementById('new-date').value = '';
   // Clear program-only state for next time
   addingProgramFor = null;
+
+  // If this client was spawned from an unmatched Zoom recording, attach it
+  // automatically now that the client exists. Pulls the transcript and
+  // tags it on the freshly-created program.
+  if (window._pendingZoomAttach) {
+    var attach = window._pendingZoomAttach;
+    window._pendingZoomAttach = null;
+    setTimeout(function() {
+      // Mock the dropdown the existing assignZoomToClient expects
+      var sel = document.createElement('select');
+      sel.id = 'zoom-assign-client-' + attach.meetingId;
+      sel.style.display = 'none';
+      var opt = document.createElement('option'); opt.value = client.id; opt.selected = true;
+      sel.appendChild(opt);
+      document.body.appendChild(sel);
+      assignZoomToClient(attach.meetingId, attach.startTime, attach.topic).finally(function() {
+        if (sel.parentNode) sel.parentNode.removeChild(sel);
+      });
+    }, 200);
+  }
+
   openClient(client.id);
 }
 
@@ -4763,14 +5048,33 @@ function renderInlineWisdom() {
   return '<span class="phoebe-says-prefix">💡 Phoebe says</span> <span class="phoebe-says-quote">"' + escapeHtml(w.quote) + '"</span>';
 }
 
-// Returns { date, label, prog } for the soonest upcoming session, or null
+// Returns { date, label, prog } for the soonest CONFIRMED upcoming session,
+// or null. We only count a program's sessionDate as a real "next session"
+// when there's evidence it came from a confirmed booking source — Calendly,
+// Zoom, or a manual edit by Phoebe. Defensive against stale fallback dates
+// (a Scott Taylor situation where today's date was accidentally inherited
+// from program-creation and surfaced as "next session today" with no real
+// booking behind it).
 function computeNextSession(client) {
   var today = new Date(); today.setHours(0,0,0,0);
   var todayStr = today.toISOString().split('T')[0];
+  function isConfirmed(p) {
+    if (p.sessionDateConfirmed === true) return true;
+    if (p.sessionDateConfirmed === false) return false;
+    // Legacy data — infer from program/client source markers
+    if (p.source === 'calendly' || p.source === 'zoom-sync') return true;
+    if (client.source === 'calendly') return true;
+    if (p.zoomJoin || p.zoomMeetingId) return true;
+    return false;
+  }
   var next = null;
   (client.programs||[]).forEach(function(p) {
     if (!p.sessionDate || p.locked || p.status === 'complete') return;
     if (p.sessionDate < todayStr) return;
+    // For "today" matches, require a confirmed source — otherwise it's likely
+    // a stale fallback. For future dates, accept either confirmed source or
+    // any future date (a future date is almost certainly intentional).
+    if (p.sessionDate === todayStr && !isConfirmed(p)) return;
     if (!next || p.sessionDate < next.date) next = { date: p.sessionDate, prog: p };
   });
   if (!next) return null;
@@ -5153,14 +5457,56 @@ function renderUnmatchedZooms(unmatched) {
         '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
           '<select id="zoom-assign-client-' + (r.id || r.uuid) + '" style="flex:1;min-width:160px;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);outline:none">' +
-            '<option value="">Assign to client…</option>' + clientOpts +
+            '<option value="">— pick existing client —</option>' + clientOpts +
           '</select>' +
           '<button class="btn-sm primary" onclick="assignZoomToClient(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'') + '\')" style="font-size:11px">Assign &amp; pull transcript</button>' +
+          '<button class="btn-sm" onclick="createClientFromZoom(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'') + '\')" style="font-size:11px;background:white;color:var(--magenta);border-color:var(--hot-pink)">+ New client</button>' +
         '</div>' +
       '</div>';
     }).join('') +
-    '<div style="font-size:11px;color:var(--stone);margin-top:6px;font-style:italic">Recordings get matched automatically when their date is within ±1 day of a client\'s session date.</div>' +
+    '<div style="font-size:11px;color:var(--stone);margin-top:6px;font-style:italic">Recordings auto-match when the date is within ±1 day of a client\'s session date. If they\'re a new contact, hit "+ New client" to create one straight from the topic.</div>' +
   '</div>';
+}
+
+// Create a brand-new client from an unmatched Zoom recording. Pre-fills the
+// Add Client modal with a name guess from the topic + the recording date as
+// the session date, so Phoebe just confirms and saves.
+async function createClientFromZoom(meetingId, startTime, topic) {
+  // Best-effort name extraction — strip "Phoebe", common prefixes, etc.
+  var guessedName = parseClientNameFromZoomTopic(topic || '');
+  var sessionDateStr = startTime ? startTime.split('T')[0] : '';
+  // Open the Add Client modal and pre-populate. After the modal mounts, fill
+  // the inputs. We watch for them to exist with a tiny timer because openAddClient
+  // builds them on the fly.
+  if (typeof openAddClient !== 'function') {
+    branded.alert('Add Client modal not available — refresh and try again.');
+    return;
+  }
+  openAddClient();
+  setTimeout(function() {
+    var nameEl  = document.getElementById('new-name');
+    var dateEl  = document.getElementById('new-date');
+    var bizEl   = document.getElementById('new-biz');
+    var intakeEl= document.getElementById('new-intake');
+    if (nameEl) nameEl.value = guessedName;
+    if (dateEl && sessionDateStr) dateEl.value = sessionDateStr;
+    if (bizEl) bizEl.placeholder = 'e.g. health coach, Melbourne';
+    if (intakeEl) intakeEl.value = 'Created from Zoom recording — ' + (topic || 'Session') + (sessionDateStr ? ' on ' + sessionDateStr : '') + '.\n\nMeeting ID: ' + meetingId + '\n\nFill in the rest after you connect with them.';
+  }, 80);
+  // Stash the meeting context so we can attach the recording after the client is saved
+  window._pendingZoomAttach = { meetingId: meetingId, startTime: startTime, topic: topic };
+  branded.toast('New-client form pre-filled from the Zoom — fill in the details and save.');
+}
+
+// Same logic the server-side sync uses, copied here so the browser can guess
+// without round-tripping. Strips Phoebe / common prefixes, takes first remaining part.
+function parseClientNameFromZoomTopic(topic) {
+  if (!topic) return '';
+  var t = topic.replace(/[‒–—-]+/g, '-').trim();
+  t = t.replace(/^(zoom meeting|meeting|call|chat|session|discovery call|business audit|happy hour|mdc|million dollar conspiracy|90.day.+?|breakthrough)\s*[-:]?\s*/i, '');
+  var parts = t.split(/\s*(?:<>|&|\+|with|and|\/|\|)\s*/i).map(function(s){ return s.trim(); }).filter(Boolean);
+  parts = parts.filter(function(p){ return !/^p(h|hh)?o?ebe(\s+blamey)?$/i.test(p); });
+  return parts[0] || t;
 }
 
 async function assignZoomToClient(meetingId, startTime, topic) {
@@ -7812,7 +8158,9 @@ function renderClientActions(client, prog) {
     '<button class="btn-sm" onclick="switchTab(\'tasks\')">✅ Tasks</button>' +
     '<button class="btn-sm" onclick="switchTab(\'wins\')">🏆 Log win</button>' +
     '<button class="btn-sm" onclick="openShareWinModal(\''+cid+'\')" title="Quick celebration post — visible on the client\'s wins feed">🎉 Share win</button>' +
+    '<button class="btn-sm" onclick="openAwardBadgeModal(\''+cid+'\')" title="Award a manual or custom badge to celebrate a moment">🎖 Award badge</button>' +
     '<button class="btn-sm" onclick="switchTab(\'message\')">📧 Message</button>' +
+    '<button class="btn-sm" onclick="openClientPortalAsClient(\''+cid+'\')" title="Open the client\'s hub in a new tab — see what they see">👁 View as client</button>' +
     '<button class="btn-sm" onclick="switchTab(\'intake\')">📋 Intake</button>' +
     (prog.zoomJoin ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm primary">🎬 Zoom</a>' : '') +
     '<div style="margin-left:auto;display:flex;align-items:center;gap:8px">' +
@@ -7904,10 +8252,14 @@ function openEditClient(clientId) {
     '<input type="checkbox" id="edit-notifs-disabled"' + (client.notificationsDisabled ? ' checked' : '') + '>' +
     '<span><strong>Don\'t send notification emails to this client</strong>' +
     '<div style="font-size:11px;color:var(--stone);margin-top:2px">Overrides the global setting. Use for clients who\'ve asked to opt out.</div></span></label></div>' +
-    '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">' +
+    '<div style="display:flex;gap:10px;align-items:center;margin-top:16px">' +
+    '<button class="btn-sm" onclick="toggleArchiveClient(\''+clientId+'\');document.getElementById(\'edit-modal\').classList.remove(\'open\')" style="background:white;color:var(--stone);border-color:var(--border)">' +
+      (client.archived ? '↩ Restore from archive' : '📦 Archive client') +
+    '</button>' +
+    '<div style="margin-left:auto;display:flex;gap:10px">' +
     '<button class="btn-sm" onclick="document.getElementById(\'edit-modal\').classList.remove(\'open\')">Cancel</button>' +
     '<button class="btn-sm primary" onclick="saveEditClient(\''+clientId+'\')">Save</button>' +
-    '</div>';
+    '</div></div>';
   modal.classList.add('open');
 }
 
@@ -8640,12 +8992,24 @@ function renderClients() {
   var grid = document.getElementById('clients-grid');
   if (!grid) return;
   var list = clients;
+  // Hide archived clients unless the toggle is flipped on. Persists across
+  // sessions so Phoebe doesn't lose her place.
+  var showArchived = localStorage.getItem('hmh_show_archived') === '1';
+  if (!showArchived) list = list.filter(function(c){ return !c.archived; });
   if (activeFilter !== 'all') {
-    list = clients.filter(function(c) {
+    list = list.filter(function(c) {
       return (c.programs||[]).some(function(p) {
         return p.program === activeFilter || p.workbook === activeFilter;
       });
     });
+  }
+  // Update the "Show archived" toggle UI count
+  var toggleEl = document.getElementById('show-archived-toggle');
+  var archivedCount = clients.filter(function(c){ return c.archived; }).length;
+  if (toggleEl) {
+    toggleEl.style.display = archivedCount > 0 ? 'inline-flex' : 'none';
+    toggleEl.querySelector('.toggle-count').textContent = archivedCount;
+    toggleEl.querySelector('.toggle-state').textContent = showArchived ? 'Hide archived' : 'Show archived';
   }
   if (!list.length) {
     grid.innerHTML = '<div style="grid-column:1/-1;color:var(--stone);font-size:14px;padding:32px 0;text-align:center">No clients yet — they will appear here when they book through Calendly, or click + Add client.</div>';
@@ -8693,7 +9057,8 @@ function renderTaskSheet() {
   var el = document.getElementById('task-sheet-content');
   if (!el) { console.error('[TaskSheet] task-sheet-content NOT FOUND'); return; }
 
-  var clientArr = Array.isArray(clients) ? clients : [];
+  // Archived clients are excluded from the working task sheet — restore via Edit if needed.
+  var clientArr = (Array.isArray(clients) ? clients : []).filter(function(c){ return c && !c.archived; });
   var today = new Date().toISOString().split('T')[0];
   var filterMode = window._taskFilter || 'pending';
 
@@ -9171,6 +9536,7 @@ async function runTranscriptReview(client, prog, note) {
 function gatherTranscriptReviewQueue() {
   var queue = [];
   (clients || []).forEach(function(c) {
+    if (!c || c.archived) return; // archived clients don't push reviews
     (c.programs || []).forEach(function(p) {
       (p.sessionNotes || []).forEach(function(n) {
         if (n && n.aiSummaryStatus === 'pending-review' && n.aiSummary) {
@@ -9252,7 +9618,8 @@ function renderHome() {
   var el = document.getElementById('home-content');
   if (!el) return;
 
-  var clientArr = Array.isArray(clients) ? clients : [];
+  // Archived clients are never surfaced on the home page — they're done for now
+  var clientArr = (Array.isArray(clients) ? clients : []).filter(function(c){ return c && !c.archived; });
   var today = new Date().toISOString().split('T')[0];
   var thisWeekEnd = new Date();
   thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);

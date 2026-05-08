@@ -109,7 +109,18 @@ export default async (req: Request, _context: Context) => {
       // Pipe the SSE stream straight through to the client. The browser-side
       // interceptor parses the events and reassembles them into the standard
       // Anthropic JSON shape so existing callers work unchanged.
-      return new Response(resp.body, {
+      //
+      // CRITICAL: Anthropic + web_search can take 30+ seconds to send the
+      // FIRST byte (it's running web searches before generating the message).
+      // Netlify's edge proxy has an "Inactivity Timeout" — if no bytes flow
+      // for ~10s, it severs the connection with a 504 even though our
+      // function is still happily awaiting upstream.
+      //
+      // Fix: wrap the upstream body in a stream that emits an SSE comment
+      // line every 4 seconds while idle. The bytes are no-ops for any
+      // spec-compliant SSE parser (lines starting with ":" are ignored)
+      // but they keep the proxy happy.
+      return new Response(withKeepAlive(resp.body), {
         status: 200,
         headers: {
           ...corsHeaders,
@@ -135,6 +146,47 @@ export default async (req: Request, _context: Context) => {
     );
   }
 };
+
+// Wraps an upstream SSE body in a ReadableStream that injects an SSE comment
+// (": keep-alive\n\n") every 4 seconds. SSE parsers ignore lines that start
+// with ":", so callers see no behavioural change — but the bytes flowing
+// keep Netlify's edge proxy from timing the connection out while Anthropic
+// runs web searches before sending its first real chunk.
+function withKeepAlive(upstream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  let cancelled = false;
+  let interval: ReturnType<typeof setInterval> | null = null;
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      // First heartbeat right away so the response headers + a byte hit the
+      // browser immediately. Some intermediaries hold the headers until the
+      // first data byte arrives.
+      try { controller.enqueue(encoder.encode(": connected\n\n")); } catch {}
+      interval = setInterval(() => {
+        if (cancelled) return;
+        try { controller.enqueue(encoder.encode(": keep-alive\n\n")); } catch {}
+      }, 4000);
+      const reader = upstream.getReader();
+      try {
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) controller.enqueue(value);
+        }
+        controller.close();
+      } catch (err) {
+        try { controller.error(err); } catch {}
+      } finally {
+        if (interval) clearInterval(interval);
+        try { reader.releaseLock(); } catch {}
+      }
+    },
+    cancel() {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    },
+  });
+}
 
 export const config = {
   path: "/api/ai-call",
