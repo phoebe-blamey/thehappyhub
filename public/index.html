@@ -393,7 +393,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7719 loaded successfully
+✓ The Happy Hub — Build v7720 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -854,6 +854,16 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
         </div>
 
         <div class="settings-card">
+          <h4>📼 Zoom recordings — last 30 days</h4>
+          <p style="margin-bottom:10px">Recordings that match a client's name in the topic show as ✓ Matched. Anything else can be assigned manually below — pulls the transcript and saves it to that client.</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+            <button class="btn-sm primary" onclick="loadZoomRecordings()" id="zoom-list-btn">🔄 Load recordings</button>
+            <span id="zoom-list-status" style="font-size:12px;color:var(--stone)"></span>
+          </div>
+          <div id="zoom-recordings-list"></div>
+        </div>
+
+        <div class="settings-card">
           <h4>📥 Import real clients from Calendly</h4>
           <p style="margin-bottom:12px">Imports all 7 real clients from your Calendly history directly into the platform. Safe to run — skips anyone already in the system.</p>
           <div style="background:var(--marshmallow);border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--stone)">
@@ -1191,6 +1201,115 @@ var PROGRAMS = {
 // Default to 'PB2025' if nothing's set yet (first-time use).
 function getCoachPin() {
   return localStorage.getItem('hmh_coach_pin') || 'PB2025';
+}
+
+// ============================================================
+// ZOOM RECORDINGS — list + match + assign-to-client
+// ============================================================
+async function loadZoomRecordings() {
+  var listEl   = document.getElementById('zoom-recordings-list');
+  var statusEl = document.getElementById('zoom-list-status');
+  var btn      = document.getElementById('zoom-list-btn');
+  if (!listEl) return;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading…'; }
+  if (statusEl) statusEl.textContent = '';
+  listEl.innerHTML = '<div style="color:var(--stone);font-size:13px;padding:8px 0">Fetching recent recordings from Zoom…</div>';
+  try {
+    var resp = await fetch('/api/zoom-list-recordings?days=30');
+    var data = await resp.json();
+    if (!resp.ok) {
+      listEl.innerHTML = '<div style="color:var(--hot-pink);font-size:13px">' + (data.error || 'Failed to load recordings') + '</div>';
+      return;
+    }
+    renderZoomRecordings(data.meetings || []);
+    if (statusEl) statusEl.textContent = (data.total || 0) + ' meeting' + (data.total === 1 ? '' : 's') + ' from ' + data.from + ' to ' + data.to;
+  } catch (e) {
+    listEl.innerHTML = '<div style="color:var(--hot-pink);font-size:13px">Error: ' + e.message + '</div>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh'; }
+  }
+}
+
+function matchMeetingToClient(meeting) {
+  if (!meeting || !meeting.topic || !Array.isArray(clients)) return null;
+  var topic = meeting.topic.toLowerCase();
+  // Match if the client's full name OR first name appears in the meeting topic
+  return clients.find(function(c) {
+    if (!c || !c.name) return false;
+    var full = c.name.toLowerCase();
+    var first = (c.name.split(' ')[0] || '').toLowerCase();
+    return topic.indexOf(full) >= 0 || (first.length > 2 && topic.indexOf(first) >= 0);
+  }) || null;
+}
+
+function renderZoomRecordings(meetings) {
+  var listEl = document.getElementById('zoom-recordings-list');
+  if (!listEl) return;
+  if (!meetings.length) {
+    listEl.innerHTML = '<div style="color:var(--stone);font-size:13px;padding:8px 0">No recordings found in the last 30 days. If you expected some, check that cloud recording is enabled in Zoom and the calls have finished processing.</div>';
+    return;
+  }
+  listEl.innerHTML = meetings.map(function(m) {
+    var matched = matchMeetingToClient(m);
+    var dateStr = '';
+    try { dateStr = new Date(m.startTime).toLocaleDateString('en-AU', {weekday:'short',day:'numeric',month:'short',year:'numeric'}) + ' · ' + new Date(m.startTime).toLocaleTimeString('en-AU', {hour:'numeric',minute:'2-digit',hour12:true}); }
+    catch(_) { dateStr = m.startTime || ''; }
+    var transcriptLabel = m.hasTranscript ? '📝 Transcript ready' : '⏳ Transcript pending';
+    var matchBadge = matched
+      ? '<span style="font-size:11px;background:var(--mist);color:var(--teal);padding:3px 10px;border-radius:99px;font-weight:700">✓ ' + matched.name + '</span>'
+      : '<span style="font-size:11px;background:#FFF8E8;color:#A07030;padding:3px 10px;border-radius:99px;font-weight:700">Unmatched</span>';
+
+    var assignRow = '';
+    if (!matched) {
+      var clientOpts = clients.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }).map(function(c) {
+        return '<option value="' + c.id + '">' + c.name + '</option>';
+      }).join('');
+      assignRow =
+        '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-soft);display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<select id="zoom-assign-' + m.id + '" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--magenta);background:var(--paper);min-width:180px">' +
+        '<option value="">Assign to client…</option>' + clientOpts + '</select>' +
+        '<button class="btn-sm primary" onclick="assignZoomMeeting(\'' + m.id + '\')" ' + (m.hasTranscript ? '' : 'disabled title="No transcript yet — wait 15-30 min after the call ends"') + '>💾 Pull transcript & save</button>' +
+        '</div>';
+    }
+
+    return '<div style="background:white;border:1.5px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px">' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:200px">' +
+          '<div style="font-weight:700;font-size:13px;color:var(--magenta);word-break:break-word">' + (m.topic || 'Untitled') + '</div>' +
+          '<div style="font-size:11px;color:var(--stone);margin-top:3px">' + dateStr + ' · ' + (m.duration || 0) + ' min · ' + transcriptLabel + '</div>' +
+        '</div>' +
+        matchBadge +
+      '</div>' +
+      assignRow +
+    '</div>';
+  }).join('');
+}
+
+async function assignZoomMeeting(meetingId) {
+  var sel = document.getElementById('zoom-assign-' + meetingId);
+  if (!sel || !sel.value) { alert('Pick a client first.'); return; }
+  var clientId = sel.value;
+  var btn = sel.parentElement.querySelector('button');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling…'; }
+  try {
+    var resp = await fetch('/api/zoom-transcript', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId, meetingId: meetingId }),
+    });
+    var data = await resp.json();
+    if (!resp.ok) {
+      alert('Failed to pull transcript: ' + (data.error || 'unknown error'));
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Pull transcript & save'; }
+      return;
+    }
+    alert('✓ Transcript saved to client. ' + (data.characterCount ? data.characterCount + ' characters captured.' : ''));
+    await loadClients();
+    loadZoomRecordings(); // re-render so this meeting is no longer "unmatched"
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Pull transcript & save'; }
+  }
 }
 
 // ============================================================

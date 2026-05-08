@@ -16,9 +16,9 @@ export default async (req: Request) => {
     return new Response("Invalid JSON", { status: 400 });
   }
 
-  const { clientId, sessionDate } = body;
-  if (!clientId || !sessionDate) {
-    return new Response(JSON.stringify({ error: "clientId and sessionDate required" }), { status: 400 });
+  const { clientId, sessionDate, meetingId } = body;
+  if (!clientId || (!sessionDate && !meetingId)) {
+    return new Response(JSON.stringify({ error: "clientId and (sessionDate or meetingId) required" }), { status: 400 });
   }
 
   const zoomToken = Netlify.env.get("ZOOM_ACCESS_TOKEN");
@@ -53,33 +53,45 @@ export default async (req: Request) => {
     return new Response(JSON.stringify({ error: "Failed to get Zoom token: " + String(err) }), { status: 500 });
   }
 
-  // ── List cloud recordings for the session date ────────────────────────────
-  const fromDate = sessionDate; // YYYY-MM-DD
-  const toDate = sessionDate;
-
-  let recordings: any[] = [];
+  // ── Fetch the specific meeting (if meetingId given) or list by date ──────
+  let meeting: any = null;
   try {
-    const recResp = await fetch(
-      `https://api.zoom.us/v2/users/me/recordings?from=${fromDate}&to=${toDate}&page_size=30`,
-      { headers: { "Authorization": `Bearer ${accessToken}` } }
-    );
-    const recData = await recResp.json();
-    recordings = recData.meetings || [];
+    if (meetingId) {
+      // Direct fetch of the specific meeting's recordings — used when assigning
+      // an unmatched Zoom recording to a client from the Settings page.
+      const directResp = await fetch(
+        `https://api.zoom.us/v2/meetings/${encodeURIComponent(meetingId)}/recordings`,
+        { headers: { "Authorization": `Bearer ${accessToken}` } }
+      );
+      const directData = await directResp.json();
+      if (!directResp.ok) {
+        return new Response(JSON.stringify({
+          error: "Zoom meeting not found",
+          status: directResp.status,
+          details: directData,
+        }), { status: 404 });
+      }
+      meeting = directData;
+    } else {
+      // Fall back to list-by-date and pick most recent
+      const recResp = await fetch(
+        `https://api.zoom.us/v2/users/me/recordings?from=${sessionDate}&to=${sessionDate}&page_size=30`,
+        { headers: { "Authorization": `Bearer ${accessToken}` } }
+      );
+      const recData = await recResp.json();
+      const recordings = recData.meetings || [];
+      if (!recordings.length) {
+        return new Response(JSON.stringify({
+          error: "No Zoom recordings found for " + sessionDate,
+          hint: "Make sure cloud recording is enabled in Zoom settings and the session has finished processing (usually 15-30 mins after the call ends)."
+        }), { status: 404 });
+      }
+      recordings.sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+      meeting = recordings[0];
+    }
   } catch (err) {
-    return new Response(JSON.stringify({ error: "Failed to list recordings: " + String(err) }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Failed to fetch meeting: " + String(err) }), { status: 500 });
   }
-
-  if (!recordings.length) {
-    return new Response(JSON.stringify({
-      error: "No Zoom recordings found for " + sessionDate,
-      hint: "Make sure cloud recording is enabled in Zoom settings and the session has finished processing (usually 15-30 mins after the call ends)."
-    }), { status: 404 });
-  }
-
-  // ── Find transcript file from the most recent recording ──────────────────
-  // Sort by start time descending, take most recent
-  recordings.sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
-  const meeting = recordings[0];
 
   // Find the transcript file (VTT or audio transcript)
   const transcriptFile = (meeting.recording_files || []).find((f: any) =>
