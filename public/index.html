@@ -393,7 +393,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7716 loaded successfully
+✓ The Happy Hub — Build v7717 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -903,11 +903,19 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
         </div>
 
         <div class="settings-card">
-          <h4>📧 Email setup (Resend)</h4>
-          <p>To send emails from Phoebe@phoebeblamey.com.au, add <strong>RESEND_API_KEY</strong> to your Netlify environment variables.</p>
-          <p style="margin-top:8px">1. Go to <a href="https://resend.com" target="_blank" style="color:var(--hot-pink)">resend.com</a> → Create account (free) → API Keys → Create Key<br>
-          2. Add your domain (phoebeblamey.com.au) in Resend → Domains<br>
-          3. Paste the key into Netlify → Site settings → Environment variables → RESEND_API_KEY</p>
+          <h4>🔑 Coach PIN</h4>
+          <p>Your login PIN to access this dashboard. Default is <code>PB2025</code>. Change it any time — only you need it.</p>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <input id="new-coach-pin" type="text" placeholder="New PIN (e.g. HAPPY99)" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:14px;color:var(--magenta);background:var(--paper);outline:none;width:180px;text-transform:uppercase">
+            <button class="btn-sm primary" onclick="changeCoachPin()">Save new PIN</button>
+            <span id="coach-pin-saved" style="font-size:12px;color:var(--teal)"></span>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h4>📧 Email sending (Gmail API — live)</h4>
+          <p>Outbound emails from the platform send via the Gmail API as <strong>phoebe@phoebeblamey.com.au</strong> and appear in your Gmail Sent folder automatically.</p>
+          <p style="margin-top:8px;font-size:12px;color:var(--stone)">Configured via Netlify env vars: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, GOOGLE_SENDER_EMAIL. To rotate credentials, see CLAUDE.md.</p>
         </div>
 
         <div class="settings-card">
@@ -937,6 +945,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   <div class="topbar">
     <div class="topbar-logo">The Happy <span>Hub</span></div>
     <span class="topbar-badge badge-client" id="client-topbar-prog">My Program</span>
+    <button class="btn-logout" onclick="changeMyAccessCode()" style="margin-right:6px" title="Change your access code">🔑 Change code</button>
     <button class="btn-logout" onclick="logout()">Sign out</button>
   </div>
   <div class="client-layout">
@@ -1168,7 +1177,60 @@ var PROGRAMS = {
   'mdc-cohort': { label:'MDC Cohort Member',               short:'MDC',          color:'prog-mdc',     workbook:'mdc',       icon:'💡' },
 };
 
-var COACH_PIN = 'PB2025';
+// Coach PIN is stored in localStorage so Phoebe can change it from Settings.
+// Default to 'PB2025' if nothing's set yet (first-time use).
+function getCoachPin() {
+  return localStorage.getItem('hmh_coach_pin') || 'PB2025';
+}
+
+function changeCoachPin() {
+  var input = document.getElementById('new-coach-pin');
+  var status = document.getElementById('coach-pin-saved');
+  if (!input) return;
+  var newPin = (input.value || '').toUpperCase().trim();
+  if (newPin.length < 4) { status.textContent = 'Pick at least 4 characters'; status.style.color = 'var(--hot-pink)'; return; }
+  if (newPin.length > 20) { status.textContent = 'Keep it under 20 characters'; status.style.color = 'var(--hot-pink)'; return; }
+  if (!confirm('Change your coach PIN to "' + newPin + '"?\n\nYou\'ll use this to log in next time. Make sure you can remember it — there is no recovery from this device.')) return;
+  localStorage.setItem('hmh_coach_pin', newPin);
+  input.value = '';
+  status.textContent = '✓ PIN updated — use it next time you log in';
+  status.style.color = 'var(--teal)';
+  setTimeout(function() { status.textContent = ''; }, 6000);
+}
+
+// Client-side flow: client changes their own access code from the portal
+async function changeMyAccessCode() {
+  if (!currentClientId) { alert('Sign in first.'); return; }
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var current = prompt('Enter your CURRENT access code to confirm it\'s you:');
+  if (current === null) return;
+  if ((current || '').toUpperCase().trim() !== client.clientAccess) {
+    alert('That doesn\'t match your current code. No changes made.');
+    return;
+  }
+  var newCode = prompt('Choose a new access code:\n\n• 4 to 12 characters\n• letters and numbers only\n• no spaces');
+  if (newCode === null || !newCode.trim()) return;
+  var result = await changeClientAccessCode(client.id, newCode);
+  if (!result.ok) { alert('Couldn\'t update: ' + result.error); return; }
+  alert('All done — your new access code is:\n\n' + client.clientAccess + '\n\nWrite it down somewhere safe. You\'ll need it next time you sign in.');
+}
+
+// Change a client's access code. Used from the Edit Client modal AND from
+// inside the client's own portal. Validates uniqueness across all clients.
+async function changeClientAccessCode(clientId, newCode) {
+  var client = clients.find(function(c) { return c.id === clientId; });
+  if (!client) return { ok: false, error: 'Client not found' };
+  newCode = (newCode || '').toUpperCase().trim();
+  if (newCode.length < 4 || newCode.length > 12) return { ok: false, error: 'Code must be 4-12 characters' };
+  if (!/^[A-Z0-9]+$/.test(newCode)) return { ok: false, error: 'Code can only contain letters and numbers' };
+  // Uniqueness — make sure no OTHER client uses this code
+  var clash = clients.find(function(c) { return c.id !== clientId && c.clientAccess === newCode; });
+  if (clash) return { ok: false, error: 'That code is already used by ' + clash.name };
+  client.clientAccess = newCode;
+  await persistClient(client);
+  return { ok: true };
+}
 
 // MDC Cohorts — run every 90 days
 var MDC_COHORTS = [
@@ -1277,7 +1339,7 @@ function focusCoachPin() { document.getElementById('coach-pin').focus(); }
 
 async function enterCoach() {
   var pin = document.getElementById('coach-pin').value.toUpperCase();
-  if (pin === COACH_PIN) {
+  if (pin === getCoachPin()) {
     document.getElementById('landing').style.display = 'none';
     document.getElementById('coach-hub').classList.add('active');
     await loadClients();
@@ -1296,7 +1358,7 @@ async function enterCoach() {
     }, 300);
     startNotificationPolling();
   } else {
-    document.getElementById('coach-err').textContent = 'Incorrect PIN — try PB2025';
+    document.getElementById('coach-err').textContent = 'Incorrect PIN.';
   }
 }
 
@@ -3631,6 +3693,7 @@ function openEditClient(clientId) {
     ef('edit-biz',     'Business',         client.biz||'',   'Health coach, Melbourne') +
     ef('edit-email',   'Email',            client.email||'', 'sarah@example.com') +
     ef('edit-phone',   'Phone',            client.phone||'', '+61412345678') +
+    ef('edit-access',  'Access code',      client.clientAccess||'', 'JAME24') +
     ef('edit-website', 'Website',          s.website||'',    'https://...') +
     ef('edit-linkedin','LinkedIn',         s.linkedin||'',   'linkedin.com/in/username') +
     ef('edit-instagram','Instagram',       s.instagram||'',  'instagram.com/username') +
@@ -3655,6 +3718,14 @@ function ef(id, label, value, placeholder) {
 async function saveEditClient(clientId) {
   var client = clients.find(function(c){return c.id===clientId;});
   if (!client) return;
+
+  // Access code change — validate before applying anything else
+  var newAccess = (document.getElementById('edit-access')?.value || '').toUpperCase().trim();
+  if (newAccess && newAccess !== client.clientAccess) {
+    var result = await changeClientAccessCode(clientId, newAccess);
+    if (!result.ok) { alert('Access code not saved: ' + result.error); return; }
+  }
+
   client.name  = document.getElementById('edit-name')?.value.trim()||client.name;
   client.biz   = document.getElementById('edit-biz')?.value.trim()||'';
   client.email = document.getElementById('edit-email')?.value.trim()||'';
@@ -3673,6 +3744,8 @@ async function saveEditClient(clientId) {
   // Update header
   document.getElementById('detail-name').textContent = client.name;
   document.getElementById('detail-biz').textContent  = client.biz||client.email||'';
+  // Update the contact line + portal link in case email/phone/access code changed
+  if (typeof openClient === 'function') openClient(clientId);
 }
 
 // ============================================================
