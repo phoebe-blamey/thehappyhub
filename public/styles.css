@@ -400,6 +400,222 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
    renders cleanly without the offset. */
 body{padding-top:0}
 
+/* =====================================================================
+   CLIENT PORTAL — three-card "story" layout + on-brand background.
+   Replaces the previous flat-white client area with a soft cream-pink
+   wash + decorative dot pattern. Pulls cues from phoebeblamey.com.au
+   (warm marshmallow base, sunshine accents) and from gamified coaching
+   platforms (Practice.do, Coach.me) where the dashboard feels like a
+   "place" not a form.
+   ===================================================================== */
+
+/* Background — only inside the client portal so the coach hub stays clean */
+#client-hub.active {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(240,163,199,0.18) 0%, transparent 40%),
+    radial-gradient(circle at 80% 30%, rgba(251,242,25,0.10) 0%, transparent 35%),
+    radial-gradient(circle at 50% 100%, rgba(216,228,232,0.20) 0%, transparent 50%),
+    linear-gradient(180deg, #FFFDFA 0%, #FDEFF5 100%);
+  background-attachment: fixed;
+}
+
+/* Soft dotted overlay — barely visible but adds texture */
+#client-hub.active .client-content {
+  position: relative;
+}
+#client-hub.active .client-content::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(rgba(236,44,138,0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+}
+#client-hub.active .client-content > * { position: relative; z-index: 1; }
+
+/* Greeting strip — replaces the old separate greeting card. Inline w/ Phoebe says. */
+.client-greeting-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #FFFBE8 0%, #FDEFF5 100%);
+  border: 1.5px solid rgba(236,44,138,0.15);
+  border-radius: 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 4px 12px rgba(201,38,107,0.06);
+}
+.client-greeting-text { flex: 1; min-width: 0; }
+.client-greeting-hi {
+  font-family: var(--f-head);
+  font-size: clamp(20px, 3vw, 26px);
+  color: var(--magenta);
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+.client-phoebe-says-mini {
+  font-size: 14px;
+  color: var(--magenta);
+  line-height: 1.5;
+}
+.phoebe-says-prefix {
+  display: inline-block;
+  font-family: var(--f-head);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hot-pink);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.phoebe-says-quote {
+  font-style: italic;
+  color: var(--magenta);
+  opacity: 0.92;
+}
+
+/* Three-card story grid — the big ask: opening = What / How / Where */
+.three-card-story {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.story-card {
+  background: white;
+  border-radius: 20px;
+  padding: 22px 22px 18px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(201,38,107,0.07);
+  border: 1.5px solid transparent;
+  transition: transform 0.18s, box-shadow 0.18s;
+  display: flex;
+  flex-direction: column;
+}
+.story-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(201,38,107,0.12); }
+.story-card-want  { background: linear-gradient(165deg, #FFFFFF 0%, #FDEFF5 100%); border-color: rgba(236,44,138,0.18); }
+.story-card-how   { background: linear-gradient(165deg, #FFFFFF 0%, #FFF8E8 100%); border-color: rgba(232,160,32,0.18); }
+.story-card-where { background: linear-gradient(165deg, #FFFFFF 0%, #E8F4F4 100%); border-color: rgba(95,163,168,0.18); }
+.story-card-icon {
+  font-size: 32px;
+  line-height: 1;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.08));
+}
+.story-card-title {
+  font-family: var(--f-head);
+  font-size: 17px;
+  color: var(--magenta);
+  font-weight: 700;
+  margin-bottom: 12px;
+  letter-spacing: 0.005em;
+}
+.story-card-body {
+  font-size: 14px;
+  color: var(--magenta);
+  line-height: 1.55;
+  flex: 1;
+}
+.story-card-empty {
+  color: var(--stone);
+  font-style: italic;
+  font-size: 13px;
+}
+.story-card-edit {
+  margin-top: 14px;
+  align-self: flex-start;
+  background: white;
+  border: 1.5px solid rgba(236,44,138,0.25);
+  color: var(--magenta);
+  font-family: var(--f-body);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.story-card-edit:hover {
+  background: var(--marshmallow);
+  border-color: var(--hot-pink);
+}
+.story-card-action {
+  background: var(--hot-pink);
+  color: white;
+  border-color: var(--hot-pink);
+}
+.story-card-action:hover {
+  background: var(--magenta);
+  border-color: var(--magenta);
+}
+.story-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+.story-card-row:last-child { border-bottom: none; }
+.story-card-row-label {
+  font-size: 12px;
+  color: var(--stone);
+  font-weight: 500;
+}
+.story-card-row-value {
+  font-family: var(--f-head);
+  font-size: 16px;
+  color: var(--magenta);
+  font-weight: 700;
+}
+
+/* Section cards — soften vs the old flat white */
+#client-hub.active .client-section {
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(2px);
+  border: 1.5px solid rgba(236,44,138,0.10);
+  border-radius: 16px;
+  box-shadow: 0 4px 14px rgba(201,38,107,0.05);
+}
+
+/* Font normalisation — every header in the client portal uses var(--f-head)
+   for chunky brand display, and every body element inherits Poppins. */
+#client-hub.active h1,
+#client-hub.active h2,
+#client-hub.active h3,
+#client-hub.active h4,
+#client-hub.active .client-greeting-hi,
+#client-hub.active .story-card-title,
+#client-hub.active .story-card-row-value {
+  font-family: var(--f-head);
+}
+#client-hub.active,
+#client-hub.active button,
+#client-hub.active input,
+#client-hub.active textarea,
+#client-hub.active select {
+  font-family: var(--f-body);
+}
+
+/* Confetti-able badges — subtle hover lift to hint they're interactive */
+#client-hub.active .client-section [title]:not([title^="Locked:"]) {
+  transition: transform 0.15s;
+}
+#client-hub.active .client-section [title]:not([title^="Locked:"]):hover {
+  transform: scale(1.05);
+}
+
+/* Mobile — stack the three story cards naturally (auto-fit handles it),
+   but tighten the greeting strip so it doesn't push everything down */
+@media (max-width: 600px) {
+  .client-greeting-strip { flex-direction: column; align-items: flex-start; padding: 14px 16px; }
+  .story-card { padding: 18px 18px 16px; }
+}
+
 /* ─────────────────────────────────────────────────────────────────────
    Compact UX touch-ups for the client portal — tighter than before so
    there's less scrolling. Existing class names preserved.

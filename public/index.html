@@ -13,7 +13,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v8800 — PIN reset URL, get-clients prefix bug fix, Coaching program, Uncategorised Zooms attached-not-coincident, rich Calendly+Zoom data extraction, editable transcripts, backup download">
+<meta name="hmh-build" content="v8900 — three-card client summary (What/How/Where), branded background, next-session topbar pill, badge confetti, auto-advance MDC from Zoom tags">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -650,6 +650,12 @@
   <div class="topbar">
     <div class="topbar-logo">PeaBe <span>Coaching Hub</span></div>
     <span class="topbar-badge badge-client" id="client-topbar-prog">My Hub</span>
+    <!-- Next-session pill — populated live by updateClientNextSessionPill().
+         Hidden when no upcoming session is scheduled. -->
+    <a id="client-next-session-pill" href="#" style="display:none;align-items:center;gap:6px;font-size:11px;padding:5px 12px 5px 10px;border-radius:99px;font-weight:600;background:rgba(251,242,25,0.92);color:#5A4632;text-decoration:none;margin-left:auto" title="Your next session with Phoebe">
+      <span style="font-size:12px;line-height:1">📅</span>
+      <span id="client-next-session-text"></span>
+    </a>
     <span class="save-status-pill-c" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Your work saves automatically as you go"></span>
     <button class="btn-logout" onclick="logout()">Sign out</button>
   </div>
@@ -3420,6 +3426,50 @@ function makeWorkbookSection(title, desc, fieldId, value, placeholder, required)
     '</div>';
 }
 
+// Auto-advances mdcSprint/mdcWeek based on attached Zoom session notes.
+// Each session note can carry { sprint, week } metadata (Phoebe sets when
+// assigning a recording). The MDC sprint+week tracker advances to the
+// LATEST sprint+week we have a Zoom session note for. Returns true if it
+// changed anything (caller persists + re-renders).
+function autoAdvanceMdcProgress(prog) {
+  if (!prog || prog.workbook !== 'mdc') return false;
+  var notes = (prog.sessionNotes||[]).filter(function(n) {
+    return n.zoomMeetingId && typeof n.sprint === 'number' && typeof n.week === 'number';
+  });
+  if (!notes.length) return false;
+  // Find the latest (sprint, week) — sprints 1-4, weeks 1-6 within each
+  notes.sort(function(a, b) {
+    if (a.sprint !== b.sprint) return b.sprint - a.sprint;
+    return b.week - a.week;
+  });
+  var latest = notes[0];
+  var changed = false;
+  if ((prog.mdcSprint || 1) < latest.sprint || ((prog.mdcSprint || 1) === latest.sprint && (prog.mdcWeek || 1) < latest.week)) {
+    prog.mdcSprint = latest.sprint;
+    prog.mdcWeek = latest.week;
+    changed = true;
+  }
+  return changed;
+}
+
+// Trigger from a sprint/week select-change handler. Persists the tag (handled
+// by updateSessionMeta), runs autoAdvance, persists if changed, re-renders.
+async function autoAdvanceFromNote(clientId, progId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!prog) return;
+  // updateSessionMeta already persisted the tag — give it a moment to land,
+  // then re-evaluate progress
+  setTimeout(async function() {
+    if (autoAdvanceMdcProgress(prog)) {
+      await persistClient(client);
+      branded.toast('Sprint ' + prog.mdcSprint + ' · Week ' + prog.mdcWeek + ' (auto-advanced)');
+      // If MDC content is rendered, refresh it
+      if (typeof renderMDCContent === 'function') renderMDCContent(prog);
+    }
+  }, 100);
+}
+
 async function setMDCSprint(s) {
   var client = clients.find(function(c) { return c.id === currentClientId; });
   var prog   = client ? (client.programs||[]).find(function(p) { return p.id === currentProgramId; }) : null;
@@ -3715,6 +3765,8 @@ function loadClientPortal(client) {
 
   // Hero "my why" line — always visible across tabs
   if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
+  // Topbar "next session" pill — also persistent across tabs
+  if (typeof updateClientNextSessionPill === 'function') updateClientNextSessionPill(client);
 }
 
 // Switches between the three top-level client tabs: Summary / Programs / Settings
@@ -3937,79 +3989,128 @@ function renderClientSharedNotes(prog) {
 function renderClientSummary(client) {
   var el = document.getElementById('client-summary-area');
   if (!el || !client) return;
-  var firstName = client.name.split(' ')[0];
+  var firstName = (client.name||'').split(' ')[0] || 'there';
   var today = new Date().toISOString().split('T')[0];
   var progs = (client.programs||[]).filter(function(p){ return p.workbook!=='none' && p.workbook!=='inquiry'; });
 
-  // ── Open tasks: client-visible only, sorted by due date ──────────────
+  // ── Compute the three-card story ─────────────────────────────────────
+  // 1. WHAT WE WANT TO DO — vision/why/sprint focus
+  var whyText = (client.why || '').trim();
+  var visionText = '';
+  var sprintFocusText = '';
+  progs.forEach(function(p) {
+    if (p.workbook === 'mdc' && p.mdcWorkbook) {
+      if (!visionText && p.mdcWorkbook.vision) visionText = p.mdcWorkbook.vision;
+      if (!sprintFocusText && p.mdcWorkbook.sprintFocus) sprintFocusText = p.mdcWorkbook.sprintFocus;
+    }
+  });
+
+  // 2. HOW WE'RE GOING TO DO IT — plan summary
+  // Pick the most-active program (most recent sessionDate) and summarise its plan
+  var primaryProg = progs.slice().sort(function(a,b){
+    return (b.sessionDate||'').localeCompare(a.sessionDate||'');
+  })[0];
+  var planSections = primaryProg && primaryProg.plan ? primaryProg.plan : [];
+  var totalPlanTasks = 0; var donePlanTasks = 0;
+  planSections.forEach(function(s) {
+    (s.tasks||[]).forEach(function(t, i) {
+      totalPlanTasks++;
+      var sectionId = (s.month != null) ? String(s.month) : ('s' + planSections.indexOf(s));
+      var key = sectionId + '-' + i;
+      if (primaryProg.taskDone && primaryProg.taskDone[key]) donePlanTasks++;
+    });
+  });
+
+  // 3. WHERE WE ARE AT — progress + open tasks + recent wins
   var allTasks = (client.tasks||[]).filter(function(t) { return t && t.text && t.clientVisible; });
   var openTasks = allTasks.filter(function(t){ return !t.done; });
   var doneTasks = allTasks.filter(function(t){ return t.done; });
   openTasks.sort(function(a,b) { return (a.dueDate||'9999').localeCompare(b.dueDate||'9999'); });
   var overdue = openTasks.filter(function(t){ return t.dueDate && t.dueDate < today; });
   var dueToday = openTasks.filter(function(t){ return t.dueDate === today; });
-
-  // ── Recent wins: across all programs, last 30 days ───────────────────
   var allWins = [];
   (client.wins||[]).forEach(function(w){ if (w) allWins.push({ w:w, prog:null }); });
   progs.forEach(function(p){ (p.wins||[]).forEach(function(w){ if (w) allWins.push({ w:w, prog:p }); }); });
   allWins.sort(function(a,b){ return (b.w.date||'').localeCompare(a.w.date||''); });
   var recentWins = allWins.slice(0, 3);
 
-  // ── Build sections ───────────────────────────────────────────────────
-  var html = '';
-
-  // Greeting card with mood-appropriate Australian-style hello
+  // ── Build the page ───────────────────────────────────────────────────
   var hour = new Date().getHours();
   var timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Hi there' : 'Evening';
-  html += '<div class="client-section" style="background:linear-gradient(135deg,#FFFDFA,#FDEFF5);border-color:#F5D5E3">' +
-    '<div style="font-family:var(--f-head);font-size:22px;color:var(--magenta);margin-bottom:4px">' + timeGreeting + ', ' + firstName + ' 💛</div>' +
-    '<div style="font-size:13px;color:var(--stone)">Here\'s what\'s on your plate today.</div>' +
+
+  var html = '';
+
+  // Compact greeting + Phoebe says (combined into one prominent card)
+  html += '<div class="client-greeting-strip">' +
+    '<div class="client-greeting-text">' +
+      '<div class="client-greeting-hi">' + timeGreeting + ', ' + firstName + ' 💛</div>' +
+      '<div class="client-phoebe-says-mini">' + renderInlineWisdom() + '</div>' +
+    '</div>' +
   '</div>';
 
-  // Countdown to next session (only renders if there's one scheduled)
-  html += renderNextSessionCountdown(client);
+  // ── THREE-CARD STORY GRID ────────────────────────────────────────────
+  html += '<div class="three-card-story">';
 
-  // Daily check-in (Phase C) — mood emoji + one-liner, builds streak
+  // Card 1: WHAT WE WANT TO DO
+  var whatWeWant = whyText || visionText || '';
+  html += '<div class="story-card story-card-want">' +
+    '<div class="story-card-icon">💛</div>' +
+    '<div class="story-card-title">What we want to do</div>' +
+    (whatWeWant
+      ? '<div class="story-card-body">"' + escapeHtml(whatWeWant) + '"</div>' +
+        '<button class="story-card-edit" onclick="editClientWhyFromHero()">Edit my why</button>'
+      : '<div class="story-card-body story-card-empty">Tell us in one sentence what you\'re actually doing all this for.</div>' +
+        '<button class="story-card-edit story-card-action" onclick="editClientWhyFromHero()">+ Add my why</button>'
+    ) +
+  '</div>';
+
+  // Card 2: HOW WE'RE GOING TO DO IT
+  var howCardBody;
+  if (totalPlanTasks > 0) {
+    var pct = Math.round(donePlanTasks / totalPlanTasks * 100);
+    howCardBody = '<div class="story-card-body">' +
+      '<div style="font-size:14px;color:var(--magenta);margin-bottom:6px">' + planSections.length + ' section' + (planSections.length===1?'':'s') + ' · ' + totalPlanTasks + ' steps' + '</div>' +
+      '<div style="background:var(--marshmallow);height:6px;border-radius:99px;overflow:hidden"><div style="background:var(--hot-pink);height:100%;width:' + pct + '%;border-radius:99px;transition:width 0.4s"></div></div>' +
+      '<div style="font-size:11px;color:var(--stone);margin-top:4px">' + donePlanTasks + ' of ' + totalPlanTasks + ' done · ' + pct + '%</div>' +
+    '</div>';
+  } else if (sprintFocusText) {
+    howCardBody = '<div class="story-card-body"><strong>This week\'s focus:</strong><br>' + escapeHtml(sprintFocusText) + '</div>';
+  } else {
+    howCardBody = '<div class="story-card-body story-card-empty">Your plan will appear here once you and Phoebe have shaped it together.</div>';
+  }
+  html += '<div class="story-card story-card-how">' +
+    '<div class="story-card-icon">🗺️</div>' +
+    '<div class="story-card-title">How we\'re going to do it</div>' +
+    howCardBody +
+    (primaryProg
+      ? '<button class="story-card-edit" onclick="openClientProgramFromSummary(\''+primaryProg.id+'\')">Open my plan →</button>'
+      : '') +
+  '</div>';
+
+  // Card 3: WHERE WE ARE AT
+  var nextSession = computeNextSession(client);
+  var whereBody = '';
+  if (nextSession) {
+    whereBody += '<div class="story-card-row"><span class="story-card-row-label">Next session</span><span class="story-card-row-value">' + nextSession.label + '</span></div>';
+  }
+  whereBody += '<div class="story-card-row"><span class="story-card-row-label">Open tasks</span><span class="story-card-row-value">' + openTasks.length + '</span></div>';
+  whereBody += '<div class="story-card-row"><span class="story-card-row-label">Wins logged</span><span class="story-card-row-value">' + allWins.length + '</span></div>';
+  if (recentWins.length) {
+    var latestWin = recentWins[0].w;
+    whereBody += '<div style="margin-top:8px;padding:8px 10px;background:#FFFBE8;border-radius:10px;font-size:12px;color:var(--magenta)"><strong>Latest win:</strong> ' + escapeHtml(latestWin.metric || 'Win') + (latestWin.before && latestWin.after ? ' · ' + escapeHtml(latestWin.before) + ' → ' + escapeHtml(latestWin.after) : '') + '</div>';
+  }
+  html += '<div class="story-card story-card-where">' +
+    '<div class="story-card-icon">📊</div>' +
+    '<div class="story-card-title">Where we\'re at</div>' +
+    '<div class="story-card-body" style="font-size:13px">' + whereBody + '</div>' +
+  '</div>';
+
+  html += '</div>'; // end .three-card-story
+
+  // ── Daily check-in (compact, optional) ───────────────────────────────
   html += renderClientDailyCheckin(client);
 
-  // 30-day streak calendar — visual record of activity, never empty
-  html += renderStreakCalendar(client);
-
-  // Phoebe says… rotating wisdom card (different quote each day)
-  html += renderWisdomCard();
-
-  // Stats row — open / overdue / wins / programs
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">' +
-    summaryStatCard(openTasks.length, openTasks.length === 1 ? 'open task' : 'open tasks', '#EC2C8A') +
-    summaryStatCard(overdue.length, overdue.length === 1 ? 'overdue' : 'overdue', overdue.length > 0 ? '#EC2C8A' : '#ACA495') +
-    summaryStatCard(allWins.length, allWins.length === 1 ? 'total win' : 'total wins', '#5FA3A8') +
-    summaryStatCard(progs.length, progs.length === 1 ? 'program' : 'programs', '#C9266B') +
-  '</div>';
-
-  // Quick links to programs (jump to Programs tab + open that program)
-  if (progs.length) {
-    html += '<div class="client-section"><h3 style="font-size:14px;letter-spacing:0.04em">📚 My programs</h3>' +
-      '<div style="display:flex;flex-direction:column;gap:8px">' +
-      progs.map(function(p) {
-        var pi = PROGRAMS[p.program]||{};
-        var isComplete = p.status==='complete' || p.locked;
-        var dateStr = p.sessionDate ? new Date(p.sessionDate).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}) : '';
-        return '<button onclick="openClientProgramFromSummary(\''+p.id+'\')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:white;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;text-align:left;font-family:var(--f-body)">' +
-          '<span style="font-size:22px">'+(pi.icon||'📌')+'</span>' +
-          '<div style="flex:1;min-width:0">' +
-            '<div style="font-size:14px;font-weight:600;color:var(--magenta)">' + (pi.label || p.program) + (isComplete ? ' ✓' : '') + '</div>' +
-            '<div style="font-size:11px;color:var(--stone)">' + (dateStr ? 'Started ' + dateStr : '') + (p.cohort && typeof MDC_COHORTS !== 'undefined' ? ' · ' + ((MDC_COHORTS.find(function(co){return co.id===p.cohort;})||{}).name||'') : '') + '</div>' +
-          '</div>' +
-          '<span style="color:var(--stone);font-size:14px">→</span>' +
-        '</button>';
-      }).join('') +
-      '</div></div>';
-  }
-
-  // To-do list — gently grouped, soft language so it feels supportive not
-  // like a deadline-tracker. Overdue is collapsed if there are 4+ to keep
-  // the page from feeling like a wall of red.
+  // ── To-do list (kept, but presented after the story cards) ───────────
   html += '<div class="client-section"><h3 style="font-size:14px;letter-spacing:0.04em">✅ My to-do list</h3>';
   if (openTasks.length === 0 && doneTasks.length === 0) {
     html += '<div style="color:var(--stone);font-size:13px;padding:8px 0">Nothing on your list yet — Phoebe will pop tasks here as you work together. ✨</div>';
@@ -4020,13 +4121,9 @@ function renderClientSummary(client) {
       : 'You\'ve got ' + totalShown + ' on your plate' + (overdue.length > 0 ? ' · gentle nudge: ' + overdue.length + ' from earlier' : '') + (dueToday.length > 0 ? ' · ' + dueToday.length + ' for today' : '') + '.';
     html += '<div style="font-size:12px;color:var(--stone);margin-bottom:10px;line-height:1.5">' + summary + '</div>';
     if (overdue.length > 0) {
-      // 4+ overdue → collapse by default to avoid a wall of red
       var overdueCollapsed = overdue.length >= 4;
-      var overdueHeading = overdueCollapsed
-        ? '<summary style="cursor:pointer;list-style:none;font-size:11px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:8px 0 6px">From earlier · ' + overdue.length + ' (click to view)</summary>'
-        : '<div style="font-size:11px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:8px 0 6px">From earlier · ' + overdue.length + '</div>';
-      if (overdueCollapsed) html += '<details>' + overdueHeading;
-      else html += overdueHeading;
+      if (overdueCollapsed) html += '<details><summary style="cursor:pointer;list-style:none;font-size:11px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:8px 0 6px">From earlier · ' + overdue.length + ' (click to view)</summary>';
+      else html += '<div style="font-size:11px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:8px 0 6px">From earlier · ' + overdue.length + '</div>';
       overdue.forEach(function(t){ html += clientTaskRow(t, client.id, 'overdue'); });
       if (overdueCollapsed) html += '</details>';
     }
@@ -4047,21 +4144,7 @@ function renderClientSummary(client) {
   }
   html += '</div>';
 
-  // Recent wins (if any)
-  if (recentWins.length) {
-    html += '<div class="client-section"><h3 style="font-size:14px;letter-spacing:0.04em">🏆 Recent wins</h3>' +
-      recentWins.map(function(rw) {
-        var w = rw.w;
-        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#FFFBE8;border-radius:8px;margin-bottom:6px">' +
-          '<div style="font-size:18px">🏆</div>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--magenta);font-weight:600">' + (w.metric || 'Win') + (w.before && w.after ? ': ' + w.before + ' → ' + w.after : '') + '</div>' +
-          (w.note ? '<div style="font-size:11px;color:var(--stone);margin-top:1px">' + w.note + '</div>' : '') + '</div>' +
-          (w.date ? '<span style="font-size:11px;color:var(--stone)">' + new Date(w.date).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) + '</span>' : '') +
-        '</div>';
-      }).join('') + '</div>';
-  }
-
-  // Accountability nudge — between sessions question
+  // ── Between-session nudge (only if 3+ days since last session) ───────
   var lastSessionDate = '';
   progs.forEach(function(p) {
     var lastNote = (p.sessionNotes||[]).filter(function(n){return n.sharedWithClient;}).slice(-1)[0];
@@ -4071,20 +4154,93 @@ function renderClientSummary(client) {
   if (daysSince !== null && daysSince >= 3) {
     html += '<div class="client-section" style="background:linear-gradient(135deg,#E8F4F4,#FFFDFA);border-color:#B8DDD9">' +
       '<h3 style="font-size:14px;letter-spacing:0.04em;color:var(--teal)">💭 Between-session prompt</h3>' +
-      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:10px">It\'s been ' + daysSince + ' days since your last session. Is there something on your mind you want to bring up next time?</p>' +
-      '<textarea id="client-between-session" onchange="saveClientBetweenSessionNote(this.value)" placeholder="Jot it down here so it\'s ready for your next chat with Phoebe…" style="width:100%;min-height:70px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;line-height:1.6">' + (client.betweenSessionNote || '') + '</textarea>' +
+      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:10px">It\'s been ' + daysSince + ' days since your last session. Anything on your mind to bring up next time?</p>' +
+      '<textarea id="client-between-session" onchange="saveClientBetweenSessionNote(this.value)" placeholder="Jot it down here so it\'s ready for your next chat with Phoebe…" style="width:100%;min-height:70px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;line-height:1.6">' + escapeHtml(client.betweenSessionNote || '') + '</textarea>' +
     '</div>';
   }
 
-  // Achievements section — earned + locked grid (this is Phoebe's preferred home)
+  // ── Achievements badges (clickable for confetti) ─────────────────────
   if (typeof renderBadgesSection === 'function') {
     var ach = renderBadgesSection(client);
-    if (ach) {
-      html += '<div class="client-section">' + ach.replace('<div style="margin-top:24px">','<div>') + '</div>';
-    }
+    if (ach) html += '<div class="client-section">' + ach.replace('<div style="margin-top:24px">','<div>') + '</div>';
   }
 
   el.innerHTML = html;
+  // Attach confetti handler to every earned badge
+  if (typeof attachBadgeConfetti === 'function') attachBadgeConfetti();
+}
+
+// Compact, inline version of "Phoebe says…" — fits inside the greeting strip
+// instead of a full card. Same daily-rotating quote logic.
+function renderInlineWisdom() {
+  if (typeof PHOEBE_WISDOM === 'undefined' || !PHOEBE_WISDOM.length) return '';
+  var idx = new Date().getDate() % PHOEBE_WISDOM.length;
+  var w = PHOEBE_WISDOM[idx];
+  return '<span class="phoebe-says-prefix">💡 Phoebe says</span> <span class="phoebe-says-quote">"' + escapeHtml(w.quote) + '"</span>';
+}
+
+// Returns { date, label, prog } for the soonest upcoming session, or null
+function computeNextSession(client) {
+  var today = new Date(); today.setHours(0,0,0,0);
+  var todayStr = today.toISOString().split('T')[0];
+  var next = null;
+  (client.programs||[]).forEach(function(p) {
+    if (!p.sessionDate || p.locked || p.status === 'complete') return;
+    if (p.sessionDate < todayStr) return;
+    if (!next || p.sessionDate < next.date) next = { date: p.sessionDate, prog: p };
+  });
+  if (!next) return null;
+  var d = new Date(next.date);
+  var days = Math.round((d.getTime() - today.getTime()) / 86400000);
+  var label;
+  if (days === 0) label = 'Today!';
+  else if (days === 1) label = 'Tomorrow';
+  else if (days < 7) label = 'In ' + days + ' days';
+  else if (days < 14) label = 'Next week';
+  else label = 'In ' + days + ' days';
+  next.label = label;
+  next.dateStr = d.toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'short' });
+  return next;
+}
+
+// Updates the topbar "next session" pill — visible only when one's scheduled
+function updateClientNextSessionPill(client) {
+  var pill = document.getElementById('client-next-session-pill');
+  var text = document.getElementById('client-next-session-text');
+  if (!pill || !text) return;
+  var next = computeNextSession(client);
+  if (!next) { pill.style.display = 'none'; return; }
+  text.textContent = next.label + ' · ' + next.dateStr;
+  pill.style.display = 'inline-flex';
+}
+
+// Simple HTML escaper for client-typed strings rendered into innerHTML
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// Attach a confetti+toast handler to every earned badge in the page.
+// Locked badges stay non-interactive.
+function attachBadgeConfetti() {
+  document.querySelectorAll('.client-section [title]').forEach(function(el) {
+    var title = el.getAttribute('title') || '';
+    if (title.indexOf('Locked:') === 0) return; // skip locked
+    if (el.dataset.confettiBound) return;
+    el.dataset.confettiBound = '1';
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', function() {
+      if (typeof fireConfetti === 'function') fireConfetti(40);
+      if (typeof branded !== 'undefined' && branded.toast) {
+        // Title format from renderBadgesSection: "Name — Description"
+        var parts = title.split(' — ');
+        branded.toast('🎉 ' + parts[0] + (parts[1] ? ' · ' + parts[1] : ''));
+      }
+    });
+  });
 }
 
 function summaryStatCard(num, label, color) {
@@ -5291,6 +5447,24 @@ function renderSessionNotes(client, prog) {
               '<input type="url" value="'+(n.zoomUrl||'').replace(/"/g,'&quot;')+'" onchange="updateSessionMeta(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\',\'zoomUrl\',this.value)" placeholder="https://us02web.zoom.us/rec/share/…" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:var(--f-body);color:var(--magenta);background:var(--paper);outline:none;margin-top:3px"></div>' +
             '<div style="display:flex;align-items:flex-end;gap:6px"><button class="btn-sm" onclick="aiSummariseSession(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\')" title="Use Claude to summarise the session text and extract suggested actions">✦ AI summarise + suggest actions</button></div>' +
           '</div>' +
+          // MDC-only: sprint+week picker. Lets Phoebe tag this session note
+          // with a specific sprint+week. autoAdvanceMdcProgress() then
+          // advances the client's progress to the latest tagged session.
+          (prog.workbook === 'mdc'
+            ? '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:8px 10px;background:var(--marshmallow);border-radius:8px;flex-wrap:wrap">' +
+                '<span style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em">📌 Tag for MDC</span>' +
+                '<select onchange="updateSessionMeta(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\',\'sprint\',parseInt(this.value,10)||null);autoAdvanceFromNote(\''+client.id+'\',\''+prog.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--magenta)">' +
+                  '<option value="">Sprint…</option>' +
+                  [1,2,3,4].map(function(s){return '<option value="'+s+'"'+(n.sprint===s?' selected':'')+'>Sprint '+s+'</option>';}).join('') +
+                '</select>' +
+                '<select onchange="updateSessionMeta(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\',\'week\',parseInt(this.value,10)||null);autoAdvanceFromNote(\''+client.id+'\',\''+prog.id+'\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--magenta)">' +
+                  '<option value="">Week…</option>' +
+                  [1,2,3,4,5,6].map(function(w){return '<option value="'+w+'"'+(n.week===w?' selected':'')+'>Week '+w+'</option>';}).join('') +
+                '</select>' +
+                '<span style="font-size:10px;color:var(--stone);margin-left:auto">Sets progress to latest tagged session</span>' +
+              '</div>'
+            : ''
+          ) +
           // Editable raw transcript — anything Phoebe pulled from Zoom or pasted
           // manually. Edit it freely before generating an AI summary or
           // suggested actions; client never sees the raw transcript.
