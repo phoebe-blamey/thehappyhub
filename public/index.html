@@ -173,6 +173,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   padding: 2px 7px; border-radius: 10px; }
 .tag-co { background: var(--marshmallow); color: var(--magenta); }
 .tag-cf { background: var(--mist); color: var(--teal); }
+.tag-sh { background: var(--mist); color: var(--teal); }
 
 /* ========== NOTES / FORMS ========== */
 .notes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -377,7 +378,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7709 loaded successfully
+✓ The Happy Hub — Build v7710 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -515,9 +516,11 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
             <div class="detail-info">
               <h2 id="detail-name">Client Name</h2>
               <div class="d-biz" id="detail-biz"></div>
+              <div id="detail-contact" style="margin-top:4px;font-size:13px;color:var(--stone);display:flex;flex-wrap:wrap;gap:14px;align-items:center"></div>
               <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap" id="detail-prog-label"></div>
             </div>
             <div class="detail-actions">
+              <button class="btn-sm primary" onclick="switchTab('message')">📧 Message client</button>
               <button class="btn-sm" onclick="copyClientLink()">Copy client link</button>
             </div>
           </div>
@@ -1341,7 +1344,14 @@ function openClient(id) {
   var initials = client.name.split(' ').map(function(n) { return n[0]; }).join('').slice(0,2);
   document.getElementById('detail-avatar').textContent = initials;
   document.getElementById('detail-name').textContent = client.name;
-  document.getElementById('detail-biz').textContent = client.biz || client.email || '';
+  document.getElementById('detail-biz').textContent = client.biz || '';
+  // Contact line — email + phone, prominently under the name
+  var contactBits = [];
+  if (client.email) contactBits.push('<a href="mailto:' + client.email + '" style="color:var(--magenta);text-decoration:none">📧 ' + client.email + '</a>');
+  if (client.phone) contactBits.push('<a href="tel:' + client.phone + '" style="color:var(--magenta);text-decoration:none">📱 ' + client.phone + '</a>');
+  document.getElementById('detail-contact').innerHTML = contactBits.length
+    ? contactBits.join('')
+    : '<em style="color:var(--stone)">No contact info — click ✏️ Edit to add</em>';
 
   var link = window.location.origin + window.location.pathname + '?client=' + client.clientAccess;
   document.getElementById('detail-link').textContent = link;
@@ -1455,23 +1465,23 @@ function buildProgramTabs(client, prog) {
   var tabDefs = [{ id:'intake', label:'Intake', tag:'co' }];
 
   if (prog.workbook === '90day' || prog.workbook === 'audit' || prog.workbook === 'accelerator') {
-    tabDefs.push({ id:'session-notes', label:'Session notes', tag:'co' });
+    tabDefs.push({ id:'session-notes', label:'Session notes', tag:'sh' });
     tabDefs.push({ id:'coaching', label:'Coaching notes', tag:'co' });
     tabDefs.push({ id:'plan', label:'90-day plan', tag:'cf' });
     tabDefs.push({ id:'research-brief', label:'Research brief', tag:'co' });
   } else if (prog.workbook === 'mdc') {
-    tabDefs.push({ id:'session-notes', label:'Session notes', tag:'co' });
+    tabDefs.push({ id:'session-notes', label:'Session notes', tag:'sh' });
     tabDefs.push({ id:'mdc-sprint', label:'Sprint notes', tag:'co' });
     tabDefs.push({ id:'mdc-workbook', label:'Workbook', tag:'cf' });
     tabDefs.push({ id:'coaching', label:'Coaching notes', tag:'co' });
   } else if (prog.workbook === 'happyhour') {
     tabDefs.push({ id:'happyhour-summary', label:'Session summary', tag:'cf' });
-    tabDefs.push({ id:'session-notes', label:'My notes', tag:'co' });
+    tabDefs.push({ id:'session-notes', label:'My notes', tag:'sh' });
   } else if (prog.workbook === 'session') {
-    tabDefs.push({ id:'session-notes', label:'Session notes', tag:'co' });
+    tabDefs.push({ id:'session-notes', label:'Session notes', tag:'sh' });
     tabDefs.push({ id:'plan', label:'Action plan', tag:'cf' });
   } else {
-    tabDefs.push({ id:'session-notes', label:'Notes', tag:'co' });
+    tabDefs.push({ id:'session-notes', label:'Notes', tag:'sh' });
   }
   // All programs get tools + profitability + wins + tasks + message
   tabDefs.push({ id:'tools', label:'🛠 Tools', tag:'co' });
@@ -1481,8 +1491,9 @@ function buildProgramTabs(client, prog) {
   tabDefs.push({ id:'message', label:'Message client', tag:'co' });
 
   tabs.innerHTML = tabDefs.map(function(t, i) {
+    var tagText = t.tag==='co' ? 'Coach only' : t.tag==='sh' ? 'Shareable' : 'Client facing';
     return '<button class="tab-btn' + (i===0?' active':'') + '" data-tab="' + t.id + '" onclick="switchTab(\'' + t.id + '\')">' +
-      t.label + ' <span class="tab-tag tag-' + t.tag + '">' + (t.tag==='co'?'Coach only':'Client facing') + '</span></button>';
+      t.label + ' <span class="tab-tag tag-' + t.tag + '">' + tagText + '</span></button>';
   }).join('');
 
   document.querySelectorAll('.tab-pane').forEach(function(p) { p.classList.remove('active'); });
