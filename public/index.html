@@ -13,7 +13,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v8500 — visual fillers, softer to-do, hero My Why, suggested-action-to-task, free-form wins">
+<meta name="hmh-build" content="v8600 — full sync (Calendly+Zoom+dedupe), client summary versioning, hero My Why fix">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -187,14 +187,27 @@
           <div class="vis-bar vis-co"><span>🔒 Coach only</span> — intake answers, summary, and research brief in one place</div>
           <div id="intake-content"></div>
 
-          <!-- SUMMARY subsection -->
+          <!-- SUMMARY subsection — single source of truth per client.
+               Carries Save + Generate buttons and a versioned history log
+               so Phoebe can see how the client's situation has progressed
+               over time. Each Save archives the previous version with
+               a date stamp into prog.summaryHistory[]. -->
           <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink)">📝 Summary — your snapshot of who this client is</label>
-              <button class="btn-sm" onclick="generateIntakeSummary()" id="auto-summary-btn">✦ AI summarise</button>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink)">📝 Client summary — your snapshot of who this client is right now</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn-sm" onclick="generateIntakeSummary()" id="auto-summary-btn">✦ Generate fresh</button>
+                <button class="btn-sm primary" onclick="saveIntakeSummary()" id="save-summary-btn">💾 Save summary</button>
+              </div>
             </div>
             <textarea id="note-summary" onchange="markDirty()" style="width:100%;min-height:90px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"
-              placeholder="Two or three lines. Who they are, what they want, what to watch for. Type it yourself or click ✦ AI summarise to draft from the research brief below."></textarea>
+              placeholder="Two or three lines. Who they are, what they want, what to watch for. Type it yourself or click ✦ Generate fresh to draft from the research brief, recent sessions, wins and tasks."></textarea>
+            <div id="summary-status" style="font-size:11px;color:var(--stone);margin-top:6px;min-height:14px"></div>
+            <!-- Past summaries — chronological archive, collapsed by default -->
+            <details style="margin-top:10px">
+              <summary style="cursor:pointer;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;list-style:none">📜 Past summaries · <span id="summary-history-count">0</span></summary>
+              <div id="summary-history" style="margin-top:10px"></div>
+            </details>
           </div>
 
           <!-- RESEARCH BRIEF subsection (was the standalone Research brief tab) -->
@@ -499,14 +512,29 @@
           <div id="zoom-recordings-list"></div>
         </div>
 
+        <div class="settings-card" style="background:linear-gradient(135deg,#FFF8FB,#FDEFF5);border-color:rgba(236,44,138,0.2)">
+          <h4>🔄 Run full sync — Calendly + Zoom + dedupe</h4>
+          <p style="margin-bottom:8px">One-click: pulls every Calendly booking from the past year, every Zoom recording from the past year, creates client records for any that don't exist yet, attaches recordings to existing clients where it can, then merges any duplicates by email.</p>
+          <p style="margin-bottom:12px;font-size:12px;color:var(--stone)">Use <strong>Dry run</strong> first to see what would change. Real run takes 1-3 minutes depending on volume.</p>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+            <button class="btn-sm" id="full-sync-dry-btn" onclick="runFullSync(true)">👀 Dry run (preview)</button>
+            <button class="btn-sm primary" id="full-sync-btn" onclick="runFullSync(false)">🔄 Run full sync</button>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--stone);cursor:pointer">
+              <input type="checkbox" id="full-sync-create-unmatched" checked> Create stub clients for unmatched Zooms
+            </label>
+          </div>
+          <div id="full-sync-progress" style="font-size:12px;color:var(--teal);font-weight:500;margin-bottom:8px;min-height:18px"></div>
+          <pre id="full-sync-output" style="background:white;border:1px solid var(--border);border-radius:10px;padding:12px;font-family:monospace;font-size:11px;color:var(--magenta);max-height:320px;overflow-y:auto;display:none;margin:0;white-space:pre-wrap"></pre>
+        </div>
+
         <div class="settings-card">
-          <h4>📥 Import real clients from Calendly</h4>
-          <p style="margin-bottom:12px">Imports all 7 real clients from your Calendly history directly into the platform. Safe to run — skips anyone already in the system.</p>
+          <h4>📥 Import real clients from Calendly (legacy seed)</h4>
+          <p style="margin-bottom:12px">The original named-list importer for the 7 founding clients. The "Run full sync" above is the better tool now — keep this only if you need to force-recreate one of those specific records.</p>
           <div style="background:var(--marshmallow);border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--stone)">
             Will import: Anna-Louise MacAllister, Louise Syphers, Yvette Polley, Frances Pratt, Kari Marsden, Christine Lukich, Julie Judge
           </div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <button class="btn-sm primary" id="seed-btn" onclick="seedRealClients()">📥 Import Calendly clients</button>
+            <button class="btn-sm" id="seed-btn" onclick="seedRealClients()">📥 Import named list</button>
             <span id="seed-status" style="font-size:12px;color:var(--teal);font-weight:500"></span>
           </div>
           <div id="seed-results" style="margin-top:10px;font-size:12px;font-family:monospace;color:var(--magenta);white-space:pre-wrap;max-height:150px;overflow-y:auto"></div>
@@ -627,12 +655,13 @@
         <div id="client-hero-badges-wrap"></div>
         <!-- "My Why" pin — promoted from inside each program into the hero
              so the client's reason-for-being is visible from every tab.
-             Click to edit inline. Hidden if not yet written. -->
-        <div id="client-hero-why-wrap" style="display:none;margin-top:14px;background:rgba(255,255,255,0.14);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.22);border-radius:14px;padding:12px 16px;display:none;align-items:flex-start;gap:12px">
+             Click to edit inline. Always rendered (shows "+ Add my why"
+             prompt if empty), so clients see what they could write here. -->
+        <div id="client-hero-why-wrap" style="margin-top:14px;background:rgba(255,255,255,0.14);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.22);border-radius:14px;padding:12px 16px;display:flex;align-items:flex-start;gap:12px">
           <span style="font-size:20px;line-height:1;flex-shrink:0;margin-top:1px">💛</span>
           <div style="flex:1;min-width:0">
             <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.85;margin-bottom:2px">My why</div>
-            <div id="client-hero-why-text" style="font-size:14px;line-height:1.4;font-style:italic" onclick="editClientWhyFromHero()" title="Click to edit"></div>
+            <div id="client-hero-why-text" style="font-size:14px;line-height:1.4;font-style:italic;cursor:pointer" onclick="editClientWhyFromHero()" title="Click to edit">+ Add my why</div>
           </div>
         </div>
       </div>
@@ -1321,6 +1350,149 @@ async function sendWelcomeEmail(client) {
   } catch (e) {
     console.warn('[Welcome email] error:', e);
     return { error: String(e) };
+  }
+}
+
+// =====================================================================
+// FULL SYNC — three-step orchestrated import + dedupe.
+// Calls /api/sync-calendly-all → /api/sync-zoom-all → /api/merge-clients
+// in sequence. Streams progress to a status line + a verbose output pane.
+// Logs each step to the activity feed so the home page reflects what
+// just changed.
+// =====================================================================
+async function runFullSync(dryRun) {
+  var btn      = document.getElementById(dryRun ? 'full-sync-dry-btn' : 'full-sync-btn');
+  var otherBtn = document.getElementById(dryRun ? 'full-sync-btn' : 'full-sync-dry-btn');
+  var progress = document.getElementById('full-sync-progress');
+  var output   = document.getElementById('full-sync-output');
+  var createUnmatched = document.getElementById('full-sync-create-unmatched');
+  var createUnmatchedVal = createUnmatched ? createUnmatched.checked : true;
+
+  if (!dryRun) {
+    var ok = await branded.confirm(
+      'This will pull all Calendly bookings + Zoom recordings from the last year and create client records for anyone missing. Existing clients are merged, not replaced.\n\nRun it for real?',
+      { title: 'Run full sync?', okLabel: 'Run sync' }
+    );
+    if (!ok) return;
+  }
+
+  if (btn)      { btn.disabled = true;      btn.textContent = (dryRun ? '👀 Previewing…' : '🔄 Running…'); }
+  if (otherBtn) { otherBtn.disabled = true; }
+  if (output) { output.style.display = 'block'; output.textContent = ''; }
+  function log(line) {
+    if (output) output.textContent += line + '\n';
+    if (output) output.scrollTop = output.scrollHeight;
+  }
+  function setStatus(s) { if (progress) progress.textContent = s; }
+
+  var combined = { calendly: null, zoom: null, merge: null };
+
+  try {
+    // ── Step 1: Calendly sync ────────────────────────────────────
+    setStatus('① Pulling Calendly bookings (last 365 days)…');
+    log('========== Step 1: Calendly ==========');
+    var calResp = await fetch('/api/sync-calendly-all', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ days: 365, dryRun: dryRun })
+    });
+    if (!calResp.ok) {
+      var calErr = await calResp.json().catch(function(){return{};});
+      log('❌ Calendly sync failed: HTTP ' + calResp.status + ' — ' + (calErr.error || 'unknown'));
+    } else {
+      var calData = await calResp.json();
+      combined.calendly = calData;
+      log('✓ Scanned ' + calData.eventsScanned + ' events');
+      log('  Created: ' + calData.stats.created + '  ·  Updated: ' + calData.stats.updated + '  ·  Skipped (existing): ' + calData.stats.skippedExisting + '  ·  No email: ' + calData.stats.skippedNoEmail);
+      if ((calData.sample || []).length) {
+        log('  Sample:');
+        calData.sample.slice(0, 8).forEach(function(s) {
+          log('    [' + s.kind + '] ' + s.name + ' (' + s.email + ')' + (s.reason ? ' — ' + s.reason : ''));
+        });
+      }
+    }
+
+    // ── Step 2: Zoom sync ────────────────────────────────────────
+    setStatus('② Pulling Zoom recordings (last 365 days)…');
+    log('\n========== Step 2: Zoom ==========');
+    var zoomResp = await fetch('/api/sync-zoom-all', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ days: 365, createUnmatched: createUnmatchedVal, dryRun: dryRun })
+    });
+    if (!zoomResp.ok) {
+      var zoomErr = await zoomResp.json().catch(function(){return{};});
+      log('❌ Zoom sync failed: HTTP ' + zoomResp.status + ' — ' + (zoomErr.error || 'unknown'));
+    } else {
+      var zoomData = await zoomResp.json();
+      combined.zoom = zoomData;
+      log('✓ Scanned ' + zoomData.stats.recordings + ' recordings');
+      log('  Matched & attached: ' + zoomData.stats.matched + '  ·  Already linked: ' + zoomData.stats.alreadyAttached + '  ·  New stub clients: ' + zoomData.stats.created + '  ·  Unmatched skipped: ' + zoomData.stats.unmatchedSkipped);
+      if ((zoomData.sample || []).length) {
+        log('  Sample:');
+        zoomData.sample.slice(0, 8).forEach(function(s) {
+          log('    [' + s.kind + '] ' + (s.clientName ? s.clientName + ' · ' : '') + s.topic + ' (' + s.date + ')' + (s.reason ? ' — ' + s.reason : ''));
+        });
+      }
+    }
+
+    // ── Step 3: Dedupe by email ──────────────────────────────────
+    setStatus('③ Merging duplicate client records…');
+    log('\n========== Step 3: Merge duplicates ==========');
+    var mergeResp = await fetch('/api/merge-clients', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ dryRun: dryRun })
+    });
+    if (!mergeResp.ok) {
+      var mergeErr = await mergeResp.json().catch(function(){return{};});
+      log('❌ Merge failed: HTTP ' + mergeResp.status + ' — ' + (mergeErr.error || 'unknown'));
+    } else {
+      var mergeData = await mergeResp.json();
+      combined.merge = mergeData;
+      log('✓ ' + mergeData.stats.totalClients + ' total client records');
+      log('  Duplicate groups: ' + mergeData.stats.duplicateGroups + '  ·  Records ' + (dryRun ? 'would be ' : '') + 'deleted: ' + mergeData.stats.deleted + '  ·  Programs folded in: ' + mergeData.stats.programsMerged + '  ·  Tasks folded in: ' + mergeData.stats.tasksMerged);
+      if ((mergeData.merges || []).length) {
+        log('  Sample merges:');
+        mergeData.merges.slice(0, 5).forEach(function(m) {
+          log('    ' + m.email + ' · ' + m.deleted.length + ' duplicate' + (m.deleted.length===1?'':'s') + ' folded into ' + m.canonical);
+        });
+      }
+    }
+
+    // ── Final summary ────────────────────────────────────────────
+    log('\n========== Summary ==========');
+    var calStats   = combined.calendly && combined.calendly.stats   || {};
+    var zoomStats  = combined.zoom     && combined.zoom.stats       || {};
+    var mergeStats = combined.merge    && combined.merge.stats      || {};
+    var totalNew = (calStats.created||0) + (zoomStats.created||0);
+    var totalUpdated = (calStats.updated||0) + (zoomStats.matched||0);
+    var totalDeleted = mergeStats.deleted || 0;
+    log('New clients: ' + totalNew + '  ·  Updated existing: ' + totalUpdated + '  ·  Duplicates ' + (dryRun?'would be ':'') + 'merged: ' + totalDeleted);
+
+    setStatus(dryRun
+      ? '✓ Dry run complete — nothing changed. Run without dry-run to commit.'
+      : '✓ Sync complete. ' + totalNew + ' new · ' + totalUpdated + ' updated · ' + totalDeleted + ' merged');
+
+    if (!dryRun) {
+      // Refresh in-memory clients via safe-merge
+      if (typeof loadClients === 'function') await loadClients();
+      if (typeof renderClients === 'function') renderClients();
+      if (typeof renderHome === 'function') renderHome();
+      if (typeof logActivity === 'function') {
+        logActivity('system', 'Full sync complete: ' + totalNew + ' new · ' + totalUpdated + ' updated', { detail: 'Calendly + Zoom + dedupe' });
+      }
+      branded.success('Full sync done — ' + totalNew + ' new clients, ' + totalUpdated + ' existing updated.', { title: 'Sync complete' });
+    } else {
+      branded.alert('Dry run preview shown above. Click "Run full sync" to commit these changes.', { title: 'Dry run complete' });
+    }
+  } catch (e) {
+    log('\n❌ Sync errored: ' + (e && e.message ? e.message : e));
+    setStatus('⚠ Sync errored — see output above');
+    branded.error('Sync failed: ' + (e && e.message ? e.message : e));
+  } finally {
+    if (btn)      { btn.disabled = false; btn.textContent = dryRun ? '👀 Dry run (preview)' : '🔄 Run full sync'; }
+    if (otherBtn) { otherBtn.disabled = false; }
   }
 }
 
@@ -2478,6 +2650,8 @@ function openProgram(client, progId) {
   // Plan + saved templates strip
   renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
   if (typeof renderPlanTemplateChips === 'function') renderPlanTemplateChips();
+  // Summary history (versioned archive of past summaries)
+  if (typeof renderSummaryHistory === 'function') renderSummaryHistory(prog);
 
   // MDC / HH specific
   if (prog.workbook === 'mdc') renderMDCContent(prog);
@@ -6503,6 +6677,53 @@ function escapeHtmlForHistory(s) {
 }
 
 // AI-summarise the research brief into a 2-3 line snapshot
+// =====================================================================
+// CLIENT SUMMARY — single source of truth per program.
+// Generate fresh: archives the current summary into prog.summaryHistory[]
+// then writes a new one based on full client context (research brief +
+// recent sessions + wins + open tasks + plan progress).
+// Save summary: archives current, saves whatever's in the textarea.
+// History: the dated log of every summary version, restorable.
+// =====================================================================
+function _archiveCurrentSummary(prog, source) {
+  if (!prog.notes || !prog.notes.summary || !prog.notes.summary.trim()) return;
+  prog.summaryHistory = prog.summaryHistory || [];
+  // Don't double-archive — if the current summary matches the last archived
+  // one, skip
+  var last = prog.summaryHistory[0];
+  if (last && last.content === prog.notes.summary) return;
+  prog.summaryHistory.unshift({
+    date: new Date().toISOString(),
+    content: prog.notes.summary,
+    source: source || 'manual' // 'ai' | 'manual' | 'restored'
+  });
+  // Cap at 24 entries to keep blob size reasonable (~6 months of weekly summaries)
+  if (prog.summaryHistory.length > 24) prog.summaryHistory = prog.summaryHistory.slice(0, 24);
+}
+
+async function saveIntakeSummary() {
+  var client = clients.find(function(c){return c.id===currentClientId;});
+  var prog   = client?(client.programs||[]).find(function(p){return p.id===currentProgramId;}):null;
+  if (!client || !prog) return;
+  var summaryEl = document.getElementById('note-summary');
+  var status    = document.getElementById('summary-status');
+  if (!summaryEl) return;
+  var newText = (summaryEl.value || '').trim();
+  if (!newText) { branded.alert('Type or generate a summary first.'); return; }
+  // Archive the previous version before writing new
+  _archiveCurrentSummary(prog, 'manual');
+  prog.notes = prog.notes || {};
+  prog.notes.summary = newText;
+  prog.notes.summaryUpdatedAt = new Date().toISOString();
+  await persistClient(client);
+  if (status) {
+    status.textContent = '✓ Saved · ' + new Date().toLocaleString('en-AU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) + (prog.summaryHistory && prog.summaryHistory.length ? ' · ' + prog.summaryHistory.length + ' past version' + (prog.summaryHistory.length===1?'':'s') : '');
+    setTimeout(function(){ status.textContent = ''; }, 6000);
+  }
+  branded.toast('Summary saved');
+  renderSummaryHistory(prog);
+}
+
 async function generateIntakeSummary() {
   var client = clients.find(function(c){return c.id===currentClientId;});
   var prog   = client?(client.programs||[]).find(function(p){return p.id===currentProgramId;}):null;
@@ -6510,43 +6731,128 @@ async function generateIntakeSummary() {
   var researchEl = document.getElementById('note-research');
   var summaryEl  = document.getElementById('note-summary');
   var btn        = document.getElementById('auto-summary-btn');
+  var status     = document.getElementById('summary-status');
   if (!summaryEl) return;
 
+  // Build rich context — beyond just intake/research, include the recent
+  // session notes, open tasks, completed tasks, wins, MDC sprint focus,
+  // coaching themes. The summary should reflect the WHOLE current picture.
   var research = (researchEl && researchEl.value) || (prog.notes && prog.notes.research) || '';
   var intake   = prog.intake || '';
-  if (!research && !intake) {
-    branded.alert('Nothing to summarise yet — run the research brief first, or fill in the intake.');
+  var n        = prog.notes || {};
+  var recentNotes = (prog.sessionNotes||[]).slice(-3).map(function(sn) {
+    return '[' + (sn.date||'') + '] ' + (sn.text||'').slice(0, 400);
+  }).join('\n\n');
+  var openTasks = (client.tasks||[]).filter(function(t){ return !t.done && (!t.progId || t.progId===prog.id); }).slice(0, 6).map(function(t){ return '- ' + t.text; }).join('\n');
+  var doneTasks = (client.tasks||[]).filter(function(t){ return t.done && (!t.progId || t.progId===prog.id); }).slice(-6).map(function(t){ return '✓ ' + t.text; }).join('\n');
+  var wins = ((prog.wins||[]).concat(client.wins||[])).slice(-5).map(function(w){
+    return '🏆 ' + (w.metric||'') + ': ' + (w.before||'?') + ' → ' + (w.after||'?') + (w.note ? ' — ' + w.note : '');
+  }).join('\n');
+  var planSummary = (prog.plan||[]).map(function(m){ return (m.label || ('Month ' + m.month)) + ' (' + (m.tasks||[]).length + ' tasks)'; }).join(', ');
+  var prevSummaryLine = (prog.notes && prog.notes.summary) ? '\n\nPREVIOUS SUMMARY (you\'re replacing this):\n' + prog.notes.summary : '';
+
+  if (!research && !intake && !recentNotes && !wins) {
+    branded.alert('Nothing to summarise yet — run the research brief first, or fill in the intake, or log some session notes.');
     return;
   }
 
-  if (btn) { btn.disabled = true; btn.textContent = '✦ Summarising…'; }
+  if (btn) { btn.disabled = true; btn.textContent = '✦ Generating…'; }
 
-  var prompt = 'You are Phoebe Blamey\'s coaching assistant. Write a sharp 2-3 line snapshot of this client for Phoebe\'s eyes only — what to remember about them at a glance.\n\n' +
+  var prompt = 'You are Phoebe Blamey\'s coaching assistant. Write a sharp 2-3 line snapshot of this client for Phoebe\'s eyes only — what to remember about them at a glance, RIGHT NOW. ' +
+    'Reflect their CURRENT state — wins they\'ve had, what they\'re working on, what to watch. If there\'s a previous summary, this should feel like a meaningful update, not a copy.\n\n' +
     'Client: ' + client.name + '\n' +
-    'Business: ' + (client.biz || 'Unknown') + '\n\n' +
-    'Intake:\n' + intake + '\n\n' +
-    'Full research brief:\n' + research + '\n\n' +
-    'Return only the snapshot. No headings, no bullet points. Plain prose, 2-3 sentences max. Australian English. Warm but direct tone — like one coach handing notes to another.';
+    'Business: ' + (client.biz || 'Unknown') + '\n' +
+    'Programme: ' + ((PROGRAMS[prog.program]||{}).label || prog.program) + (prog.sessionDate ? ' (started ' + prog.sessionDate + ')' : '') + '\n\n' +
+    (intake ? 'Intake:\n' + intake + '\n\n' : '') +
+    (research ? 'Research brief:\n' + research + '\n\n' : '') +
+    (n.themes ? 'Themes: ' + n.themes + '\n' : '') +
+    (n.opps ? 'Opportunities: ' + n.opps + '\n' : '') +
+    (n.private ? 'Phoebe\'s private notes: ' + n.private + '\n' : '') +
+    (recentNotes ? '\nRecent session notes:\n' + recentNotes + '\n' : '') +
+    (planSummary ? '\nCurrent plan: ' + planSummary + '\n' : '') +
+    (openTasks ? '\nOpen tasks:\n' + openTasks + '\n' : '') +
+    (doneTasks ? '\nRecently completed:\n' + doneTasks + '\n' : '') +
+    (wins ? '\nRecent wins:\n' + wins + '\n' : '') +
+    prevSummaryLine + '\n\n' +
+    'Return ONLY the snapshot. No headings, no bullet points. Plain prose, 2-3 sentences max. Australian English. Warm but direct — like one coach handing notes to another.';
 
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 300, messages: [{role:'user', content: prompt}] })
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{role:'user', content: prompt}] })
     });
     var data = await resp.json();
     var text = (data.content && data.content[0] && data.content[0].text) || '';
     if (text) {
+      // Archive the previous summary BEFORE overwriting
+      _archiveCurrentSummary(prog, 'ai');
       summaryEl.value = text.trim();
       prog.notes = prog.notes || {};
       prog.notes.summary = summaryEl.value;
+      prog.notes.summaryUpdatedAt = new Date().toISOString();
       await persistClient(client);
+      if (typeof logActivity === 'function') logActivity('ai-summary', 'Client summary refreshed for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: prog.summaryHistory && prog.summaryHistory.length ? prog.summaryHistory.length + ' past version' + (prog.summaryHistory.length===1?'':'s') + ' archived' : 'first version' });
+      branded.toast('Fresh summary generated · old version archived');
+      if (status) {
+        status.textContent = '✦ Generated · ' + new Date().toLocaleString('en-AU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+        setTimeout(function(){ status.textContent = ''; }, 6000);
+      }
+      renderSummaryHistory(prog);
+    } else {
+      branded.error('AI returned no text — try again.');
     }
   } catch (e) {
     branded.alert('Summary generation failed: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✦ AI summarise'; }
+    if (btn) { btn.disabled = false; btn.textContent = '✦ Generate fresh'; }
   }
+}
+
+function renderSummaryHistory(prog) {
+  var el    = document.getElementById('summary-history');
+  var count = document.getElementById('summary-history-count');
+  if (!el) return;
+  var hist = (prog && prog.summaryHistory) || [];
+  if (count) count.textContent = String(hist.length);
+  if (!hist.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:8px 0">No past versions yet. Future summaries will be archived here as you regenerate or save updates.</div>';
+    return;
+  }
+  el.innerHTML = hist.map(function(h, i) {
+    var d = new Date(h.date);
+    var when = d.toLocaleDateString('en-AU', { day:'numeric', month:'short', year:'numeric' }) + ' · ' + d.toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit', hour12:true }).replace(/\s/g,'').toLowerCase();
+    var sourceTag = h.source === 'ai' ? '<span style="font-size:10px;background:var(--marshmallow);color:var(--hot-pink);padding:2px 7px;border-radius:99px;font-weight:700">✦ AI</span>'
+                  : h.source === 'restored' ? '<span style="font-size:10px;background:var(--mist);color:var(--teal);padding:2px 7px;border-radius:99px;font-weight:700">↩ Restored</span>'
+                  : '<span style="font-size:10px;background:#FAFAFA;color:var(--stone);padding:2px 7px;border-radius:99px;font-weight:700">Manual</span>';
+    return '<div style="background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">' +
+        '<span style="font-size:11px;color:var(--hot-pink);font-weight:700">' + when + '</span>' +
+        sourceTag +
+        '<button onclick="restoreSummaryVersion(' + i + ')" class="btn-sm" style="margin-left:auto;font-size:10px;padding:3px 8px" title="Set this as the current summary (current one moves to history)">↩ Restore</button>' +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--magenta);line-height:1.6;white-space:pre-wrap">' + (h.content || '').replace(/</g,'&lt;') + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function restoreSummaryVersion(historyIndex) {
+  var client = clients.find(function(c){return c.id===currentClientId;});
+  var prog   = client?(client.programs||[]).find(function(p){return p.id===currentProgramId;}):null;
+  if (!client || !prog || !prog.summaryHistory || !prog.summaryHistory[historyIndex]) return;
+  var ok = await branded.confirm('Restore this summary as the current one? Your current summary will be archived to the history.', { title:'Restore summary?', okLabel:'Restore' });
+  if (!ok) return;
+  // Archive current, then promote the history entry to current
+  _archiveCurrentSummary(prog, 'restored');
+  var restored = prog.summaryHistory.splice(historyIndex, 1)[0];
+  prog.notes = prog.notes || {};
+  prog.notes.summary = restored.content;
+  prog.notes.summaryUpdatedAt = new Date().toISOString();
+  await persistClient(client);
+  var summaryEl = document.getElementById('note-summary');
+  if (summaryEl) summaryEl.value = restored.content;
+  renderSummaryHistory(prog);
+  branded.toast('Summary restored');
 }
 
 // ============================================================
