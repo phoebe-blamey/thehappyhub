@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v10700 — polish batch: mood picker → header · Phoebe Says (34 quotes, day-of-year) · richer portal background · achievements confetti · phone-in-help nudge · deep-dive panel on errors · skeleton sweep · ⚠️ For Phoebe's attention red-flags · MDC auto-advance sprint from Zoom">
+<meta name="hmh-build" content="v10800 — UX cleanup: hero medallions (not buttons) + click pop · mood picker → top-right hero corner · MDC weeks-only nav (no sprint switcher) · AI auto-suggests 'My Why' silently · real MDC workbook PDF download · yellow radial removed (kept on-brand pink)">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -829,7 +829,7 @@
     <button class="btn-logout" onclick="logout()">Sign out</button>
   </div>
   <div class="client-layout">
-    <div class="client-hero" style="background:var(--magenta);color:white;padding:20px 24px 18px">
+    <div class="client-hero" style="background:var(--magenta);color:white;padding:20px 24px 18px;position:relative">
       <div class="client-hero-inner">
         <div class="client-hero-prog" id="client-hero-prog" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;opacity:0.8;margin-bottom:2px">My Hub</div>
         <h2 id="client-hero-name" style="font-family:var(--f-head);font-size:clamp(20px,3.2vw,26px);font-weight:700;margin:0 0 2px;line-height:1.15">Your Hub</h2>
@@ -851,11 +851,12 @@
             <div id="client-hero-why-text" style="font-size:13px;line-height:1.4;font-style:italic;cursor:pointer;opacity:0.95" onclick="editClientWhyFromHero()" title="Click to edit">+ Add my why</div>
           </div>
         </div>
-        <!-- Daily mood picker — moved from the Summary body into the hero so
-             "How's today?" is the first thing every client sees, every visit.
-             Renders inline with smaller emoji buttons styled for dark hero. -->
-        <div id="client-hero-mood-wrap" style="margin-top:10px"></div>
       </div>
+      <!-- Compact daily mood picker — pinned to the hero TOP-RIGHT corner.
+           On wide screens it floats over the empty right side of the hero
+           (Elodie's screenshot showed exactly this position). On mobile
+           the CSS reflows it inline below the hero text. -->
+      <div id="client-hero-mood-wrap" class="client-hero-mood-corner"></div>
     </div>
     <!-- New-note notification banner — shows when Phoebe has shared something
          the client hasn't read yet. Click "Read it" jumps to that program. -->
@@ -3642,25 +3643,32 @@ function renderBadgesSection(client) {
     '</div>';
 }
 
-// Earned-only ribbon for the client portal hero — feels like a celebration
-// rather than a half-empty grid. Returns empty string if no badges earned yet.
+// Earned-only ribbon for the client portal hero — v10800 redesign:
+// circular medallion icons (NOT pill buttons) so they read as collected
+// achievements, not CTAs. Each medallion has a soft gold rim, a thin
+// label underneath, and a pop animation on click. Hover reveals tooltip.
 function renderEarnedBadgeRibbon(client) {
   if (!client) return '';
   var earned = (client.badges || []).map(function(b) { return b.id; });
   if (!earned.length) return '';
   var earnedBadges = earned.map(function(id) { return BADGES[id]; }).filter(Boolean);
-  // Show up to 6 earned, with a "+N more" pill if there are extras
-  var visible = earnedBadges.slice(0, 6);
+  // Show up to 8 medallions, then a "+N more" round chip
+  var visible = earnedBadges.slice(0, 8);
   var extra = earnedBadges.length - visible.length;
-  var pills = visible.map(function(b) {
-    var tc = (typeof BADGE_TIER_COLORS !== 'undefined' && BADGE_TIER_COLORS[b.tier]) || { bg:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.3)', text:'#FFFFFF' };
-    return '<div title="' + b.name + ' — ' + b.desc + '" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.28);border-radius:99px;padding:5px 12px 5px 8px;font-size:12px;font-weight:600;color:white;cursor:default;pointer-events:none">' +
-      '<span style="font-size:16px;line-height:1">' + b.icon + '</span><span>' + b.name + '</span></div>';
+  var medallions = visible.map(function(b, i) {
+    var safeName = String(b.name || '').replace(/'/g,"\\'");
+    var safeDesc = String(b.desc || '').replace(/'/g,"\\'");
+    return '<div class="hero-medallion" data-badge-name="' + escapeHtml(b.name||'') + '" data-badge-desc="' + escapeHtml(b.desc||'') + '" title="' + escapeHtml(b.name||'') + ' — ' + escapeHtml(b.desc||'') + '" style="animation-delay:' + (i * 60) + 'ms">' +
+      '<div class="hero-medallion-orb">' +
+        '<span class="hero-medallion-icon">' + (b.icon || '🏅') + '</span>' +
+      '</div>' +
+      '<div class="hero-medallion-label">' + escapeHtml(b.name||'') + '</div>' +
+    '</div>';
   }).join('');
   var moreChip = extra > 0
-    ? '<div style="display:inline-flex;align-items:center;background:rgba(255,255,255,0.24);border:1px solid rgba(255,255,255,0.38);border-radius:99px;padding:5px 12px;font-size:12px;font-weight:700;color:white">+' + extra + ' more</div>'
+    ? '<div class="hero-medallion hero-medallion-more" title="' + extra + ' more achievements"><div class="hero-medallion-orb hero-medallion-orb-more">+' + extra + '</div><div class="hero-medallion-label">more</div></div>'
     : '';
-  return '<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' + pills + moreChip + '</div>';
+  return '<div class="hero-medallion-row">' + medallions + moreChip + '</div>';
 }
 
 // ============================================================
@@ -6425,7 +6433,10 @@ function renderClientProgram(client, prog) {
       weekSessionHtml = '<div class="client-section">' +
         '<h3>This week\'s session</h3>' + weekSessionHtml + '</div>';
     }
-    var sprintFocusHtml = '<div class="client-section"><h3>🐔 Sprint '+sprint+' · Week '+week+'</h3>' +
+    // Compute flat week-of-cohort for the heading. Clients only ever see
+    // "Week N of 24" — sprints are an internal grouping only.
+    var flatWeek = ((sprint - 1) * 6) + week;
+    var sprintFocusHtml = '<div class="client-section"><h3>🐔 Week '+flatWeek+' of 24</h3>' +
       sprintNavHtml +
       '<div class="sprint-grid" style="margin-top:10px">' +
       '<div class="sprint-card"><div class="sprint-card-label">🎯 My focus this week</div><div style="font-size:14px;color:var(--magenta);line-height:1.6">'+(ci.focus||'<em style="color:var(--stone)">Set by Phoebe</em>')+'</div></div>' +
@@ -6443,9 +6454,12 @@ function renderClientProgram(client, prog) {
       '<div class="workbook-print-only" style="display:none;font-size:13px;color:var(--stone);margin-bottom:18px">' + (clientFirst || 'Client') + (client.biz ? ' · ' + client.biz : '') + ' · ' + new Date().toLocaleDateString('en-AU', {day:'numeric', month:'long', year:'numeric'}) + '</div>' +
       '<div class="workbook-screen-only" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:8px">' +
         '<h3 style="margin:0">📘 My MDC workbook</h3>' +
-        '<button onclick="downloadWorkbookPdf(\'' + prog.id + '\')" class="btn-sm primary" style="font-size:12px">📥 Download as PDF</button>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+          '<a href="/assets/MDC-workbook.pdf" download="MDC-workbook.pdf" class="btn-sm" style="font-size:12px;text-decoration:none;color:var(--magenta);background:white;border:1.5px solid var(--hot-pink);padding:7px 14px;border-radius:99px;display:inline-flex;align-items:center;gap:6px" title="Download the printable MDC workbook PDF Phoebe designed">📄 Blank workbook</a>' +
+          '<button onclick="downloadWorkbookPdf(\'' + prog.id + '\')" class="btn-sm primary" style="font-size:12px" title="Save a copy of your filled-in answers as a PDF">📥 My filled-in copy</button>' +
+        '</div>' +
       '</div>' +
-      '<p class="workbook-screen-only" style="font-size:13px;color:var(--stone);margin-bottom:14px">Answer when you\'re ready — your responses save automatically and Phoebe can see them. Hit "Download as PDF" any time to save a personal copy.</p>' +
+      '<p class="workbook-screen-only" style="font-size:13px;color:var(--stone);margin-bottom:14px">Answer when you\'re ready — your responses save automatically and Phoebe can see them. <strong>📄 Blank workbook</strong> downloads Phoebe\'s printable PDF version. <strong>📥 My filled-in copy</strong> saves your answers below as a PDF.</p>' +
       // ── 💰 MONEY — mindset, money story, what wealth means
       '<div class="workbook-section-heading" style="font-family:var(--f-head);font-size:16px;color:var(--hot-pink);margin:18px 0 10px;padding-bottom:6px;border-bottom:1.5px solid var(--border-soft)">💰 Money — your story, your mindset</div>' +
       makeClientWorkbookField(client.id, prog.id, 'moneyStory',       '💭 My money story', 'What you grew up believing about money — and what you believe now.', wb.moneyStory, 'When I was growing up, money meant… Today, money means…', isLocked) +
@@ -6474,6 +6488,14 @@ function renderClientProgram(client, prog) {
     var clientNotesMdc = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
     content = lockNotice + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + fullAchievementsAccordion;
     area.innerHTML = content;
+    // Auto-scroll the active week pill into the centre of the strip so
+    // clients always land on the right week without having to scroll.
+    setTimeout(function() {
+      var active = area.querySelector('.mdc-week-pill.active');
+      if (active && active.scrollIntoView) {
+        try { active.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' }); } catch(e) {}
+      }
+    }, 50);
   } else if (prog.workbook==='happyhour') {
     var hh = prog.happyHour||{};
     var hhBody = (hh.assets?'<div class="intake-answer"><div class="intake-q">What we learned</div><div class="intake-a" style="white-space:pre-wrap">'+hh.assets+'</div></div>':'') +
@@ -6493,7 +6515,12 @@ function renderClientProgram(client, prog) {
   document.getElementById('client-hero-progress-wrap').innerHTML = progressHtml;
   document.getElementById('client-hero-prog').textContent = pi.label||prog.label;
   var ribbonEl = document.getElementById('client-hero-badges-wrap');
-  if (ribbonEl) ribbonEl.innerHTML = (typeof renderEarnedBadgeRibbon === 'function') ? renderEarnedBadgeRibbon(client) : '';
+  if (ribbonEl) {
+    ribbonEl.innerHTML = (typeof renderEarnedBadgeRibbon === 'function') ? renderEarnedBadgeRibbon(client) : '';
+    // Attach pop handlers to the new medallions (idempotent — uses
+    // dataset.popBound). Runs in addition to the call below; cheap.
+    if (typeof attachBadgeConfetti === 'function') attachBadgeConfetti();
+  }
   if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
   if (typeof updateClientHeroLinks === 'function') updateClientHeroLinks(client, prog);
   // Wire confetti to badges in the achievements accordion. Idempotent —
@@ -7065,15 +7092,16 @@ function escapeHtml(str) {
 }
 
 // Attach a confetti+toast handler to every earned badge in the achievements
-// section ONLY. Hero ribbon pills (in #client-hero-badges-wrap) stay purely
-// decorative — clicking the hero shouldn't celebrate, only viewing the full
-// achievements grid should. Phoebe asked for this distinction.
+// section AND to the hero medallions. v10800: hero medallions now get a
+// pop animation on click (small celebration), but no confetti — that's
+// reserved for the achievements-tab grid (the "trophy room" feel). Phoebe
+// asked for animations on hero medallion clicks.
 function attachBadgeConfetti() {
+  // Achievements-section badges → confetti + toast
   document.querySelectorAll('.client-section [title]').forEach(function(el) {
     var title = el.getAttribute('title') || '';
     if (title.indexOf('Locked:') === 0) return; // skip locked
-    // Belt-and-braces: explicitly exclude anything inside the hero ribbon
-    // even if some refactor accidentally drops it inside a .client-section
+    // Belt-and-braces: explicitly exclude hero medallions, they have their own handler
     if (el.closest && el.closest('#client-hero-badges-wrap')) return;
     if (el.dataset.confettiBound) return;
     el.dataset.confettiBound = '1';
@@ -7083,6 +7111,24 @@ function attachBadgeConfetti() {
       if (typeof branded !== 'undefined' && branded.toast) {
         var parts = title.split(' — ');
         branded.toast('🎉 ' + parts[0] + (parts[1] ? ' · ' + parts[1] : ''));
+      }
+    });
+  });
+  // Hero medallions → pop animation + small toast (NO confetti — that
+  // stays on the achievements section so the hero feels different)
+  document.querySelectorAll('#client-hero-badges-wrap .hero-medallion').forEach(function(el) {
+    if (el.dataset.popBound) return;
+    el.dataset.popBound = '1';
+    el.addEventListener('click', function() {
+      el.classList.remove('popping');
+      // Force reflow so re-adding the class restarts the animation
+      void el.offsetWidth;
+      el.classList.add('popping');
+      setTimeout(function() { el.classList.remove('popping'); }, 600);
+      var name = el.dataset.badgeName || '';
+      var desc = el.dataset.badgeDesc || '';
+      if (name && typeof branded !== 'undefined' && branded.toast) {
+        branded.toast('🏅 ' + name + (desc ? ' · ' + desc : ''));
       }
     });
   });
@@ -7842,36 +7888,40 @@ function updateClientHeroMood(client) {
   var streak = calcCheckinStreak(client);
 
   if (todays) {
+    // Compact "checked in" pill — emoji + tiny label + optional streak.
+    // Click to expand if they want to see their note for today.
     var mood = CHECKIN_MOODS.find(function(m){ return m.score === todays.mood; }) || CHECKIN_MOODS[2];
-    wrap.innerHTML = '<div style="background:rgba(255,255,255,0.13);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font-size:22px;line-height:1;flex-shrink:0">' + mood.emoji + '</span>' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:13px;font-weight:600;color:white;line-height:1.3">Checked in today — feeling ' + mood.label.toLowerCase() + '</div>' +
-        (todays.note
-          ? '<div style="font-size:12px;color:rgba(255,255,255,0.85);font-style:italic;line-height:1.3;margin-top:1px">"' + todays.note.replace(/"/g,'&quot;') + '"</div>'
-          : '<div style="font-size:11px;color:rgba(255,255,255,0.75);line-height:1.3">See you tomorrow ✨</div>') +
-      '</div>' +
-      (streak.current > 1 ? '<span style="background:rgba(251,242,25,0.92);color:#A11E55;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;flex-shrink:0">🔥 ' + streak.current + '</span>' : '') +
-    '</div>';
+    var streakChip = streak.current > 1
+      ? '<span class="hero-mood-streak">🔥 ' + streak.current + '</span>'
+      : '';
+    var noteTip = todays.note ? ' — “' + todays.note.replace(/"/g,'&quot;').slice(0,80) + '”' : '';
+    wrap.innerHTML =
+      '<div class="hero-mood-pill hero-mood-pill-done" title="Feeling ' + mood.label.toLowerCase() + noteTip + '">' +
+        '<span class="hero-mood-pill-emoji">' + mood.emoji + '</span>' +
+        '<span class="hero-mood-pill-label">' + mood.label + '</span>' +
+        streakChip +
+      '</div>';
     return;
   }
 
-  // Prompt — inline mood picker, white-on-dark, semi-transparent buttons
+  // Prompt — compact 5-emoji row. No expanded note input by default;
+  // tapping an emoji reveals a one-line note + save button below.
   var moodButtons = CHECKIN_MOODS.map(function(m) {
-    return '<button onclick="setCheckinMood(' + m.score + ')" data-mood="' + m.score + '" class="checkin-mood" title="' + m.label + '" style="font-size:20px;background:rgba(255,255,255,0.12);border:2px solid transparent;border-radius:50%;width:34px;height:34px;cursor:pointer;transition:all 0.12s;line-height:1;padding:0;flex-shrink:0">' + m.emoji + '</button>';
+    return '<button onclick="setCheckinMood(' + m.score + ')" data-mood="' + m.score + '" class="checkin-mood hero-mood-emoji-btn" title="' + m.label + '">' + m.emoji + '</button>';
   }).join('');
-  wrap.innerHTML = '<div style="background:rgba(255,255,255,0.13);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:9px 14px">' +
-    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font-size:13px;color:white;font-weight:600;flex-shrink:0">How\'s today?</span>' +
-      '<div style="display:flex;gap:4px">' + moodButtons + '</div>' +
-      (streak.current > 0 ? '<span style="font-size:11px;color:rgba(255,255,255,0.9);font-weight:600;margin-left:auto;flex-shrink:0">🔥 ' + streak.current + '-day streak</span>' : '') +
-    '</div>' +
-    '<div id="checkin-note-row" style="display:none;margin-top:8px">' +
-      '<input type="text" id="checkin-note-input" placeholder="One line on what\'s on your mind (optional)…" style="width:100%;border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:white;background:rgba(255,255,255,0.08);outline:none;margin-bottom:6px"' +
-        ' onfocus="this.style.background=\'rgba(255,255,255,0.18)\'" onblur="this.style.background=\'rgba(255,255,255,0.08)\'">' +
-      '<button id="checkin-save-btn" onclick="saveCheckin()" style="background:var(--sunshine);color:var(--magenta);border:none;border-radius:99px;padding:5px 16px;font-family:var(--f-body);font-size:12px;font-weight:700;cursor:pointer">Save</button>' +
-    '</div>' +
-  '</div>';
+  var streakLabel = streak.current > 0
+    ? '<span class="hero-mood-streak hero-mood-streak-inline">🔥 ' + streak.current + '</span>'
+    : '';
+  wrap.innerHTML =
+    '<div class="hero-mood-pill hero-mood-pill-prompt">' +
+      '<span class="hero-mood-pill-label">How\'s today?</span>' +
+      '<div class="hero-mood-emoji-row">' + moodButtons + '</div>' +
+      streakLabel +
+      '<div id="checkin-note-row" class="hero-mood-note-row" style="display:none">' +
+        '<input type="text" id="checkin-note-input" placeholder="One line (optional)…" maxlength="140">' +
+        '<button id="checkin-save-btn" onclick="saveCheckin()">Save</button>' +
+      '</div>' +
+    '</div>';
 }
 
 window._pendingCheckinMood = null;
@@ -7879,14 +7929,14 @@ function setCheckinMood(score) {
   window._pendingCheckinMood = score;
   document.querySelectorAll('.checkin-mood').forEach(function(b) {
     var active = parseInt(b.dataset.mood,10) === score;
-    // Active state on dark hero — hot pink ring + sunshine background
+    // Active state on dark hero — sunshine yellow ring + warm background
     b.style.borderColor = active ? 'var(--sunshine)' : 'transparent';
-    b.style.background  = active ? 'rgba(251,242,25,0.25)' : 'rgba(255,255,255,0.12)';
-    b.style.transform   = active ? 'scale(1.12)' : 'scale(1)';
+    b.style.background  = active ? 'rgba(251,242,25,0.25)' : 'rgba(255,255,255,0.10)';
+    b.style.transform   = active ? 'scale(1.18)' : 'scale(1)';
   });
   // Reveal the note input + save button now that they've picked a mood
   var row = document.getElementById('checkin-note-row');
-  if (row) row.style.display = 'block';
+  if (row) row.style.display = 'flex';
 }
 
 async function saveCheckin() {
@@ -7941,7 +7991,9 @@ function fireConfetti(count) {
 // Phoebe can also trigger this from her side to seed something visible
 // before the client even opens the portal.
 // ============================================================
-async function suggestClientWhy(targetClientId) {
+async function suggestClientWhy(targetClientId, opts) {
+  opts = opts || {};
+  var silent = !!opts.silent;
   var clientId = targetClientId || currentClientId;
   var client = clients.find(function(c){ return c.id === clientId; });
   if (!client) return;
@@ -7958,10 +8010,11 @@ async function suggestClientWhy(targetClientId) {
   });
   var hasContext = ctx.length > 0;
   if (!hasContext) {
+    if (silent) return;
     branded.alert('Not enough info yet to suggest a why — once you\'ve had your first session with Phoebe, this will work better.');
     return;
   }
-  if (typeof branded !== 'undefined') branded.toast('Drafting a suggestion…');
+  if (!silent && typeof branded !== 'undefined') branded.toast('Drafting a suggestion…');
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -7985,18 +8038,24 @@ async function suggestClientWhy(targetClientId) {
       data.content.forEach(function(b) { if (b && b.type === 'text' && b.text) text += b.text; });
     }
     text = text.trim().replace(/^["']|["']$/g, '');
-    if (!text) { branded.alert('Couldn\'t draft one — try writing it yourself and Phoebe will help refine it.'); return; }
+    if (!text) {
+      if (!silent) branded.alert('Couldn\'t draft one — try writing it yourself and Phoebe will help refine it.');
+      return;
+    }
     client.suggestedWhy = text;
     await persistClient(client);
-    // Re-render so the suggestion appears
-    if (typeof renderClientSummary === 'function' && currentClientId === client.id) {
-      var sumEl = document.getElementById('client-summary-area');
-      if (sumEl && sumEl.style.display !== 'none') renderClientSummary(client);
+    // Re-render so the suggestion appears in the hero AND on Summary
+    if (currentClientId === client.id) {
+      if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
+      if (typeof renderClientSummary === 'function') {
+        var sumEl = document.getElementById('client-summary-area');
+        if (sumEl && sumEl.style.display !== 'none') renderClientSummary(client);
+      }
     }
-    branded.success('Drafted — review and tap "Use this" if it fits.');
+    if (!silent) branded.success('Drafted — review and tap "Use this" if it fits.');
   } catch (err) {
     console.warn('[suggestClientWhy]', err);
-    branded.error('Couldn\'t reach the AI just now. Try again in a moment.');
+    if (!silent) branded.error('Couldn\'t reach the AI just now. Try again in a moment.');
   }
 }
 
@@ -8814,28 +8873,49 @@ function dismissNewNoteBanner() {
 // MDC sprint+week selector for the client portal. Mirrors the coach view —
 // 4 sprints × 6 weeks, all browseable, current one highlighted. Switching
 // updates client.programs[i].mdcSprint / mdcWeek and re-renders.
+// MDC nav for the CLIENT portal. v10800: clients are only ever in one sprint,
+// so we hide the sprint switcher and show a single horizontal week strip
+// (Wk 1 → Wk 24). Internally we still translate week-of-cohort → (sprint,
+// week-of-sprint) for storage compatibility with the data model.
 function renderClientMdcSprintNav(client, prog, currentSprint, currentWeek) {
-  var sprintBtns = [1,2,3,4].map(function(s) {
-    var active = s === currentSprint;
-    return '<button onclick="setClientMdcSprint(\''+prog.id+'\','+s+')" ' +
-      'style="padding:5px 12px;border-radius:99px;font-size:12px;font-weight:600;border:1.5px solid '+(active?'var(--hot-pink)':'var(--border)')+';background:'+(active?'var(--hot-pink)':'white')+';color:'+(active?'white':'var(--stone)')+';cursor:pointer">' +
-      'Sprint ' + s + '</button>';
-  }).join('');
-  var weekBtns = [1,2,3,4,5,6].map(function(w) {
-    var active = w === currentWeek;
-    return '<button onclick="setClientMdcWeek(\''+prog.id+'\','+w+')" ' +
-      'style="padding:5px 11px;border-radius:99px;font-size:12px;font-weight:600;border:1.5px solid '+(active?'var(--teal)':'var(--border)')+';background:'+(active?'var(--teal)':'white')+';color:'+(active?'white':'var(--stone)')+';cursor:pointer">' +
-      'W' + w + '</button>';
-  }).join('');
-  return '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
-      '<span style="font-size:11px;color:var(--stone);font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-right:4px">Sprint</span>' + sprintBtns +
-    '</div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
-      '<span style="font-size:11px;color:var(--stone);font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-right:4px">Week</span>' + weekBtns +
-    '</div></div>';
+  // Convert (sprint, week) → flat week-of-cohort 1..24
+  var currentFlat = ((currentSprint - 1) * 6) + currentWeek;
+  // Render as a horizontal scrolling strip so 24 weeks doesn't wrap weirdly
+  var weekBtns = [];
+  for (var i = 1; i <= 24; i++) {
+    var active = i === currentFlat;
+    var sprintNum = Math.ceil(i / 6);
+    var weekInSprint = ((i - 1) % 6) + 1;
+    var sprintEdge = (i % 6 === 0 && i < 24); // small visual divider after each sprint
+    weekBtns.push(
+      '<button onclick="setClientMdcFlatWeek(\'' + prog.id + '\',' + i + ')" ' +
+        'class="mdc-week-pill' + (active ? ' active' : '') + '" ' +
+        'title="Week ' + i + ' of 24 (Sprint ' + sprintNum + ' · Week ' + weekInSprint + ')">' +
+        'Wk ' + i +
+      '</button>' +
+      (sprintEdge ? '<span class="mdc-week-divider" aria-hidden="true"></span>' : '')
+    );
+  }
+  return '<div class="mdc-week-strip-wrap" style="margin-top:8px">' +
+    '<div class="mdc-week-strip">' + weekBtns.join('') + '</div>' +
+  '</div>';
 }
 
+// Set the program's (mdcSprint, mdcWeek) from a flat 1..24 week number.
+async function setClientMdcFlatWeek(progId, flatWeek) {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!prog) return;
+  if (flatWeek < 1) flatWeek = 1;
+  if (flatWeek > 24) flatWeek = 24;
+  prog.mdcSprint = Math.ceil(flatWeek / 6);
+  prog.mdcWeek   = ((flatWeek - 1) % 6) + 1;
+  await persistClient(client);
+  renderClientProgram(client, prog);
+}
+
+// Legacy setters kept for the COACH portal (which may still use the
+// sprint/week dual selectors). Coach view stays unchanged.
 async function setClientMdcSprint(progId, s) {
   var client = clients.find(function(c){return c.id===currentClientId;});
   var prog = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
@@ -8881,11 +8961,38 @@ function updateClientHeroWhy(client) {
     textEl.textContent = '"' + displayed + '"';
     textEl.style.cursor = 'pointer';
     textEl.style.opacity = '1';
+    textEl.onclick = editClientWhyFromHero;
     wrap.style.display = 'flex';
-  } else {
-    textEl.innerHTML = '<span style="opacity:0.7">+ Add my why</span>';
-    textEl.style.cursor = 'pointer';
+    return;
+  }
+  // Empty state — surface AI suggestion if we have one, otherwise prompt
+  // the client (and seed a suggestion silently in the background so by
+  // their next visit it'll be there).
+  var suggested = (client.suggestedWhy || '').trim();
+  if (suggested) {
+    textEl.innerHTML =
+      '<span style="opacity:0.85">"' + escapeHtml(suggested) + '"</span> ' +
+      '<button onclick="event.stopPropagation();useSuggestedWhy()" style="margin-left:6px;background:var(--sunshine);color:var(--magenta);border:none;border-radius:99px;padding:3px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--f-body)">Use this →</button>' +
+      '<button onclick="event.stopPropagation();editClientWhyFromHero()" style="margin-left:4px;background:rgba(255,255,255,0.18);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:99px;padding:3px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--f-body)">Edit</button>';
+    textEl.style.cursor = 'default';
+    textEl.style.fontStyle = 'italic';
+    textEl.onclick = null;
     wrap.style.display = 'flex';
+    return;
+  }
+  textEl.innerHTML = '<span style="opacity:0.85">+ Add my why</span> <span style="margin-left:6px;opacity:0.6;font-size:11px;font-style:normal">(or tap ✦ to suggest one)</span>';
+  textEl.style.cursor = 'pointer';
+  textEl.onclick = editClientWhyFromHero;
+  wrap.style.display = 'flex';
+  // Silent background suggest — only fires once per client, only when
+  // there's enough context, and only if we haven't already attempted it.
+  if (!client._whySuggestAttempted) {
+    client._whySuggestAttempted = true;
+    setTimeout(function() {
+      if (typeof suggestClientWhy === 'function') {
+        suggestClientWhy(client.id, { silent: true }).catch(function(){});
+      }
+    }, 1200);
   }
 }
 
