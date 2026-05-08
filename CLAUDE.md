@@ -77,7 +77,7 @@ Set on the `the-happy-hub` Netlify site:
 | `ZOOM_ACCOUNT_ID` | ✅ live | Zoom Server-to-Server OAuth |
 | `ZOOM_CLIENT_ID` | ✅ live | Zoom Server-to-Server OAuth |
 | `ZOOM_CLIENT_SECRET` | ✅ live | Zoom Server-to-Server OAuth |
-| `ZOOM_VERIFICATION_TOKEN` | ✅ live | Zoom webhook verification |
+| `ZOOM_VERIFICATION_TOKEN` | ✅ live | Zoom webhook **Secret Token** — used to verify the URL handshake AND the HMAC signature on every event. Must match the Secret Token shown in Zoom Marketplace → Happy Hub app → Feature → Event Subscriptions. **Regenerate any time it leaks.** |
 | `GOOGLE_CLIENT_ID` | ✅ live | OAuth Client ID for Gmail API. **Was exposed in chat history during setup — rotate after first end-to-end test passes.** |
 | `GOOGLE_CLIENT_SECRET` | ✅ live | OAuth Client Secret. Same exposure note as above. |
 | `GOOGLE_REFRESH_TOKEN` | ✅ live | OAuth refresh token tied to phoebe@phoebeblamey.com.au with `gmail.send` scope only. Same exposure note. |
@@ -85,6 +85,31 @@ Set on the `the-happy-hub` Netlify site:
 | `TWILIO_*` | ⏳ optional | Outbound SMS |
 
 **Never commit secrets to the repo. Never echo them in code or logs.**
+
+## Zoom Server-to-Server OAuth scopes required
+
+The Happy Hub app needs the following scopes (all `:master` variant since
+the app is account-level). These are checked under Marketplace → Happy Hub →
+Scopes:
+
+| Scope | Used by |
+|---|---|
+| `meeting:write:meeting:master` | Creating cohort + per-client Zoom meetings (`/api/zoom-create-meeting`, `/api/zoom-create-template`) |
+| `meeting:read:meeting:master` | Looking up meetings during webhook auto-pull and template verification |
+| `account:write:meeting_template:master` | Saving meetings as templates (`/api/zoom-create-template`) |
+| `cloud_recording:read:list_user_recordings:master` | Listing recent recordings on the Settings page |
+| `cloud_recording:read:recording:master` | Fetching a specific recording's files (`/api/zoom-transcript`, webhook) |
+| `cloud_recording:read:content:master` | Reading transcript file contents |
+| `meeting:write:invite_links:master` | (optional) Creating invite links |
+
+Webhook event subscriptions (Marketplace → Happy Hub → Feature):
+
+| Event | Used for |
+|---|---|
+| `recording.completed` | Auto-pull transcript + AI-summarise + queue for review |
+| `meeting.ended` | (optional) Acknowledged silently — useful future signal |
+
+**Webhook endpoint URL**: `https://hub.phoebeblamey.com.au/api/zoom-webhook`
 
 ## Auth model
 

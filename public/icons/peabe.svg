@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PeaBe logo — pink "pb" pebble. Built to match the brand palette in styles.css:
+  bubblegum (#F0A3C7) for the main fill, magenta (#C9266B) for the 3D shadow.
+  Used as the PWA icon, favicon, and Apple touch icon.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PeaBe">
+  <defs>
+    <!-- Gentle highlight on the top-left to suggest the rounded "pebble" curve -->
+    <radialGradient id="pbHighlight" cx="35%" cy="30%" r="75%">
+      <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="55%"  stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- A second, very subtle dark wash on the bottom-right edge so the 3D feel
+         doesn't depend solely on the magenta-shifted shadow circle -->
+    <radialGradient id="pbDepth" cx="78%" cy="80%" r="60%">
+      <stop offset="0%"   stop-color="#C9266B" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#C9266B" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Drop-shadow disc, offset right + down, magenta, semi-transparent.
+       This is what gives the logo its "pebble" / button feel. -->
+  <circle cx="266" cy="262" r="234" fill="#C9266B" opacity="0.45"/>
+
+  <!-- Main bubblegum-pink disc -->
+  <circle cx="252" cy="248" r="234" fill="#F0A3C7"/>
+
+  <!-- Highlight + depth washes -->
+  <circle cx="252" cy="248" r="234" fill="url(#pbHighlight)"/>
+  <circle cx="252" cy="248" r="234" fill="url(#pbDepth)"/>
+
+  <!-- "pb" — Poppins Bold (loaded via index.html); falls back to system
+       geometric sans where the font isn't yet loaded (favicon contexts).
+       Letter-spacing tightened so the 'p' and 'b' read as a unit. -->
+  <text x="252" y="338"
+        text-anchor="middle"
+        font-family="Poppins, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif"
+        font-size="280"
+        font-weight="700"
+        letter-spacing="-12"
+        fill="#FFFFFF">pb</text>
+</svg>

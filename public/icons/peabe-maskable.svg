@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maskable variant — extra padding around the disc so Android can crop it
+  to whatever shape the launcher uses (circle, squircle, rounded-square)
+  without clipping the "pb". Following the W3C maskable-icon spec which
+  requires the "safe zone" to fit inside the inner 80% of the canvas.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PeaBe">
+  <defs>
+    <radialGradient id="mskHighlight" cx="35%" cy="30%" r="75%">
+      <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="55%"  stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="mskDepth" cx="78%" cy="80%" r="60%">
+      <stop offset="0%"   stop-color="#C9266B" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#C9266B" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Full marshmallow background so the maskable bleed-area carries the brand
+       colour rather than transparent black -->
+  <rect x="0" y="0" width="512" height="512" fill="#FDEFF5"/>
+
+  <!-- Smaller disc — fits inside the 80% safe zone -->
+  <circle cx="262" cy="258" r="186" fill="#C9266B" opacity="0.45"/>
+  <circle cx="252" cy="248" r="186" fill="#F0A3C7"/>
+  <circle cx="252" cy="248" r="186" fill="url(#mskHighlight)"/>
+  <circle cx="252" cy="248" r="186" fill="url(#mskDepth)"/>
+
+  <text x="252" y="320"
+        text-anchor="middle"
+        font-family="Poppins, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif"
+        font-size="220"
+        font-weight="700"
+        letter-spacing="-10"
+        fill="#FFFFFF">pb</text>
+</svg>

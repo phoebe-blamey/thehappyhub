@@ -333,8 +333,22 @@ export default async (req: Request) => {
     };
     if (typeof weeklyOn === "number") payload.recurrence.weekly_days = String(weeklyOn + 1);
   }
-  // Use a Zoom-saved meeting template if Phoebe picked one
-  if (body.templateId) payload.template_id = String(body.templateId);
+  // Use a Zoom-saved meeting template if Phoebe picked one explicitly,
+  // OR if she's run /api/zoom-create-template for this template name and
+  // the resulting template_id is stored in coach-settings.zoomTemplates.
+  let resolvedTemplateId: string | null = body.templateId ? String(body.templateId) : null;
+  if (!resolvedTemplateId && templateName) {
+    try {
+      const baseUrl = (Netlify.env.get("URL") || "https://hub.phoebeblamey.com.au").replace(/\/$/, "");
+      const r = await fetch(`${baseUrl}/api/coach-settings`);
+      if (r.ok) {
+        const settings: any = await r.json();
+        const saved = settings && settings.zoomTemplates && settings.zoomTemplates[templateName];
+        if (saved && saved.id) resolvedTemplateId = String(saved.id);
+      }
+    } catch {}
+  }
+  if (resolvedTemplateId) payload.template_id = resolvedTemplateId;
 
   try {
     const r = await fetch("https://api.zoom.us/v2/users/me/meetings", {

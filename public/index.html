@@ -10,6 +10,12 @@
 <meta name="apple-mobile-web-app-title" content="PeaBe Hub">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
+<!-- Favicons — pink "pb" pebble. SVG works in all modern browsers and scales
+     cleanly down to 16×16. iOS still prefers a PNG for home-screen icons; the
+     SVG fallback shows a default until a 180×180 PNG is dropped at the same
+     path (see notes in CLAUDE.md). -->
+<link rel="icon" type="image/svg+xml" href="/icons/peabe.svg">
+<link rel="apple-touch-icon" href="/icons/peabe.svg">
 <title>PeaBe Coaching Hub — Phoebe Blamey</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -19,7 +25,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v9700 — Zoom templates: 6 Phoebe-branded built-ins (MDC, Happy Hour, 90-Day, Audit, Discovery, Session) · template picker modal · Zoom-saved templates list · per-client +Zoom button · cohort uses MDC template">
+<meta name="hmh-build" content="v9800 — Zoom-side templates created in account from hub · webhook signature verify + auto AI summary · saved template_id used by every Zoom create flow · PeaBe logo PWA icon">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -509,6 +515,26 @@
       <div class="page" id="page-settings">
         <h1 class="page-title">Settings & Setup</h1>
         <p class="page-sub">Configure integrations and test your automations</p>
+
+        <!-- Zoom templates — one-click "create the MDC template in Zoom" so
+             every cohort meeting + per-client Zoom inherits the same branding,
+             agenda, recording defaults and accessibility settings. Once
+             created, the template_id is stored in coach-settings and used
+             automatically by every Zoom-create flow in the hub. -->
+        <div class="settings-card" id="zoom-templates-card">
+          <h4>🎬 Zoom templates</h4>
+          <p style="margin-bottom:10px">
+            Pre-loaded Phoebe-branded templates. Each one creates a real meeting template
+            in your Zoom account — captions on, cloud recording auto, agenda in your voice,
+            waiting-room rules per session type. Once made, every Zoom-create button in the
+            hub picks the right template automatically.
+          </p>
+          <div id="zoom-templates-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+          <div style="font-size:11px;color:var(--stone);font-style:italic;line-height:1.5">
+            One-time setup per template. After creating, the template lives in your Zoom Templates
+            library — edit it there to add virtual backgrounds, polls, registration questions, etc.
+          </div>
+        </div>
 
         <!-- Custom badges — Phoebe defines her own celebration moments and
              awards them to clients ad-hoc. Built-in badges fire automatically
@@ -2910,6 +2936,72 @@ function mergeCustomBadgesIntoRegistry() {
 }
 mergeCustomBadgesIntoRegistry();
 
+// ============================================================
+// ZOOM TEMPLATES SETTINGS CARD
+// One-click button per Phoebe-branded template that calls
+// /api/zoom-create-template. The result is stored in
+// coachSettings.zoomTemplates[<key>] = { id, label, ... }
+// and used automatically by every Zoom-create flow in the hub.
+// ============================================================
+var ZOOM_TEMPLATE_DEFS = [
+  { key: 'mdc',         label: '💡 MDC cohort',          duration: 90,  recurring: true,  desc: 'Recurring weekly · captions · breakouts · cloud recording' },
+  { key: 'happy-hour',  label: '☀️ Happy Hour',          duration: 90,  recurring: false, desc: '1:1 strategy · waiting room on · cloud recording' },
+  { key: '90day',       label: '📅 90-Day Builder',      duration: 60,  recurring: false, desc: 'Hour check-in · waiting room · recording' },
+  { key: 'audit',       label: '🔍 Beautiful Audit',     duration: 120, recurring: false, desc: 'Two-hour deep dive · recording + captions' },
+  { key: 'discovery',   label: '🤝 Clarity Call',         duration: 30,  recurring: false, desc: 'Intro chat · no recording · waiting room' },
+  { key: 'session',     label: '📌 General session',     duration: 60,  recurring: false, desc: 'Fallback · cloud recording · captions' },
+];
+function renderZoomTemplatesList() {
+  var el = document.getElementById('zoom-templates-list');
+  if (!el) return;
+  var saved = (window._coachSettings && window._coachSettings.zoomTemplates) || {};
+  el.innerHTML = ZOOM_TEMPLATE_DEFS.map(function(t) {
+    var s = saved[t.key];
+    var status = s && s.id
+      ? '<span style="font-size:11px;color:var(--teal);font-weight:700;background:var(--mist);padding:3px 9px;border-radius:99px">✓ Linked · ' + new Date(s.createdAt).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) + '</span>'
+      : '<span style="font-size:11px;color:var(--stone);font-style:italic">Not yet created</span>';
+    var btnLabel = s && s.id ? '↻ Re-create' : '+ Create in Zoom';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:white;border:1px solid var(--border);border-radius:10px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;color:var(--magenta);font-weight:700">' + t.label + ' <span style="font-size:10px;color:var(--stone);font-weight:500;margin-left:6px">' + t.duration + ' min</span></div>' +
+        '<div style="font-size:11px;color:var(--stone);line-height:1.5;margin-top:2px">' + t.desc + '</div>' +
+        '<div style="margin-top:5px">' + status + '</div>' +
+      '</div>' +
+      '<button class="btn-sm primary" onclick="createZoomTemplate(\'' + t.key + '\')" id="zt-btn-' + t.key + '" style="font-size:11px">' + btnLabel + '</button>' +
+    '</div>';
+  }).join('');
+}
+
+async function createZoomTemplate(templateKey) {
+  var btn = document.getElementById('zt-btn-' + templateKey);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Creating…'; }
+  try {
+    var resp = await fetch('/api/zoom-create-template', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ templateName: templateKey }),
+    });
+    var data = await resp.json();
+    if (resp.ok && data.success) {
+      // Server already saved to coach-settings; refresh local mirror
+      try { await loadCoachSettingsRemote(); } catch (e) {}
+      branded.success('Template ready in your Zoom account.\n\n"' + data.templateLabel + '"\n\nEvery Zoom-create button in the hub now uses it automatically. Edit it in Zoom → Templates to add virtual backgrounds, polls, etc.');
+      renderZoomTemplatesList();
+      if (typeof logActivity === 'function') {
+        logActivity('zoom-template', 'Zoom template created · ' + templateKey,
+          { detail: data.templateLabel });
+      }
+    } else {
+      var hint = data.hint ? '\n\nHint: ' + data.hint : '';
+      branded.error('Couldn\'t create the template.\n\n' + (data.error || 'Unknown error') + hint);
+    }
+  } catch (err) {
+    branded.error('Network error: ' + (err && err.message || err));
+  }
+  if (btn) { btn.disabled = false; }
+  renderZoomTemplatesList();
+}
+
 // Phoebe's UI handlers — render the list of custom badges, save a new one,
 // preview an animation. The list lives in the Settings card we added above.
 function renderCustomBadgeList() {
@@ -3719,7 +3811,10 @@ function showPage(id) {
       else if (id === 'happy-hub')  renderHappyHub('','','');
       else if (id === 'planner')    { if (typeof renderPlanBuilderPage==='function') renderPlanBuilderPage(); }
       else if (id === 'research')   { if (typeof renderResearchPage==='function') renderResearchPage(); }
-      else if (id === 'settings')   { if (typeof renderCustomBadgeList==='function') renderCustomBadgeList(); }
+      else if (id === 'settings')   {
+        if (typeof renderCustomBadgeList==='function') renderCustomBadgeList();
+        if (typeof renderZoomTemplatesList==='function') renderZoomTemplatesList();
+      }
       else if (id === 'tasks')      { if (typeof renderAllTasks==='function') renderAllTasks(); }
       else if (id === 'settings')   { if (typeof initNotificationsToggle==='function') initNotificationsToggle(); }
     } catch(e) { console.error('Page render error:', id, e); }
