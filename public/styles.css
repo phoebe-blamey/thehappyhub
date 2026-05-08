@@ -10,46 +10,23 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* === Refined palette (Phase B-2) ============================================
-     Pulls cues from the MDC workbook: warm cream paper, hot pink accents,
-     a deeper cocoa for body warmth, soft aqua for "reflection" bubbles, sunshine
-     for "tips". Existing hex values kept for backward compat — new variables added. */
   --paper:       #FFFDFA;
-  --cream:       #FBF6EC;  /* warmer paper for hero / large fills */
   --marshmallow: #FDEFF5;
   --bubblegum:   #F0A3C7;
   --hot-pink:    #EC2C8A;
   --magenta:     #C9266B;
-  --magenta-deep:#A11E55;  /* darker magenta for hover / nav rails */
   --sunshine:    #FBF219;
-  --sun-soft:    #FFF5BF;  /* tinted sunshine for tip bubbles */
   --sand:        #C9A88D;
-  --cocoa:       #8B6F4E;  /* warm brown — body emphasis, tip text */
-  --cocoa-deep:  #5A4632;  /* deepest brown — section headers paired with script */
   --stone:       #ACA495;
   --mist:        #D7E9E7;
-  --aqua:        #B8DDD9;  /* fuller aqua for reflection bubbles */
-  --aqua-deep:   #4A8C90;  /* darker aqua for reflection text */
   --teal:        #5FA3A8;
   --border:      rgba(201,38,107,0.12);
   --border-soft: rgba(201,38,107,0.06);
-  --border-cocoa: rgba(139,111,78,0.18);
-  /* Type stack:
-       --f-head    : the existing AllRoundGothic chunky display (preserved)
-       --f-script  : Caveat Brush — hand-painted brush headers, "Phoebe's notebook" feel
-       --f-display : Quicksand 600/700 — chunky rounded labels, badges, pills
-       --f-body    : Poppins (unchanged) */
-  --f-head:    "AllRoundGothic", "Poppins", sans-serif;
-  --f-script:  "Caveat Brush", "Caveat", "AllRoundGothic", cursive;
-  --f-display: "Quicksand", "Poppins", sans-serif;
-  --f-body:    "Poppins", sans-serif;
-  /* Soft shadow tokens for the new bubble + card aesthetic */
-  --shadow-bubble: 0 4px 14px rgba(201,38,107,0.10);
-  --shadow-card:   0 2px 12px rgba(139,111,78,0.06);
-  --shadow-pop:    0 6px 24px rgba(236,44,138,0.18);
+  --f-head: "AllRoundGothic", "Poppins", sans-serif;
+  --f-body: "Poppins", sans-serif;
 }
 
-body { font-family: var(--f-body); background: var(--paper); color: var(--cocoa-deep); min-height: 100vh; }
+body { font-family: var(--f-body); background: var(--paper); color: var(--magenta); min-height: 100vh; }
 
 /* ========== LANDING ========== */
 #landing {
@@ -421,268 +398,81 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--cocoa-
 /* === BODY PADDING (banner offset) === */
 body{padding-top:36px}
 
-/* =====================================================================
-   PHASE B-2 — DESIGN OVERHAUL
-   ---------------------------------------------------------------------
-   Goal: bring the screen experience in line with the printed MDC workbook
-   — warm cream paper, hand-painted brush headers (Caveat Brush), chunky
-   rounded labels (Quicksand), and prominent Action / Tip / Reflection
-   coloured bubbles. All class names from earlier CSS are preserved so the
-   JS layer doesn't need to change.
+/* ─────────────────────────────────────────────────────────────────────
+   Compact UX touch-ups for the client portal — tighter than before so
+   there's less scrolling. Existing class names preserved.
+   ───────────────────────────────────────────────────────────────────── */
+.client-content { padding: 18px 22px 64px; max-width: 880px; }
+.client-section { padding: 16px 18px; margin-bottom: 12px; border-radius: 16px; }
+.client-section h3 + p { margin-top: -4px; }
+.client-section .sprint-grid { gap: 10px; }
+.client-section .sprint-card { padding: 12px 14px; }
 
-   Override order: this block is intentionally placed at the END of the
-   stylesheet so the new typography wins ties with the earlier rules. Where
-   we genuinely need to outrank an inline style or higher-specificity rule
-   we use !important (sparingly, marked with /* B2-only: ... */ /*).
-   ===================================================================== */
-
-/* ─── Hand-painted brush headers ─── */
-.page-title,
-.client-section h3,
-.workbook-section-title,
-.client-hero h2,
-.access-card h3,
-.modal h3,
-.detail-info h2 {
-  font-family: var(--f-script);
-  font-weight: 400;          /* Caveat Brush only ships one weight; size = boldness */
-  letter-spacing: 0.005em;
-  line-height: 1.05;
-  color: var(--magenta);
-}
-.page-title           { font-size: clamp(34px, 4.5vw, 44px); margin-bottom: 4px; }
-.client-section h3    { font-size: 26px; margin-bottom: 8px; }
-.workbook-section-title { font-size: 26px; margin-bottom: 4px; color: var(--cocoa-deep); }
-.client-hero h2       { font-size: clamp(34px, 5vw, 48px) !important; line-height: 1; }
-.access-card h3       { font-size: 26px; margin-bottom: 4px; }
-.modal h3             { font-size: 30px; }
-.detail-info h2       { font-size: 30px; line-height: 1.05; }
-
-/* The big landing wordmark + topbar keep the chunky AllRoundGothic — they're
-   the brand "stamp", not a section header. Caveat Brush would feel too soft. */
-
-/* ─── Chunky display labels (pills, badges, small caps) ─── */
-.prog-tag,
-.prog-badge,
-.topbar-badge,
-.client-status,
-.tab-tag,
-.cprog-tab,
-.filter-tab,
-.week-btn,
-.prog-tab-btn,
-.sidebar-item,
-.sprint-card-label,
-.intake-q,
-.note-block label,
-.form-group label,
-.sim-field label,
-.btn-sm,
-.btn-enter,
-.btn-save,
-.btn-logout {
-  font-family: var(--f-display);
-  font-weight: 600;
-}
-.prog-tag,
-.prog-badge,
-.topbar-badge,
-.client-status,
-.tab-tag {
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  font-size: 11px;
-  padding: 4px 11px;
-  border-radius: 99px;
-}
-.sprint-card-label,
-.intake-q,
-.note-block label {
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-
-/* ─── Action / Tip / Reflection — proper "workbook bubble" treatment ─── */
-.action-pill,
-.reflection-pill,
-.tip-pill {
-  font-family: var(--f-display);
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  padding: 9px 18px;
-  border-radius: 99px;
-  display: inline-flex;
+/* The "All achievements" accordion */
+details.client-section > summary {
+  list-style: none;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  box-shadow: var(--shadow-bubble);
-  border: 1.5px solid transparent;
+  justify-content: space-between;
+  padding-right: 4px;
 }
-.action-pill {
-  background: var(--bubblegum);
-  color: var(--magenta-deep);
-  border-color: rgba(201,38,107,0.18);
-}
-.action-pill::before { content: "✦"; font-size: 14px; }
-.reflection-pill {
-  background: var(--aqua);
-  color: var(--aqua-deep);
-  border-color: rgba(74,140,144,0.22);
-}
-.reflection-pill::before { content: "💭"; font-size: 14px; }
-.tip-pill {
-  background: var(--sun-soft);
-  color: var(--cocoa-deep);
-  border-color: rgba(139,111,78,0.22);
-}
-.tip-pill::before { content: "💡"; font-size: 14px; }
-
-/* Block-level "bubble cards" — same colour family, but full-width section
-   blocks the way the printed workbook lays them out. */
-.bubble-action,
-.bubble-reflection,
-.bubble-tip {
-  border-radius: 18px;
-  padding: 16px 20px;
-  margin: 14px 0;
-  font-family: var(--f-body);
+details.client-section > summary::-webkit-details-marker { display: none; }
+details.client-section > summary::after {
+  content: "▾";
   font-size: 14px;
-  line-height: 1.7;
-  box-shadow: var(--shadow-bubble);
-  position: relative;
+  color: var(--stone);
+  transition: transform 0.2s;
 }
-.bubble-action     { background: var(--marshmallow); color: var(--magenta-deep);
-                     border-left: 5px solid var(--hot-pink); }
-.bubble-reflection { background: var(--mist); color: var(--aqua-deep);
-                     border-left: 5px solid var(--teal); }
-.bubble-tip        { background: var(--sun-soft); color: var(--cocoa-deep);
-                     border-left: 5px solid #E8A020; }
-.bubble-action::before,
-.bubble-reflection::before,
-.bubble-tip::before {
-  font-family: var(--f-script);
-  font-size: 22px;
-  display: block;
-  margin-bottom: 4px;
-  line-height: 1;
+details.client-section[open] > summary::after { transform: rotate(180deg); }
+
+/* Hero badge ribbon on the client portal — keeps spacing tight when it's empty */
+#client-hero-badges-wrap:empty { display: none; }
+
+/* Workbook "design view" — applied to <body> when Phoebe / a client clicks
+   "🎨 Design view" on the MDC workbook. Mimics the printed workbook layout so
+   they can preview before clicking Print. Toggles off the same way. */
+body.workbook-design-view #client-content-area {
+  background: linear-gradient(180deg, #FFFDFA, #FDEFF5);
+  padding: 24px;
+  border-radius: 18px;
 }
-.bubble-action::before     { content: "Action!";    color: var(--hot-pink); }
-.bubble-reflection::before { content: "Reflection"; color: var(--teal); }
-.bubble-tip::before        { content: "Tip";        color: #A07030; }
-
-/* ─── Cards: warmer paper + softer shadow ─── */
-.client-section,
-.workbook-section,
-.client-card,
-.settings-card,
-.sprint-card,
-.access-card,
-.plan-month {
-  box-shadow: var(--shadow-card);
+body.workbook-design-view .client-section {
+  background: white;
+  border: 1.5px dashed rgba(201,38,107,0.35);
+  border-radius: 20px;
+  padding: 22px 24px;
+  margin-bottom: 18px;
+  box-shadow: 0 6px 18px rgba(201,38,107,0.06);
 }
-.client-section,
-.workbook-section {
-  background: var(--cream);
-  border-color: var(--border-cocoa);
+body.workbook-design-view .client-section h3 {
+  font-family: "Caveat", "AllRoundGothic", cursive;
+  font-size: 28px;
+  color: var(--hot-pink);
+  margin-bottom: 8px;
 }
-.client-section { border-radius: 18px; }
-.workbook-section { border-radius: 20px; }
-
-/* ─── Hero — slightly warmer gradient, brush-heading sits higher ─── */
-.client-hero {
-  background: linear-gradient(135deg, var(--magenta) 0%, var(--magenta-deep) 100%) !important;
-  border-bottom: 4px solid var(--sunshine);
+body.workbook-design-view textarea {
+  border: 1.5px dashed var(--bubblegum) !important;
+  background: rgba(253,239,245,0.4) !important;
 }
-.client-hero-tagline {
-  font-family: var(--f-script);
-  font-size: 22px;
-  font-weight: 400;
-  opacity: 0.95;
-  margin-top: 4px;
-}
+body.workbook-design-view .topbar,
+body.workbook-design-view #review-fab,
+body.workbook-design-view #help-fab { opacity: 0.4; }
 
-/* ─── Sidebar — keep tone but warm up actives ─── */
-.sidebar-item.active { background: var(--marshmallow); color: var(--magenta-deep); }
-.sidebar-item { font-family: var(--f-display); font-weight: 600; font-size: 13px; }
-
-/* ─── Sprint cards — tinted aqua to match the workbook's reflection colour ─── */
-.sprint-card {
-  background: var(--cream);
-  border-color: var(--border-cocoa);
-  border-radius: 14px;
-}
-.sprint-card-label { color: var(--cocoa); font-size: 10px; }
-
-/* ─── Access cards on the landing page — warmer background, script title ─── */
-#landing { background: linear-gradient(180deg, var(--marshmallow) 0%, var(--cream) 100%); }
-.access-card { background: var(--cream); }
-.access-card h3 { color: var(--magenta-deep); }
-
-/* ─── Buttons — chunkier rounded, subtle shadow on primary ─── */
-.btn-sm.primary,
-.btn-enter,
-.btn-save {
-  box-shadow: var(--shadow-bubble);
-  letter-spacing: 0.02em;
-}
-.btn-sm.primary:hover,
-.btn-enter:hover,
-.btn-save:hover { box-shadow: var(--shadow-pop); }
-
-/* ─── Tags — recolour Coach-only / Shareable / Client-facing as proper pills ─── */
-.tab-tag.tag-co { background: var(--marshmallow); color: var(--magenta-deep); }
-.tab-tag.tag-cf { background: var(--aqua); color: var(--aqua-deep); }
-.tab-tag.tag-sh { background: var(--sun-soft); color: var(--cocoa-deep); }
-
-/* ─── Workbook input — paper-on-paper, slightly warmer outline ─── */
-.workbook-input {
-  background: #FFFFFF;
-  border: 1.5px solid var(--border-cocoa);
-  border-radius: 12px;
-}
-.workbook-input:focus { border-color: var(--hot-pink); box-shadow: 0 0 0 3px rgba(236,44,138,0.10); }
-
-/* ─── Plan tasks — the round task-check gets a chunkier border ─── */
-.task-check { border-color: var(--border-cocoa); }
-.task-text { color: var(--cocoa-deep); }
-
-/* ─── Body emphasis colour — readable warm brown for general copy ─── */
-p, li, td, .intake-a, .task-text {
-  color: var(--cocoa-deep);
-}
-em, .intake-a em { color: var(--cocoa); }
-
-/* ─── Tab buttons (top of client detail) — Quicksand pills ─── */
-.tab-btn { font-family: var(--f-display); font-weight: 600; font-size: 13px; }
-.tab-btn.active { color: var(--magenta-deep); border-bottom-color: var(--hot-pink); }
-
-/* ─── Client portal program nav (Sarah's "MDC | Happy Hour" tabs) ─── */
-.client-programs-nav { background: var(--cream); }
-.cprog-tab { background: #FFFFFF; border-color: var(--border-cocoa); color: var(--cocoa); }
-.cprog-tab.active { background: var(--hot-pink); color: white; border-color: var(--hot-pink);
-  box-shadow: var(--shadow-bubble); }
-
-/* ─── Filter tabs above the clients grid ─── */
-.filter-tab { border-color: var(--border-cocoa); color: var(--cocoa); }
-.filter-tab.active { background: var(--hot-pink); color: white; border-color: var(--hot-pink);
-  box-shadow: var(--shadow-bubble); }
-
-/* ─── Week buttons inside MDC sprint nav ─── */
-.week-btn { border-color: var(--border-cocoa); color: var(--cocoa); }
-.week-btn.active { background: var(--hot-pink); color: white; border-color: var(--hot-pink);
-  box-shadow: var(--shadow-bubble); }
-
-/* ─── Print rules (Phoebe's "Print my workbook" client-side) ─── */
+/* Print rules — used when client / coach hits the "Print my workbook" button */
 @media print {
   body { padding-top: 0 !important; background: white !important; }
-  #deploy-banner-1778146876, .topbar, .client-programs-nav,
+  [id^="deploy-banner"], .topbar, .client-programs-nav,
   #help-fab, #help-panel, #review-fab, #review-drawer,
-  .save-bar, .webhook-alert { display: none !important; }
+  .save-bar, .webhook-alert, #client-hero-badges-wrap,
+  .branded-modal-host { display: none !important; }
   .client-hero { background: none !important; color: var(--magenta) !important;
-    border-bottom: 2px solid var(--cocoa) !important; padding: 8px 0 !important; }
-  .client-hero h2 { color: var(--magenta) !important; }
-  .client-section { box-shadow: none !important; border: 1px solid var(--cocoa) !important;
-    page-break-inside: avoid; }
-  .workbook-input { border: 1px dashed var(--cocoa) !important; }
+    padding: 0 0 8px !important; border-bottom: 2px solid var(--sand) !important; }
+  .client-hero h2, .client-hero p { color: var(--magenta) !important; }
+  .client-section { box-shadow: none !important; border: 1px solid var(--sand) !important;
+    page-break-inside: avoid; background: white !important; }
+  textarea { border: 1px dashed var(--sand) !important; background: white !important; }
+  details > summary { cursor: default; }
+  details:not([open]) > summary + * { display: none; }
   a { color: var(--magenta) !important; }
 }
+

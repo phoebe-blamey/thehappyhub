@@ -6,18 +6,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Happy Money Hub — Phoebe Blamey</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- Phase B-2 typography:
-       Poppins        — body
-       Caveat Brush   — script headers (the "Phoebe's notebook" feel)
-       Quicksand      — chunky display font for pills, labels, badges -->
-<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Caveat+Brush&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v8000 loaded successfully (Phase B-2 design overhaul: Caveat Brush + Quicksand + warm cocoa palette)
+✓ The Happy Hub — Build v8100 loaded successfully (branded modals · cohort manager rewrite · AI helpers in tasks · client MDC weeks · earned-only badges)
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 
@@ -592,12 +587,14 @@
     <button class="btn-logout" onclick="logout()">Sign out</button>
   </div>
   <div class="client-layout">
-    <div class="client-hero" style="background:var(--magenta);color:white;padding:28px 24px">
+    <div class="client-hero" style="background:var(--magenta);color:white;padding:24px 24px 22px">
       <div class="client-hero-inner">
         <div class="client-hero-prog" id="client-hero-prog">My Program</div>
         <h2 id="client-hero-name" style="font-family:var(--f-head);font-size:clamp(22px,4vw,32px);margin-bottom:4px">Your Hub</h2>
         <p class="client-hero-tagline" id="client-hero-tagline">You're good at what you do. Let's make your money reflect it.</p>
         <div id="client-hero-progress-wrap"></div>
+        <!-- Earned-only badge ribbon — kept compact so the hero stays a hero -->
+        <div id="client-hero-badges-wrap"></div>
       </div>
     </div>
     <div style="background:var(--marshmallow);border-bottom:1px solid var(--border);padding:12px 24px;overflow-x:auto;display:flex;gap:8px" id="client-prog-nav"></div>
@@ -740,13 +737,13 @@
     <button onclick="toggleHelpPanel()" aria-label="Close" style="background:none;border:none;color:white;font-size:24px;cursor:pointer;line-height:1;padding:0 4px">×</button>
   </div>
   <div style="padding:14px">
-    <a href="https://phoebeblamey.com.au/blog/" target="_blank" rel="noopener" class="help-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
+    <a href="javascript:void(0)" onclick="openHelpResources()" class="help-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
       onmouseover="this.style.borderColor='var(--hot-pink)';this.style.background='var(--marshmallow)'"
       onmouseout="this.style.borderColor='var(--border)';this.style.background='white'">
-      <div style="font-size:24px;line-height:1">📚</div>
+      <div style="font-size:24px;line-height:1">💛</div>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:700;font-size:13px">Resources</div>
-        <div style="font-size:11px;color:var(--stone);margin-top:1px">Phoebe's blog — money tips, podcasts, tools</div>
+        <div style="font-weight:700;font-size:13px">My resources</div>
+        <div style="font-size:11px;color:var(--stone);margin-top:1px">Worksheets, guides, podcasts — all in your Happy Hub</div>
       </div>
       <div style="color:var(--stone);font-size:14px">→</div>
     </a>
@@ -757,16 +754,6 @@
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:13px">Email Phoebe</div>
         <div style="font-size:11px;color:var(--stone);margin-top:1px">Get in touch any time</div>
-      </div>
-      <div style="color:var(--stone);font-size:14px">→</div>
-    </a>
-    <a href="https://calendly.com/phoebe-phoebeblamey/new-meeting" target="_blank" rel="noopener" class="help-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
-      onmouseover="this.style.borderColor='var(--hot-pink)';this.style.background='var(--marshmallow)'"
-      onmouseout="this.style.borderColor='var(--border)';this.style.background='white'">
-      <div style="font-size:24px;line-height:1">📅</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:700;font-size:13px">Book a chat</div>
-        <div style="font-size:11px;color:var(--stone);margin-top:1px">Free 15-minute Clarity Call</div>
       </div>
       <div style="color:var(--stone);font-size:14px">→</div>
     </a>
@@ -836,6 +823,20 @@
   </div>
 </div>
 
+<!-- ========== BRANDED MODAL HOST ==========
+     Used by branded.alert / branded.confirm / branded.prompt / branded.toast
+     so we never trigger an unstyled native popup on Phoebe's screen. -->
+<div id="branded-modal-host" style="position:fixed;inset:0;background:rgba(201,38,107,0.18);backdrop-filter:blur(4px);z-index:9000;display:none;align-items:center;justify-content:center;font-family:var(--f-body)">
+  <div id="branded-modal-card" style="background:white;border-radius:18px;padding:24px 26px;width:100%;max-width:440px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 64px rgba(201,38,107,0.22);position:relative">
+    <div id="branded-modal-icon" style="font-size:36px;line-height:1;margin-bottom:8px"></div>
+    <div id="branded-modal-title" style="font-family:var(--f-head);font-size:20px;color:var(--magenta);margin-bottom:6px;line-height:1.2"></div>
+    <div id="branded-modal-body" style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:16px;white-space:pre-wrap"></div>
+    <input id="branded-modal-input" style="display:none;width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;margin-bottom:16px">
+    <div id="branded-modal-actions" style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"></div>
+  </div>
+</div>
+<div id="branded-toast-host" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9100;display:flex;flex-direction:column;gap:8px;align-items:center;font-family:var(--f-body);pointer-events:none"></div>
+
 <!-- External resources extracted during Phase B-1 refactor -->
 <script src="js/demo-data.js"></script>
 
@@ -843,10 +844,152 @@
 'use strict';
 
 // ============================================================
+// BRANDED — unified popup system in Happy Hub branding.
+// Replaces native alert / confirm / prompt and adds toast.
+// All return Promises so call sites can await the user's response.
+// Usage:
+//   await branded.alert('Saved!');
+//   var ok = await branded.confirm('Delete this client?');
+//   var name = await branded.prompt('Cohort name', '', 'e.g. May 2026');
+//   branded.toast('Note saved');                // 2-second floating chip
+//   branded.toast('Could not save', 'error');   // red error toast
+// ============================================================
+var branded = (function() {
+  function host()  { return document.getElementById('branded-modal-host'); }
+  function card()  { return document.getElementById('branded-modal-card'); }
+  function close() {
+    var h = host(); if (!h) return;
+    h.style.display = 'none';
+  }
+  function build(opts) {
+    return new Promise(function(resolve) {
+      var h = host();
+      if (!h) { resolve(opts.kind === 'confirm' ? false : null); return; }
+      document.getElementById('branded-modal-icon').textContent = opts.icon || '';
+      document.getElementById('branded-modal-title').textContent = opts.title || '';
+      document.getElementById('branded-modal-body').textContent  = opts.body || '';
+      var input = document.getElementById('branded-modal-input');
+      input.style.display = (opts.kind === 'prompt') ? 'block' : 'none';
+      input.value = opts.defaultValue || '';
+      input.placeholder = opts.placeholder || '';
+      var actions = document.getElementById('branded-modal-actions');
+      actions.innerHTML = '';
+
+      function done(v) { close(); document.removeEventListener('keydown', onKey); resolve(v); }
+      function onKey(e) {
+        if (e.key === 'Escape') done(opts.kind === 'confirm' ? false : null);
+        if (e.key === 'Enter' && opts.kind !== 'confirm') {
+          if (opts.kind === 'prompt') done(input.value);
+          else done(true);
+        }
+      }
+      document.addEventListener('keydown', onKey);
+
+      if (opts.kind === 'confirm') {
+        var cancel = document.createElement('button');
+        cancel.className = 'btn-sm';
+        cancel.textContent = opts.cancelLabel || 'Cancel';
+        cancel.onclick = function() { done(false); };
+        actions.appendChild(cancel);
+        var ok = document.createElement('button');
+        ok.className = 'btn-sm primary';
+        ok.style.background = opts.danger ? '#C0392B' : '';
+        ok.style.borderColor = opts.danger ? '#C0392B' : '';
+        ok.textContent = opts.okLabel || (opts.danger ? 'Delete' : 'Confirm');
+        ok.onclick = function() { done(true); };
+        actions.appendChild(ok);
+      } else if (opts.kind === 'prompt') {
+        var cancel2 = document.createElement('button');
+        cancel2.className = 'btn-sm';
+        cancel2.textContent = opts.cancelLabel || 'Cancel';
+        cancel2.onclick = function() { done(null); };
+        actions.appendChild(cancel2);
+        var ok2 = document.createElement('button');
+        ok2.className = 'btn-sm primary';
+        ok2.textContent = opts.okLabel || 'Save';
+        ok2.onclick = function() { done(input.value); };
+        actions.appendChild(ok2);
+        setTimeout(function(){ input.focus(); input.select(); }, 80);
+      } else {
+        var ok3 = document.createElement('button');
+        ok3.className = 'btn-sm primary';
+        ok3.textContent = opts.okLabel || 'OK';
+        ok3.onclick = function() { done(true); };
+        actions.appendChild(ok3);
+      }
+
+      h.style.display = 'flex';
+    });
+  }
+  // Click backdrop (not card) to close — only for non-confirm dialogs so a
+  // critical confirm requires an explicit choice.
+  document.addEventListener('click', function(e) {
+    var h = host();
+    if (!h || h.style.display !== 'flex') return;
+    if (e.target === h) {
+      var actions = document.getElementById('branded-modal-actions');
+      var firstBtn = actions && actions.querySelector('button');
+      if (firstBtn && firstBtn.textContent.toLowerCase().indexOf('cancel') >= 0) firstBtn.click();
+      else close();
+    }
+  });
+
+  function toast(msg, kind, ms) {
+    kind = kind || 'success';
+    ms = ms || 2400;
+    var host = document.getElementById('branded-toast-host');
+    if (!host) return;
+    var bg = kind === 'error' ? '#C0392B' : kind === 'warn' ? '#E8A020' : 'var(--magenta)';
+    var icon = kind === 'error' ? '⚠️' : kind === 'warn' ? '💡' : '✓';
+    var el = document.createElement('div');
+    el.style.cssText = 'background:' + bg + ';color:white;padding:10px 18px;border-radius:99px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.15);display:flex;align-items:center;gap:8px;pointer-events:auto;animation:brandedToastIn 0.25s ease-out';
+    el.innerHTML = '<span>' + icon + '</span><span>' + (msg || '').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span>';
+    host.appendChild(el);
+    setTimeout(function() { el.style.transition = 'opacity 0.3s, transform 0.3s'; el.style.opacity = '0'; el.style.transform = 'translateY(8px)'; }, ms - 300);
+    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, ms);
+  }
+
+  return {
+    alert: function(body, opts) {
+      opts = opts || {};
+      return build({ kind:'alert', icon: opts.icon || 'ℹ️', title: opts.title || 'Heads up', body: body, okLabel: opts.okLabel });
+    },
+    success: function(body, opts) {
+      opts = opts || {};
+      return build({ kind:'alert', icon: '✨', title: opts.title || 'Done', body: body, okLabel: opts.okLabel });
+    },
+    error: function(body, opts) {
+      opts = opts || {};
+      return build({ kind:'alert', icon: '⚠️', title: opts.title || 'Something went wrong', body: body, okLabel: opts.okLabel });
+    },
+    confirm: function(body, opts) {
+      opts = opts || {};
+      return build({ kind:'confirm', icon: opts.icon || (opts.danger ? '🗑' : '❓'), title: opts.title || 'Are you sure?', body: body, okLabel: opts.okLabel, cancelLabel: opts.cancelLabel, danger: opts.danger });
+    },
+    prompt: function(title, defaultValue, placeholder, opts) {
+      opts = opts || {};
+      return build({ kind:'prompt', icon: opts.icon || '✏️', title: title || 'Enter a value', body: opts.body || '', defaultValue: defaultValue, placeholder: placeholder, okLabel: opts.okLabel });
+    },
+    toast: toast,
+  };
+})();
+
+// Inject keyframe for toast (single-shot)
+(function() {
+  if (document.getElementById('branded-toast-keyframes')) return;
+  var s = document.createElement('style');
+  s.id = 'branded-toast-keyframes';
+  s.textContent = '@keyframes brandedToastIn { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }';
+  document.head.appendChild(s);
+})();
+
+// ============================================================
 // AI FETCH INTERCEPTOR
-// Routes Anthropic API calls through Netlify function if available,
-// falls back to direct browser call with localStorage API key.
-// One-time fix for all 10 AI features in the platform.
+// All Anthropic API calls go through the Netlify /api/ai-call function
+// which uses ANTHROPIC_API_KEY from server env vars. No browser-side key,
+// no localStorage prompt — that fallback was confusing and insecure.
+// If the function ever fails (e.g. local dev without functions running),
+// the call rejects with a clear error and the caller decides what to do.
 // ============================================================
 (function() {
   var origFetch = window.fetch.bind(window);
@@ -856,70 +999,32 @@
     if (typeof url !== 'string' || url.indexOf('api.anthropic.com') < 0) {
       return origFetch(url, opts);
     }
-
     opts = opts || {};
-    opts.headers = opts.headers || {};
-
-    // Strategy 1: Try Netlify function first (uses server-side env var, secure)
     return origFetch('/api/ai-call', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: opts.body
     }).then(function(resp) {
       if (resp.ok) return resp;
-      // Function returned an error - fall through to direct call
-      throw new Error('Function returned ' + resp.status);
-    }).catch(function() {
-      // Strategy 2: Direct browser call with localStorage API key
-      var key = localStorage.getItem('happyhub_anthropic_key');
-      if (!key) {
-        key = prompt(
-          'AI features need your Anthropic API key (one-time setup).\n\n' +
-          'Get it from console.anthropic.com -> API Keys.\n\n' +
-          'It will be saved to your browser only (not sent anywhere except Anthropic).'
-        );
-        if (!key) {
-          return Promise.reject(new Error('Anthropic API key required'));
-        }
-        localStorage.setItem('happyhub_anthropic_key', key.trim());
-      }
-
-      // Set headers for direct browser call
-      opts.headers['x-api-key'] = key;
-      opts.headers['anthropic-version'] = '2023-06-01';
-      opts.headers['anthropic-dangerous-direct-browser-access'] = 'true';
-      if (!opts.headers['Content-Type'] && !opts.headers['content-type']) {
-        opts.headers['Content-Type'] = 'application/json';
-      }
-      return origFetch(url, opts);
+      // Surface a useful error so callers can branded.error() it
+      return resp.text().then(function(txt) {
+        throw new Error('AI proxy returned ' + resp.status + ': ' + txt.slice(0, 200));
+      });
     });
   };
 
-  // Helper: clear stored API key (used by Settings page)
+  // Compatibility shims — old Settings page still references these.
+  // Both no-op now since the key never leaves the server.
   window.clearAnthropicKey = function() {
-    localStorage.removeItem('happyhub_anthropic_key');
-    alert('Anthropic API key cleared. You will be prompted next time you use an AI feature.');
+    if (typeof branded !== 'undefined') branded.alert('AI uses the server-side key — nothing to clear from your browser.', { title:'No browser key' });
   };
-
-  // Helper: set or update key
   window.setAnthropicKey = function() {
-    var current = localStorage.getItem('happyhub_anthropic_key');
-    var newKey = prompt(
-      'Enter your Anthropic API key:\n' +
-      (current ? '(Current key: ' + current.slice(0, 12) + '...)' : '(No key currently set)'),
-      current || ''
-    );
-    if (newKey === null) return;
-    if (!newKey.trim()) {
-      localStorage.removeItem('happyhub_anthropic_key');
-      alert('Key cleared.');
-    } else {
-      localStorage.setItem('happyhub_anthropic_key', newKey.trim());
-      alert('Anthropic API key saved.');
-    }
+    if (typeof branded !== 'undefined') branded.alert('AI uses the server-side key. To rotate it, update ANTHROPIC_API_KEY in the Netlify dashboard.', { title:'Rotate via Netlify' });
   };
+  // Also clean up any previously-saved key from old browsers
+  try { localStorage.removeItem('happyhub_anthropic_key'); } catch(e) {}
 
-  console.log('[AI] Fetch interceptor loaded - AI calls will use /api/ai-call or fall back to direct call');
+  console.log('[AI] Fetch interceptor loaded — server-side proxy only');
 })();
 
 // ========== PROGRAM REGISTRY (maps all Calendly event types) ==========
@@ -1034,7 +1139,7 @@ function renderZoomRecordings(meetings) {
 
 async function assignZoomMeeting(meetingId) {
   var sel = document.getElementById('zoom-assign-' + meetingId);
-  if (!sel || !sel.value) { alert('Pick a client first.'); return; }
+  if (!sel || !sel.value) { branded.alert('Pick a client first.'); return; }
   var clientId = sel.value;
   var btn = sel.parentElement.querySelector('button');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling…'; }
@@ -1046,15 +1151,15 @@ async function assignZoomMeeting(meetingId) {
     });
     var data = await resp.json();
     if (!resp.ok) {
-      alert('Failed to pull transcript: ' + (data.error || 'unknown error'));
+      branded.alert('Failed to pull transcript: ' + (data.error || 'unknown error'));
       if (btn) { btn.disabled = false; btn.textContent = '💾 Pull transcript & save'; }
       return;
     }
-    alert('✓ Transcript saved to client. ' + (data.characterCount ? data.characterCount + ' characters captured.' : ''));
+    branded.alert('✓ Transcript saved to client. ' + (data.characterCount ? data.characterCount + ' characters captured.' : ''));
     await loadClients();
     loadZoomRecordings(); // re-render so this meeting is no longer "unmatched"
   } catch (e) {
-    alert('Error: ' + e.message);
+    branded.alert('Error: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = '💾 Pull transcript & save'; }
   }
 }
@@ -1135,37 +1240,39 @@ async function sendWelcomeEmail(client) {
   }
 }
 
-function changeCoachPin() {
+async function changeCoachPin() {
   var input = document.getElementById('new-coach-pin');
   var status = document.getElementById('coach-pin-saved');
   if (!input) return;
   var newPin = (input.value || '').toUpperCase().trim();
   if (newPin.length < 4) { status.textContent = 'Pick at least 4 characters'; status.style.color = 'var(--hot-pink)'; return; }
   if (newPin.length > 20) { status.textContent = 'Keep it under 20 characters'; status.style.color = 'var(--hot-pink)'; return; }
-  if (!confirm('Change your coach PIN to "' + newPin + '"?\n\nYou\'ll use this to log in next time. Make sure you can remember it — there is no recovery from this device.')) return;
+  var ok = await branded.confirm('Change your coach PIN to "' + newPin + '"?\n\nYou\'ll use this to log in next time. Make sure you can remember it — there is no recovery from this device.', { title:'Change PIN?', okLabel:'Yes, change PIN' });
+  if (!ok) return;
   localStorage.setItem('hmh_coach_pin', newPin);
   input.value = '';
   status.textContent = '✓ PIN updated — use it next time you log in';
   status.style.color = 'var(--teal)';
+  branded.toast('Coach PIN updated');
   setTimeout(function() { status.textContent = ''; }, 6000);
 }
 
 // Client-side flow: client changes their own access code from the portal
 async function changeMyAccessCode() {
-  if (!currentClientId) { alert('Sign in first.'); return; }
+  if (!currentClientId) { branded.alert('Sign in first.'); return; }
   var client = clients.find(function(c){ return c.id === currentClientId; });
   if (!client) return;
-  var current = prompt('Enter your CURRENT access code to confirm it\'s you:');
+  var current = await branded.prompt('Confirm it\'s you', '', 'Type your CURRENT access code', { title:'Quick check', okLabel:'Continue' });
   if (current === null) return;
   if ((current || '').toUpperCase().trim() !== client.clientAccess) {
-    alert('That doesn\'t match your current code. No changes made.');
+    branded.alert('That doesn\'t match your current code. No changes made.');
     return;
   }
-  var newCode = prompt('Choose a new access code:\n\n• 4 to 12 characters\n• letters and numbers only\n• no spaces');
+  var newCode = await branded.prompt('Choose a new access code', '', '4-12 characters · letters and numbers only · no spaces', { title:'New access code', okLabel:'Save' });
   if (newCode === null || !newCode.trim()) return;
   var result = await changeClientAccessCode(client.id, newCode);
-  if (!result.ok) { alert('Couldn\'t update: ' + result.error); return; }
-  alert('All done — your new access code is:\n\n' + client.clientAccess + '\n\nWrite it down somewhere safe. You\'ll need it next time you sign in.');
+  if (!result.ok) { branded.alert('Couldn\'t update: ' + result.error); return; }
+  branded.success('Your new access code is ' + client.clientAccess + '. Write it down somewhere safe — you\'ll need it next time.', { title:'All done!' });
 }
 
 // Change a client's access code. Used from the Edit Client modal AND from
@@ -1587,6 +1694,27 @@ function renderBadgesSection(client) {
     '</div>';
 }
 
+// Earned-only ribbon for the client portal hero — feels like a celebration
+// rather than a half-empty grid. Returns empty string if no badges earned yet.
+function renderEarnedBadgeRibbon(client) {
+  if (!client) return '';
+  var earned = (client.badges || []).map(function(b) { return b.id; });
+  if (!earned.length) return '';
+  var earnedBadges = earned.map(function(id) { return BADGES[id]; }).filter(Boolean);
+  // Show up to 6 earned, with a "+N more" pill if there are extras
+  var visible = earnedBadges.slice(0, 6);
+  var extra = earnedBadges.length - visible.length;
+  var pills = visible.map(function(b) {
+    var tc = (typeof BADGE_TIER_COLORS !== 'undefined' && BADGE_TIER_COLORS[b.tier]) || { bg:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.3)', text:'#FFFFFF' };
+    return '<div title="' + b.name + ' — ' + b.desc + '" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.28);border-radius:99px;padding:5px 12px 5px 8px;font-size:12px;font-weight:600;color:white">' +
+      '<span style="font-size:16px;line-height:1">' + b.icon + '</span><span>' + b.name + '</span></div>';
+  }).join('');
+  var moreChip = extra > 0
+    ? '<div style="display:inline-flex;align-items:center;background:rgba(255,255,255,0.24);border:1px solid rgba(255,255,255,0.38);border-radius:99px;padding:5px 12px;font-size:12px;font-weight:700;color:white">+' + extra + ' more</div>'
+    : '';
+  return '<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' + pills + moreChip + '</div>';
+}
+
 // ============================================================
 // HELP PANEL — floating "?" button bottom-right opens a drawer
 // with Resources / Email Phoebe / Book a chat / Quick help FAQ
@@ -1596,6 +1724,53 @@ function toggleHelpPanel() {
   if (!p) return;
   var open = p.style.display === 'block';
   p.style.display = open ? 'none' : 'block';
+}
+
+// Help drawer "My resources" — coaches go to the Happy Hub page; clients see
+// the curated list inline (since they can't navigate to coach pages).
+async function openHelpResources() {
+  // Close the help drawer first
+  var p = document.getElementById('help-panel');
+  if (p) p.style.display = 'none';
+  var inCoachHub = document.getElementById('coach-hub') && document.getElementById('coach-hub').classList.contains('active');
+  if (inCoachHub) {
+    showPage('happy-hub');
+    if (typeof renderHappyHub === 'function') renderHappyHub('','','');
+    return;
+  }
+  // Client side — render a list inside the branded modal
+  if (typeof loadHubResources !== 'function') {
+    branded.alert('Resources are loading…');
+    return;
+  }
+  var resources = await loadHubResources();
+  // Build a compact, lovely list
+  var typeBadge = { blog:'📝 Blog', podcast:'🎙 Podcast', course:'📚 Course', tool:'🛠 Tool', booking:'📅 Booking' };
+  var listHtml = resources.map(function(r) {
+    var label = typeBadge[r.type] || '✨';
+    return '<a href="' + r.url + '" target="_blank" rel="noopener" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:6px;transition:all 0.15s">' +
+      '<div style="font-size:11px;color:var(--hot-pink);font-weight:700;flex-shrink:0;margin-top:2px">' + label + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--magenta);line-height:1.3">' + r.title + '</div>' +
+        '<div style="font-size:11px;color:var(--stone);line-height:1.4;margin-top:2px">' + r.desc + '</div>' +
+      '</div></a>';
+  }).join('');
+  // Open via branded modal but use a custom scroll body
+  var host = document.getElementById('branded-modal-host');
+  document.getElementById('branded-modal-icon').textContent = '💛';
+  document.getElementById('branded-modal-title').textContent = 'Your resources';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML = '<div style="font-size:13px;color:var(--stone);margin-bottom:12px">Phoebe\'s curated guides, podcasts, courses and worksheets — handpicked for you.</div>' + listHtml;
+  body.style.whiteSpace = 'normal';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var ok = document.createElement('button');
+  ok.className = 'btn-sm primary';
+  ok.textContent = 'Close';
+  ok.onclick = function() { host.style.display = 'none'; body.style.whiteSpace = 'pre-wrap'; };
+  actions.appendChild(ok);
+  host.style.display = 'flex';
 }
 
 // Close the help panel when clicking outside it (or pressing Esc)
@@ -1668,7 +1843,7 @@ function saveReviewNote() {
   var t = document.getElementById('review-input');
   if (!t) return;
   var text = (t.value || '').trim();
-  if (!text) { alert('Type a note first.'); return; }
+  if (!text) { branded.alert('Type a note first.'); return; }
   var ctx = reviewCurrentContext();
   var notes = getReviewNotes();
   notes.unshift({ ts: new Date().toISOString(), page: ctx.page, client: ctx.client, viewport: ctx.viewport, text: text });
@@ -1681,10 +1856,12 @@ function deleteReviewNote(ts) {
   setReviewNotes(notes);
   renderReviewList();
 }
-function clearAllReviewNotes() {
-  if (!confirm('Clear all testing notes? This can\'t be undone.')) return;
+async function clearAllReviewNotes() {
+  var ok = await branded.confirm('Clear all testing notes? This can\'t be undone.', { title:'Clear notes?', okLabel:'Clear all', danger:true });
+  if (!ok) return;
   setReviewNotes([]);
   renderReviewList();
+  branded.toast('Notes cleared');
 }
 function renderReviewList() {
   var list = document.getElementById('review-list');
@@ -1712,7 +1889,7 @@ function renderReviewList() {
 }
 function copyAllReviewNotes() {
   var notes = getReviewNotes();
-  if (!notes.length) { alert('No notes to copy yet.'); return; }
+  if (!notes.length) { branded.alert('No notes to copy yet.'); return; }
   var build = '# The Happy Hub — Testing notes (' + notes.length + ')\n\n';
   notes.forEach(function(n, i) {
     var d = new Date(n.ts);
@@ -1731,8 +1908,8 @@ function fallbackCopy(text) {
   var ta = document.createElement('textarea');
   ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
   document.body.appendChild(ta); ta.select();
-  try { document.execCommand('copy'); alert('Copied to clipboard.'); }
-  catch(e) { alert('Could not copy automatically — here\'s the text:\n\n' + text.slice(0, 500)); }
+  try { document.execCommand('copy'); branded.toast('Copied to clipboard'); }
+  catch(e) { branded.alert('Could not copy automatically — here\'s the text:\n\n' + text.slice(0, 500)); }
   document.body.removeChild(ta);
 }
 // Close drawer when clicking outside
@@ -2007,7 +2184,7 @@ function openAddClient() {
 
 function openAddProgram(clientId) {
   var client = clients.find(function(c) { return c.id === clientId; });
-  if (!client) { alert('Client not found.'); return; }
+  if (!client) { branded.alert('Client not found.'); return; }
   addingProgramFor = clientId;
   document.getElementById('add-modal-title').textContent = 'Add program for ' + client.name;
   var fields = document.getElementById('add-client-fields');
@@ -2053,13 +2230,13 @@ async function createClient() {
   if (addingProgramFor) {
     // ── Adding another program to an existing client ─────────────────────
     client = clients.find(function(c) { return c.id === addingProgramFor; });
-    if (!client) { alert('Client not found.'); return; }
+    if (!client) { branded.alert('Client not found.'); return; }
     client.programs = client.programs || [];
     client.programs.push(progEntry);
   } else {
     // ── Creating a brand new client (with their first program) ───────────
     var name = document.getElementById('new-name').value.trim();
-    if (!name) { alert('Name is required'); return; }
+    if (!name) { branded.alert('Name is required'); return; }
     var email = (document.getElementById('new-email').value || '').toLowerCase().trim();
     var existing = email ? clients.find(function(c) { return c.email === email; }) : null;
     var code = name.split(' ')[0].toUpperCase().slice(0,4) + Math.floor(Math.random()*900+100);
@@ -2217,7 +2394,7 @@ async function fetchZoomTranscript() {
 // ========== INLINE PLAN BUILDER ==========
 async function buildPlanInline() {
   var notes = document.getElementById('inline-zoom-notes').value.trim();
-  if (!notes) { alert('Paste your Zoom notes first'); return; }
+  if (!notes) { branded.alert('Paste your Zoom notes first'); return; }
   var client = clients.find(function(c) { return c.id === currentClientId; });
   var prog   = client ? (client.programs||[]).find(function(p) { return p.id === currentProgramId; }) : null;
   var clientName = client ? client.name : 'Client';
@@ -2462,7 +2639,7 @@ async function autoRunResearch() {
 }
 
 async function runResearch() {
-  var name=document.getElementById('r-name').value.trim(); if(!name){alert('Client name required');return;}
+  var name=document.getElementById('r-name').value.trim(); if(!name){branded.alert('Client name required');return;}
   var btn=document.getElementById('research-btn'); var output=document.getElementById('research-output');
   btn.disabled=true; btn.innerHTML='⏳ Analysing…';
   output.classList.add('show','streaming'); output.textContent='';
@@ -2478,7 +2655,7 @@ async function runResearch() {
 }
 
 async function runPlanBuilder() {
-  var notes=document.getElementById('p-notes').value.trim();if(!notes){alert('Please paste session notes');return;}
+  var notes=document.getElementById('p-notes').value.trim();if(!notes){branded.alert('Please paste session notes');return;}
   var clientName=document.getElementById('p-name').value.trim()||'Client';
   var btn=document.getElementById('plan-btn');var output=document.getElementById('plan-output');
   btn.disabled=true;btn.innerHTML='⏳ Building…';output.classList.add('show','streaming');output.textContent='';
@@ -2613,19 +2790,24 @@ function renderClientProgram(client, prog) {
   }
 
   // ── Build client-facing content ──────────────────────────────────────────
-  // New layout (less scrolling, more delight):
-  //   1. Badges/achievements strip at TOP — feel rewarded the moment you log in
-  //   2. Wins (if any)
-  //   3. Program-specific content (plan / MDC workbook / HH summary)
-  //   4. Notes from Phoebe (incl. shared session notes with Zoom + AI summary + actions)
-  //   5. Client reflection / weekly check-in
+  // Layout (compact, scan-friendly):
+  //   HERO          : program name, greeting, progress bar, EARNED badge ribbon only
+  //   1. Wins       (if any) — celebration first
+  //   2. Program-specific content (plan / MDC workbook / HH summary)
+  //   3. Notes from Phoebe (incl. shared session notes with Zoom + AI summary + actions)
+  //   4. Reflection / weekly check-in
+  //   5. "🏆 All my achievements" — collapsed accordion at the bottom (full grid + locked)
   // Resources removed — now lives in the floating Help button (bottom-right "?").
   var lockNotice = isLocked ? '<div style="background:var(--marshmallow);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--stone)">🔒 This program has been completed and locked. Your work is preserved here for reference.</div>' : '';
 
-  // Achievements/badges section — moved from bottom to top so clients see
-  // their wins FIRST, not after scrolling past everything else.
-  var achievementsHtml = (typeof renderBadgesSection === 'function') ? renderBadgesSection(client) : '';
-  if (achievementsHtml) achievementsHtml = '<div class="client-section" style="background:linear-gradient(135deg,#FFFDFA,#FDEFF5);border-color:#F5D5E3">' + achievementsHtml.replace('<div style="margin-top:24px">','<div>') + '</div>';
+  // Full achievements grid (with locked badges) — bottom of page in a collapsed
+  // accordion so the screen feels lighter on first load.
+  var fullAchievementsRaw = (typeof renderBadgesSection === 'function') ? renderBadgesSection(client) : '';
+  var fullAchievementsAccordion = fullAchievementsRaw
+    ? '<details class="client-section" style="background:linear-gradient(135deg,#FFFDFA,#FDEFF5);border-color:#F5D5E3"><summary style="cursor:pointer;list-style:none;font-family:var(--f-head);font-size:16px;color:var(--magenta);font-weight:700">🏆 All my achievements & milestones</summary>' +
+        fullAchievementsRaw.replace('<div style="margin-top:24px">','<div style="margin-top:14px">') +
+      '</details>'
+    : '';
 
   // Shared session notes — sessionNotes with sharedWithClient: true.
   // Each note can carry an optional Zoom URL, AI summary, and suggested actions.
@@ -2643,24 +2825,25 @@ function renderClientProgram(client, prog) {
       : '';
     var reflectHtml = isLocked ? '' : '<div class="client-section"><h3>My reflections</h3><textarea id="client-reflect-'+prog.id+'" onchange="saveClientReflection(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:100px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What did this session bring up for you? What are you noticing?">'+(prog.clientReflection||'')+'</textarea></div>';
     var clientWinsHtml = clientWinsSection(prog);
-    content = lockNotice + achievementsHtml + clientWinsHtml + planHtml + notesHtml + reflectHtml;
+    content = lockNotice + clientWinsHtml + planHtml + notesHtml + reflectHtml + fullAchievementsAccordion;
     area.innerHTML = content;
     renderPlanGrid(prog.plan||[], prog.taskDone||{}, 'client-plan-grid-'+prog.id, isLocked);
   } else if (prog.workbook==='mdc') {
     var wb = prog.mdcWorkbook||{};
     var sprint=prog.mdcSprint||1; var week=prog.mdcWeek||1;
-    var ci=((wb.weeklyCheckins||{})[sprint+'-'+week]||{});
     var clientWinsHtmlMdc = clientWinsSection(prog);
-    // Sprint focus card row (compact 2-up grid)
+    // Sprint + week selector (client-side) — see all weeks, not just current
+    var sprintNavHtml = renderClientMdcSprintNav(client, prog, sprint, week);
+    var ci=((wb.weeklyCheckins||{})[sprint+'-'+week]||{});
     var sprintFocusHtml = '<div class="client-section"><h3>Sprint '+sprint+' · Week '+week+'</h3>' +
-      '<p style="font-size:13px;color:var(--stone);margin-bottom:14px">Your current sprint focus and weekly priorities</p>' +
-      '<div class="sprint-grid">' +
+      sprintNavHtml +
+      '<div class="sprint-grid" style="margin-top:10px">' +
       '<div class="sprint-card"><div class="sprint-card-label">My focus this week</div><div style="font-size:14px;color:var(--magenta);line-height:1.6">'+(ci.focus||'<em style="color:var(--stone)">Set by Phoebe</em>')+'</div></div>' +
       '<div class="sprint-card"><div class="sprint-card-label">My actions</div><div style="font-size:14px;color:var(--magenta);line-height:1.6;white-space:pre-wrap">'+(ci.actions||'<em style="color:var(--stone)">Not set yet</em>')+'</div></div>' +
       '</div></div>';
-    // Sprint notes from Phoebe (replaces the old "Notes from Phoebe" block for MDC)
     var sprintNotesBlock = sharedNotesHtml ? '<div class="client-section"><h3>Sprint notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '';
-    // Fillable workbook — client can answer all the workbook prompts directly
+    // Fillable workbook — client can answer all the workbook prompts directly.
+    // Buttons row at top: Print, Design (toggle "design" view stylesheet)
     var workbookHtml = '<div class="client-section"><h3>My MDC workbook</h3>' +
       '<p style="font-size:13px;color:var(--stone);margin-bottom:14px">Answer when you\'re ready — your responses save automatically and Phoebe can see them.</p>' +
       makeClientWorkbookField(client.id, prog.id, 'businessSnapshot', '📸 Business snapshot', 'The exact truth of where you stand today.', wb.businessSnapshot, 'My business right now — what I do, revenue, customers, systems…', isLocked) +
@@ -2669,15 +2852,17 @@ function renderClientProgram(client, prog) {
       makeClientWorkbookField(client.id, prog.id, 'sprintFocus',      '🎯 Sprint focus — the one thing', 'What is my one thing to focus on now?', wb.sprintFocus, 'The one thing I\'m focusing on this sprint…', isLocked) +
       makeClientWorkbookField(client.id, prog.id, 'valueHelp',        '💡 My magic — value proposition', 'Start with the change my client gets.', wb.valueHelp, 'I help ________ who feel ________ avoid ________ so they become ________', isLocked) +
       makeClientWorkbookField(client.id, prog.id, 'acquisition',      '📈 Acquisition — client\'s path', 'How do clients first encounter me?', wb.acquisition, 'Where do clients first encounter me? What makes them feel safe? Where do decisions stall?', isLocked) +
-      (isLocked ? '' : '<div style="margin-top:8px;text-align:right"><button class="btn-sm" onclick="window.print()" title="Print or save your filled workbook">🖨 Print my workbook</button></div>') +
+      (isLocked ? '' : '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">' +
+        '<button class="btn-sm" onclick="toggleWorkbookDesignView()" title="Toggle a workbook-style print preview">🎨 Design view</button>' +
+        '<button class="btn-sm primary" onclick="window.print()" title="Print or save your filled workbook as PDF">🖨 Print my workbook</button>' +
+      '</div>') +
       '</div>';
-    // Weekly check-in (kept)
     var checkinHtml = isLocked ? '' :
       '<div class="client-section"><h3>My weekly check-in</h3>' +
       '<div style="font-size:12px;color:var(--hot-pink);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">What came up for me in session</div>' +
       '<textarea id="client-mdc-session-'+prog.id+'" onchange="saveClientMDCCheckin(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What came up for you this week? What can you change as a result?">'+(ci.clientSession||'')+'</textarea>' +
       '</div>';
-    content = lockNotice + achievementsHtml + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml;
+    content = lockNotice + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + fullAchievementsAccordion;
     area.innerHTML = content;
   } else if (prog.workbook==='happyhour') {
     var hh = prog.happyHour||{};
@@ -2686,16 +2871,18 @@ function renderClientProgram(client, prog) {
       (hh.actions?'<div class="intake-answer"><div class="intake-q">Your actions</div><div class="intake-a" style="white-space:pre-wrap">'+hh.actions+'</div></div>':'') +
       (hh.resources?'<div class="intake-answer"><div class="intake-q">Resources</div><div class="intake-a" style="white-space:pre-wrap">'+hh.resources+'</div></div>':'') +
       (!hh.assets&&!hh.discussed?'<p style="color:var(--stone);font-size:13px">Your session summary will appear here after your Happy Hour.</p>':'');
-    content = lockNotice + achievementsHtml + '<div class="client-section"><h3>☀️ Your Happy Hour summary</h3>' + hhBody + '</div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '');
+    content = lockNotice + '<div class="client-section"><h3>☀️ Your Happy Hour summary</h3>' + hhBody + '</div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + fullAchievementsAccordion;
     area.innerHTML = content;
   } else {
-    content = lockNotice + achievementsHtml + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '');
+    content = lockNotice + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + fullAchievementsAccordion;
     area.innerHTML = content;
   }
 
-  // Update hero progress
+  // Update hero progress + earned badge ribbon
   document.getElementById('client-hero-progress-wrap').innerHTML = progressHtml;
   document.getElementById('client-hero-prog').textContent = pi.label||prog.label;
+  var ribbonEl = document.getElementById('client-hero-badges-wrap');
+  if (ribbonEl) ribbonEl.innerHTML = (typeof renderEarnedBadgeRibbon === 'function') ? renderEarnedBadgeRibbon(client) : '';
 }
 
 // Renders shared session notes for the client portal — filters prog.sessionNotes
@@ -2722,6 +2909,59 @@ function renderClientSharedNotes(prog) {
     var bodyText = n.text ? '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--magenta);margin-top:6px">'+n.text+'</div>' : '';
     return '<details style="background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:10px"><summary style="cursor:pointer;font-weight:600;color:var(--magenta);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:13px">📒 '+dateStr+'</span>'+zoomLink+'</summary>' + bodyText + summary + actions + '</details>';
   }).join('');
+}
+
+// MDC sprint+week selector for the client portal. Mirrors the coach view —
+// 4 sprints × 6 weeks, all browseable, current one highlighted. Switching
+// updates client.programs[i].mdcSprint / mdcWeek and re-renders.
+function renderClientMdcSprintNav(client, prog, currentSprint, currentWeek) {
+  var sprintBtns = [1,2,3,4].map(function(s) {
+    var active = s === currentSprint;
+    return '<button onclick="setClientMdcSprint(\''+prog.id+'\','+s+')" ' +
+      'style="padding:5px 12px;border-radius:99px;font-size:12px;font-weight:600;border:1.5px solid '+(active?'var(--hot-pink)':'var(--border)')+';background:'+(active?'var(--hot-pink)':'white')+';color:'+(active?'white':'var(--stone)')+';cursor:pointer">' +
+      'Sprint ' + s + '</button>';
+  }).join('');
+  var weekBtns = [1,2,3,4,5,6].map(function(w) {
+    var active = w === currentWeek;
+    return '<button onclick="setClientMdcWeek(\''+prog.id+'\','+w+')" ' +
+      'style="padding:5px 11px;border-radius:99px;font-size:12px;font-weight:600;border:1.5px solid '+(active?'var(--teal)':'var(--border)')+';background:'+(active?'var(--teal)':'white')+';color:'+(active?'white':'var(--stone)')+';cursor:pointer">' +
+      'W' + w + '</button>';
+  }).join('');
+  return '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
+      '<span style="font-size:11px;color:var(--stone);font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-right:4px">Sprint</span>' + sprintBtns +
+    '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
+      '<span style="font-size:11px;color:var(--stone);font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-right:4px">Week</span>' + weekBtns +
+    '</div></div>';
+}
+
+async function setClientMdcSprint(progId, s) {
+  var client = clients.find(function(c){return c.id===currentClientId;});
+  var prog = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  if (!prog) return;
+  prog.mdcSprint = s;
+  await persistClient(client);
+  renderClientProgram(client, prog);
+}
+async function setClientMdcWeek(progId, w) {
+  var client = clients.find(function(c){return c.id===currentClientId;});
+  var prog = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  if (!prog) return;
+  prog.mdcWeek = w;
+  await persistClient(client);
+  renderClientProgram(client, prog);
+}
+
+// Toggles a "design view" body class that applies the workbook print stylesheet
+// on screen — Phoebe / clients can preview how the printed workbook will look.
+function toggleWorkbookDesignView() {
+  document.body.classList.toggle('workbook-design-view');
+  if (document.body.classList.contains('workbook-design-view')) {
+    branded.toast('Design view on — looks like the printed workbook');
+  } else {
+    branded.toast('Design view off');
+  }
 }
 
 // Renders one fillable workbook field for the client side. Client edits → save to prog.
@@ -2927,8 +3167,8 @@ async function sendMessageToClient() {
   var to      = type === 'email' ? (client.email || '') : (client.phone || '');
   var message = document.getElementById('msg-body')?.value.trim();
   var subject = document.getElementById('msg-subject')?.value.trim() || 'A note from Phoebe';
-  if (!to)      { alert('No ' + type + ' address saved for this client'); return; }
-  if (!message) { alert('Please write a message first'); return; }
+  if (!to)      { branded.alert('No ' + type + ' address saved for this client'); return; }
+  if (!message) { branded.alert('Please write a message first'); return; }
 
   var btn = document.getElementById('send-msg-btn');
   btn.disabled = true; btn.textContent = '⏳ Sending…';
@@ -2953,7 +3193,7 @@ async function sendMessageToClient() {
       setTimeout(function() { btn.disabled=false; btn.textContent='Send'; }, 3000);
     } else if (data.setup) {
       // Not configured — show setup message
-      alert('📧 ' + data.error + '\n\n' + data.setup + '\n\nThe message has been saved as a draft note.');
+      branded.alert('📧 ' + data.error + '\n\n' + data.setup + '\n\nThe message has been saved as a draft note.');
       // Save as draft note anyway
       client.coachNotes = client.coachNotes || [];
       client.coachNotes.push({
@@ -2963,11 +3203,11 @@ async function sendMessageToClient() {
       await persistClient(client); renderCoachNotes(client);
       btn.disabled=false; btn.textContent='Send';
     } else {
-      alert('Error: ' + (data.error || 'Send failed'));
+      branded.alert('Error: ' + (data.error || 'Send failed'));
       btn.disabled=false; btn.textContent='Send';
     }
   } catch(e) {
-    alert('Could not connect to send API. Make sure site is deployed.\n\nError: ' + e.message);
+    branded.alert('Could not connect to send API. Make sure site is deployed.\n\nError: ' + e.message);
     btn.disabled=false; btn.textContent='Send';
   }
 }
@@ -3109,7 +3349,7 @@ async function aiSummariseSession(clientId, progId, noteId) {
   var note = (prog.sessionNotes||[]).find(function(n){return n.id===noteId;});
   if(!note) return;
   if (!note.text || note.text.trim().length < 30) {
-    alert('Add some session notes first — there\'s nothing to summarise yet.');
+    branded.alert('Add some session notes first — there\'s nothing to summarise yet.');
     return;
   }
   var btn = event && event.target;
@@ -3136,7 +3376,7 @@ async function aiSummariseSession(clientId, progId, noteId) {
     await persistClient(client);
     renderSessionNotes(client, prog);
   } catch(e) {
-    alert('AI summary failed: ' + e.message);
+    branded.alert('AI summary failed: ' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✦ AI summarise + suggest actions'; }
   }
@@ -3554,7 +3794,7 @@ function addHubResource() {
   var type  = document.getElementById('res-type')?.value || 'blog';
   var tags  = (document.getElementById('res-tags')?.value||'').split(',').map(function(t){return t.trim();}).filter(Boolean);
   var desc  = document.getElementById('res-desc')?.value.trim() || '';
-  if (!title||!url) { alert('Title and URL are required'); return; }
+  if (!title||!url) { branded.alert('Title and URL are required'); return; }
   HUB_RESOURCES = HUB_RESOURCES || [];
   HUB_RESOURCES.push({ id:'r'+Date.now(), type:type, title:title, url:url, tags:tags, date:new Date().toISOString().split('T')[0], desc:desc });
   // Save to localStorage for persistence
@@ -3577,7 +3817,7 @@ function shareResourceWithClient(resourceId, resourceTitle) {
   } else {
     // Copy link to clipboard
     navigator.clipboard.writeText(resource.url);
-    alert('Link copied: ' + resource.url);
+    branded.alert('Link copied: ' + resource.url);
   }
 }
 
@@ -3640,8 +3880,8 @@ async function submitGlobalTask() {
   var clientId = document.getElementById('gt-client')?.value;
   var text = document.getElementById('gt-text')?.value.trim();
   var due  = document.getElementById('gt-due')?.value;
-  if (!clientId) { alert('Select a client'); return; }
-  if (!text) { alert('Enter a task'); return; }
+  if (!clientId) { branded.alert('Select a client'); return; }
+  if (!text) { branded.alert('Enter a task'); return; }
   await addTask(clientId, null, text, due, false);
   document.getElementById('global-task-form').style.display='none';
   document.getElementById('gt-text').value=''; document.getElementById('gt-due').value='';
@@ -3695,7 +3935,7 @@ async function saveReferral(clientId) {
   await persistClient(client);
   document.getElementById('broadcast-modal').classList.remove('open');
   renderReferralHighlights();
-  alert('Referral saved!');
+  branded.toast('Referral saved');
 }
 
 // ============================================================
@@ -3876,12 +4116,20 @@ function renderTasksPanel(client, progId) {
   el.innerHTML =
     weekPanelHtml +
 
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">' +
     '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta)">' + pending.length + ' pending tasks</div>' +
-    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
     '<button class="btn-sm primary" onclick="showAddTaskForm(\''+cid+'\',\''+progId+'\')">+ Add task</button>' +
-    '<button class="btn-sm" onclick="autoDetectTasks(\''+cid+'\',\''+progId+'\')" style="background:var(--marshmallow);color:var(--hot-pink);border-color:rgba(236,44,138,0.3)">✦ AI detect tasks</button>' +
     '</div></div>' +
+
+    // ── Ask Claude row — three quick AI helpers for the coach ───────────────
+    '<div style="background:linear-gradient(135deg,#FFF8FB,#FDEFF5);border:1px solid rgba(236,44,138,0.2);border-radius:12px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<span style="font-size:11px;color:var(--hot-pink);font-weight:700;text-transform:uppercase;letter-spacing:0.06em">✦ Ask Claude</span>' +
+      '<button class="btn-sm" onclick="askClaudePrepNotes(\''+cid+'\',\''+progId+'\')" title="Draft prep notes for the next session — what to review, what to ask, what to challenge" style="background:white;font-size:11px">📝 Prep next session</button>' +
+      '<button class="btn-sm" onclick="askClaudeNextActions(\''+cid+'\',\''+progId+'\')" title="Based on completed work, suggest the next 3 priority tasks" style="background:white;font-size:11px">🎯 Suggest next actions</button>' +
+      '<button class="btn-sm" onclick="autoDetectTasks(\''+cid+'\',\''+progId+'\')" title="Pull tasks out of recent session notes" style="background:white;font-size:11px">🔍 Detect from notes</button>' +
+    '</div>' +
+    '<div id="ask-claude-output-'+progId+'" style="display:none;background:white;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.6;color:var(--magenta);white-space:pre-wrap;max-height:380px;overflow-y:auto"></div>' +
 
     // Add task form
     '<div id="add-task-form-'+progId+'" style="display:none;background:var(--marshmallow);border-radius:10px;padding:14px;margin-bottom:12px">' +
@@ -4015,10 +4263,94 @@ async function autoDetectTasks(clientId, progId) {
       setTimeout(function(){ btn.disabled=false; btn.textContent='✦ AI detect tasks'; }, 3000);
     }
   } catch(e) {
-    btn.disabled=false; btn.textContent='✦ AI detect tasks';
+    btn.disabled=false; btn.textContent='🔍 Detect from notes';
     console.error('[autoDetectTasks] Failed:', e.message);
-    alert('AI task detection failed: ' + e.message);
+    branded.error('AI task detection failed: ' + e.message);
   }
+}
+
+// ============================================================
+// "Ask Claude" coach helpers — drafted right inside the tasks panel.
+// Both render output into #ask-claude-output-<progId> as plain text the
+// coach can copy or paste into a session note. They never auto-create
+// data — Phoebe stays in control. (Use "🔍 Detect from notes" if you want
+// AI to actually create task records.)
+// ============================================================
+function gatherClientContext(client, prog) {
+  var planText = (prog.plan||[]).map(function(m) { return 'Month '+m.month+': '+m.tasks.join(', '); }).join('\n');
+  var notesText = (prog.sessionNotes||[]).slice(-3).map(function(n){
+    return '['+(n.date||'')+' · '+(n.sharedWithClient?'shared':'private')+']\n'+(n.text||'');
+  }).join('\n\n');
+  var openTasks = (client.tasks||[]).filter(function(t){ return !t.done && (!t.progId || t.progId===prog.id); }).map(function(t){ return '- '+t.text+(t.dueDate?' (due '+t.dueDate+')':''); }).join('\n');
+  var doneTasks = (client.tasks||[]).filter(function(t){ return t.done && (!t.progId || t.progId===prog.id); }).slice(-8).map(function(t){ return '✓ '+t.text; }).join('\n');
+  var n = prog.notes || {};
+  var wins = ((prog.wins||[]).concat(client.wins||[])).slice(-5).map(function(w){ return '🏆 '+(w.metric||'')+': '+(w.before||'')+' → '+(w.after||'')+' — '+(w.note||''); }).join('\n');
+  return [
+    'Client: ' + client.name + (client.biz ? ' (' + client.biz + ')' : ''),
+    'Programme: ' + ((PROGRAMS[prog.program]||{}).label || prog.program),
+    prog.sessionDate ? 'Session date: ' + prog.sessionDate : '',
+    n.themes ? 'Themes Phoebe spotted: ' + n.themes : '',
+    n.opps   ? 'Opportunities: ' + n.opps : '',
+    n.private ? 'Phoebe\'s private notes: ' + n.private : '',
+    notesText ? '\nRecent session notes:\n' + notesText : '',
+    openTasks ? '\nOpen tasks:\n' + openTasks : '',
+    doneTasks ? '\nRecently completed:\n' + doneTasks : '',
+    wins ? '\nRecent wins:\n' + wins : '',
+    planText ? '\n90-day plan summary:\n' + planText : ''
+  ].filter(Boolean).join('\n');
+}
+
+async function askClaudeAI(progId, btn, system, userPrompt, doneLabel) {
+  var outId = 'ask-claude-output-' + progId;
+  var out = document.getElementById(outId);
+  if (out) { out.style.display = 'block'; out.textContent = '⏳ Asking Claude…'; }
+  var prevText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Working…'; }
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001', max_tokens: 1024,
+        system: system,
+        messages: [{ role:'user', content: userPrompt }]
+      })
+    });
+    var data = await resp.json();
+    var text = (data.content && data.content[0] && data.content[0].text) || '';
+    if (!text && data.error) throw new Error(data.error.message || 'AI returned an error');
+    if (out) out.textContent = text || '(Claude returned no text — try again)';
+    if (btn) { btn.textContent = doneLabel || '✓ Done'; setTimeout(function(){ btn.disabled = false; btn.textContent = prevText; }, 2200); }
+  } catch(e) {
+    if (out) { out.textContent = ''; out.style.display = 'none'; }
+    if (btn) { btn.disabled = false; btn.textContent = prevText; }
+    branded.error('Couldn\'t reach Claude. ' + (e && e.message ? e.message : ''));
+  }
+}
+
+async function askClaudePrepNotes(clientId, progId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!client || !prog) return;
+  var system = 'You are Phoebe Blamey\'s coaching assistant. Australian English. Warm, direct, no corporate jargon. ' +
+    'You produce a short pre-session brief Phoebe can read in 60 seconds before her next session with this client. ' +
+    'Use plain prose with bold headings (markdown). Include exactly four sections, each just 2-3 sentences:\n' +
+    '**What changed since last session** · **What to celebrate** · **What to probe (3 bullets)** · **Suggested opening question**\n' +
+    'Be specific — name the client, reference their actual notes/tasks/wins. Don\'t pad with generic coaching advice.';
+  var prompt = 'Draft a pre-session prep brief for Phoebe.\n\n' + gatherClientContext(client, prog);
+  await askClaudeAI(progId, event && event.target, system, prompt, '✓ Prep ready');
+}
+
+async function askClaudeNextActions(clientId, progId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!client || !prog) return;
+  var system = 'You are Phoebe Blamey\'s coaching assistant. Australian English. Warm, direct, no corporate jargon. ' +
+    'Suggest the THREE highest-leverage actions for this client to take in the next 14 days. ' +
+    'Format as a numbered list. Each action must be specific (named action verb, concrete target), grounded in the client\'s actual situation, ' +
+    'and realistic for a busy small-business owner. Add a one-line rationale beneath each. No fluff.';
+  var prompt = 'What are the three best next actions for this client right now?\n\n' + gatherClientContext(client, prog);
+  await askClaudeAI(progId, event && event.target, system, prompt, '✓ Suggested');
 }
 
 // ============================================================
@@ -4267,7 +4599,7 @@ async function saveEditClient(clientId) {
   var newAccess = (document.getElementById('edit-access')?.value || '').toUpperCase().trim();
   if (newAccess && newAccess !== client.clientAccess) {
     var result = await changeClientAccessCode(clientId, newAccess);
-    if (!result.ok) { alert('Access code not saved: ' + result.error); return; }
+    if (!result.ok) { branded.alert('Access code not saved: ' + result.error); return; }
   }
 
   client.name  = document.getElementById('edit-name')?.value.trim()||client.name;
@@ -4428,8 +4760,8 @@ function archiveCurrentResearch(prog) {
 async function logResearchImprovement() {
   var client = clients.find(function(c){return c.id===currentClientId;});
   var prog   = client ? (client.programs||[]).find(function(p){return p.id===currentProgramId;}) : null;
-  if (!client || !prog) { alert('Open a client and program first.'); return; }
-  var note = prompt('What\'s improved or changed for this client?\n\nExamples: "New website launched", "Pricing now clear", "Hired first VA", "Hit $20k month for first time"');
+  if (!client || !prog) { branded.alert('Open a client and program first.'); return; }
+  var note = await branded.prompt('What\'s improved or changed for this client?', '', 'e.g. New website launched · Pricing now clear · Hired first VA · Hit $20k month', { title:'Log an improvement', okLabel:'Save' });
   if (!note || !note.trim()) return;
   prog.notes = prog.notes || {};
   prog.notes.researchHistory = prog.notes.researchHistory || [];
@@ -4486,7 +4818,7 @@ async function generateIntakeSummary() {
   var research = (researchEl && researchEl.value) || (prog.notes && prog.notes.research) || '';
   var intake   = prog.intake || '';
   if (!research && !intake) {
-    alert('Nothing to summarise yet — run the research brief first, or fill in the intake.');
+    branded.alert('Nothing to summarise yet — run the research brief first, or fill in the intake.');
     return;
   }
 
@@ -4514,7 +4846,7 @@ async function generateIntakeSummary() {
       await persistClient(client);
     }
   } catch (e) {
-    alert('Summary generation failed: ' + e.message);
+    branded.alert('Summary generation failed: ' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✦ AI summarise'; }
   }
@@ -4969,219 +5301,303 @@ function renderTaskSheet() {
 // ============================================================
 // COHORT MANAGER  
 // ============================================================
+// ============================================================
+// COHORT MANAGER (rewritten v8100)
+// Each cohort card now expands to show full detail inline:
+//   - Editable name, start, end, next session date + time, Zoom + WhatsApp
+//     (all are real <input>s, not prompts)
+//   - Member list with avatars, programme date, click-through
+//   - "Sessions" list — every Zoom session note this cohort has had, newest first
+//   - Broadcast email opens the existing branded broadcast modal
+// Native popups (alert/confirm/prompt) are gone — replaced with branded.*
+// ============================================================
+window._expandedCohorts = window._expandedCohorts || {};
+
+function _saveCohorts() {
+  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
+}
+function _findCohort(id) {
+  if (!Array.isArray(MDC_COHORTS)) return null;
+  return MDC_COHORTS.find(function(x){ return x.id === id; }) || null;
+}
+function _cohortMembers(cohortId) {
+  return (clients||[]).filter(function(c){
+    return (c.programs||[]).some(function(p){ return p.cohort === cohortId; });
+  });
+}
+function _formatCohortDate(d, opts) {
+  if (!d) return '';
+  try { return new Date(d).toLocaleDateString('en-AU', opts || {day:'numeric',month:'short',year:'numeric'}); }
+  catch(e) { return d; }
+}
+
 function renderCohortManager() {
   var el = document.getElementById('cohort-manager-content');
-  if (!el) {
-    console.error('[CohortManager] Element not found');
-    return;
-  }
+  if (!el) { console.error('[CohortManager] Element not found'); return; }
   var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [
     { id:'cohort-1', name:'MDC Cohort 1', dates:'Apr–Jun 2026', whatsapp:'' }
   ];
-  console.log('[CohortManager] rendering', cohorts.length, 'cohorts');
 
-  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">';
+  var headerHtml =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">' +
+      '<div style="font-size:13px;color:var(--stone)">' + cohorts.length + ' cohort' + (cohorts.length===1?'':'s') + ' · click any cohort to expand</div>' +
+      '<button onclick="addNewCohort()" style="background:var(--hot-pink);color:white;border:none;padding:8px 16px;border-radius:99px;font-size:12px;font-weight:700;cursor:pointer">+ Create new cohort</button>' +
+    '</div>';
 
-  cohorts.forEach(function(co) {
-    var members = clients.filter(function(c) {
-      return (c.programs || []).some(function(p) { return p.cohort === co.id; });
+  var cardsHtml = cohorts.map(function(co) { return renderCohortCard(co); }).join('');
+
+  el.innerHTML = headerHtml + '<div style="display:flex;flex-direction:column;gap:14px">' + cardsHtml + '</div>';
+}
+
+function renderCohortCard(co) {
+  var members = _cohortMembers(co.id);
+  var expanded = !!window._expandedCohorts[co.id];
+
+  // Date label
+  var dateLabel = '';
+  if (co.start && co.end) {
+    dateLabel = _formatCohortDate(co.start, {month:'short',year:'numeric'}) + ' – ' + _formatCohortDate(co.end, {month:'short',year:'numeric'});
+  } else { dateLabel = co.dates || ''; }
+
+  // Next session label
+  var nextSession = '';
+  if (co.nextSessionDate) {
+    nextSession = _formatCohortDate(co.nextSessionDate, {weekday:'short',day:'numeric',month:'short'}) + (co.nextSessionTime ? ' · ' + co.nextSessionTime : '');
+  }
+
+  var head =
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer" onclick="toggleCohortExpand(\''+co.id+'\')">' +
+      '<div style="font-family:var(--f-head);font-size:17px;color:var(--magenta);font-weight:700;flex:1;min-width:0">' + (co.name||'Untitled cohort') + '</div>' +
+      '<span style="font-size:11px;background:var(--marshmallow);color:var(--magenta);padding:3px 9px;border-radius:99px;font-weight:600">' + members.length + ' member' + (members.length===1?'':'s') + '</span>' +
+      (dateLabel ? '<span style="font-size:11px;color:var(--stone)">📅 ' + dateLabel + '</span>' : '') +
+      (nextSession ? '<span style="font-size:11px;color:var(--teal);font-weight:600">⏭ ' + nextSession + '</span>' : '') +
+      '<span style="font-size:14px;color:var(--stone);transition:transform 0.2s;display:inline-block;transform:rotate('+(expanded?'180deg':'0')+')">▾</span>' +
+    '</div>';
+
+  if (!expanded) {
+    return '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:14px 18px">' + head + '</div>';
+  }
+
+  // ── Expanded view ─────────────────────────────────────────────────────────
+  // Editable details grid
+  var detailFields =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">' +
+      _cohortInput(co.id, 'name',             'Cohort name',         co.name||'',             'text', 'e.g. MDC May 2026') +
+      _cohortInput(co.id, 'start',            'Start date',          co.start||'',            'date', '') +
+      _cohortInput(co.id, 'end',              'End date',            co.end||'',              'date', '') +
+      _cohortInput(co.id, 'nextSessionDate',  'Next session date',   co.nextSessionDate||'',  'date', '') +
+      _cohortInput(co.id, 'nextSessionTime',  'Next session time',   co.nextSessionTime||'',  'text', 'e.g. 10:00am') +
+      _cohortInput(co.id, 'zoomLink',         'Zoom meeting link',   co.zoomLink||'',         'url',  'https://zoom.us/j/…') +
+      _cohortInput(co.id, 'whatsapp',         'WhatsApp group link', co.whatsapp||'',         'url',  'https://chat.whatsapp.com/…') +
+    '</div>' +
+    '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+      (co.zoomLink ? '<a href="'+co.zoomLink+'" target="_blank" style="font-size:11px;background:#2D8CFF;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">🎬 Open Zoom</a>' : '') +
+      (co.whatsapp ? '<a href="'+co.whatsapp+'" target="_blank" style="font-size:11px;background:#25D366;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">💬 Open WhatsApp</a>' : '') +
+      '<button class="btn-sm" onclick="confirmDeleteCohort(\''+co.id+'\')" style="margin-left:auto;color:#C0392B;border-color:rgba(192,57,43,0.3);background:white">🗑 Delete cohort</button>' +
+    '</div>';
+
+  // Member list
+  var memberList = members.length === 0
+    ? '<div style="color:var(--stone);font-size:13px;padding:12px;text-align:center;background:var(--marshmallow);border-radius:10px">No clients assigned yet</div>'
+    : '<div style="display:flex;flex-direction:column;gap:6px">' + members.map(function(m) {
+        var initials = m.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2);
+        var prog = (m.programs||[]).find(function(p){ return p.cohort === co.id; }) || {};
+        var progDate = prog.sessionDate ? _formatCohortDate(prog.sessionDate, {day:'numeric',month:'short'}) : '';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--marshmallow);border-radius:10px;cursor:pointer" onclick="openClient(\''+m.id+'\')">' +
+          '<div style="width:28px;height:28px;border-radius:99px;background:var(--bubblegum);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--magenta);flex-shrink:0">'+initials+'</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;color:var(--magenta);font-weight:600">'+m.name+'</div>' +
+            '<div style="font-size:11px;color:var(--stone)">'+(m.biz||m.email||'')+ (progDate?' · joined '+progDate:'')+'</div>' +
+          '</div>' +
+          '<button onclick="event.stopPropagation();confirmRemoveFromCohort(\''+m.id+'\',\''+co.id+'\')" class="btn-sm" style="font-size:11px;padding:4px 9px;background:white;color:var(--stone)" title="Remove from cohort">×</button>' +
+        '</div>';
+      }).join('') + '</div>';
+
+  var memberActions =
+    '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
+      '<button class="btn-sm primary" onclick="showAddToCohort(\''+co.id+'\')">+ Add member</button>' +
+      (members.length ? '<button class="btn-sm" onclick="broadcastToCohort(\''+co.id+'\',\'email\')">📧 Email all</button>' : '') +
+      (members.length && co.whatsapp ? '<a href="'+co.whatsapp+'" target="_blank" class="btn-sm" style="text-decoration:none">💬 WhatsApp group</a>' : '') +
+    '</div>';
+
+  // Sessions list — collected from each member's sessionNotes for this cohort prog
+  var allSessions = [];
+  members.forEach(function(m) {
+    var prog = (m.programs||[]).find(function(p){ return p.cohort === co.id; });
+    if (!prog) return;
+    (prog.sessionNotes||[]).forEach(function(n) {
+      allSessions.push({ date: n.date, member: m.name, text: n.text||'', zoomUrl: n.zoomUrl||'', shared: !!n.sharedWithClient });
     });
+  });
+  allSessions.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
 
-    // Compose date label — prefer structured start/end if present, fall back to legacy "dates" string
-    var dateLabel = '';
+  var sessionsHtml = allSessions.length === 0
+    ? '<div style="color:var(--stone);font-size:12px;padding:10px;text-align:center">No sessions logged for this cohort yet.</div>'
+    : '<div style="display:flex;flex-direction:column;gap:6px">' + allSessions.slice(0, 20).map(function(s) {
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--paper);border:1px solid var(--border-soft);border-radius:8px;font-size:12px">' +
+          '<span style="font-weight:700;color:var(--hot-pink);min-width:80px">' + (_formatCohortDate(s.date,{day:'numeric',month:'short'})||'No date') + '</span>' +
+          '<span style="color:var(--magenta);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.member + ' — ' + (s.text.slice(0,80) + (s.text.length>80?'…':'')) + '</span>' +
+          (s.zoomUrl ? '<a href="'+s.zoomUrl+'" target="_blank" style="color:#2D8CFF;font-weight:600;text-decoration:none">🎥</a>' : '') +
+        '</div>';
+      }).join('') + (allSessions.length > 20 ? '<div style="font-size:11px;color:var(--stone);text-align:center;margin-top:4px">Showing 20 most recent</div>' : '') + '</div>';
+
+  return '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:16px 18px">' +
+    head +
+    detailFields +
+    '<div style="margin-top:18px;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Members</div>' +
+    memberList + memberActions +
+    '<div style="margin-top:18px;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Recent sessions</div>' +
+    sessionsHtml +
+    '</div>';
+}
+
+function _cohortInput(cohortId, field, label, value, type, placeholder) {
+  return '<div>' +
+    '<label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--stone);margin-bottom:4px">' + label + '</label>' +
+    '<input type="'+type+'" value="'+(value||'').replace(/"/g,'&quot;')+'" placeholder="'+(placeholder||'').replace(/"/g,'&quot;')+'" ' +
+      'onchange="updateCohortField(\''+cohortId+'\',\''+field+'\',this.value)" ' +
+      'style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none">' +
+  '</div>';
+}
+
+function toggleCohortExpand(cohortId) {
+  window._expandedCohorts[cohortId] = !window._expandedCohorts[cohortId];
+  renderCohortManager();
+}
+
+function updateCohortField(cohortId, field, value) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  co[field] = (value || '').trim();
+  // Refresh the legacy "dates" pretty-print whenever start/end change
+  if (field === 'start' || field === 'end') {
     if (co.start && co.end) {
       try {
         var s = new Date(co.start), e = new Date(co.end);
-        dateLabel = s.toLocaleDateString('en-AU', {month:'short',year:'numeric'}) + ' – ' + e.toLocaleDateString('en-AU', {month:'short',year:'numeric'});
-      } catch(_) { dateLabel = co.dates || ''; }
-    } else { dateLabel = co.dates || ''; }
-
-    // Next session display
-    var nextSessionLabel = '';
-    if (co.nextSessionDate) {
-      try {
-        var d = new Date(co.nextSessionDate);
-        nextSessionLabel = d.toLocaleDateString('en-AU', {weekday:'short',day:'numeric',month:'short'}) + (co.nextSessionTime ? ' · ' + co.nextSessionTime : '');
-      } catch(_) { nextSessionLabel = co.nextSessionDate; }
+        co.dates = s.toLocaleDateString('en-AU',{month:'short',year:'numeric'}) + ' – ' + e.toLocaleDateString('en-AU',{month:'short',year:'numeric'});
+      } catch(_) {}
     }
-
-    html += '<div style="background:white;border:1.5px solid #F5D5E3;border-radius:14px;padding:18px">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">' +
-      '<div style="min-width:0;flex:1"><div style="font-family:var(--f-head);font-size:16px;color:#C9266B;font-weight:700">' + co.name + '</div>' +
-      '<div style="font-size:11px;color:#ACA495">' + (dateLabel||'No dates set') + ' · ' + members.length + ' member' + (members.length!==1?'s':'') + '</div></div>' +
-      '<button onclick="showAddToCohort(\''+co.id+'\')" style="background:#EC2C8A;color:white;border:none;padding:6px 12px;border-radius:99px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">+ Assign</button>' +
-      '</div>';
-
-    // Next session row
-    html += '<div style="background:#FDEFF5;border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
-    if (nextSessionLabel) {
-      html += '<span style="font-size:11px;color:#ACA495;text-transform:uppercase;font-weight:700;letter-spacing:0.06em">Next session</span>' +
-              '<span style="font-size:13px;color:#C9266B;font-weight:600">' + nextSessionLabel + '</span>';
-    } else {
-      html += '<span style="font-size:11px;color:#ACA495">No next session scheduled</span>';
-    }
-    html += '<button onclick="setCohortDates(\''+co.id+'\')" class="btn-sm" style="margin-left:auto;padding:3px 10px;font-size:11px;background:white;border:1.5px solid #F5D5E3;color:#C9266B;border-radius:99px;cursor:pointer">📅 Edit dates</button>';
-    html += '</div>';
-
-    // Action chips row — Zoom + WhatsApp
-    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
-    if (co.zoomLink) {
-      html += '<a href="'+co.zoomLink+'" target="_blank" style="font-size:11px;background:#2D8CFF;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">🎬 Open Zoom</a>';
-      html += '<button onclick="setCohortZoom(\''+co.id+'\')" style="background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer">Edit</button>';
-    } else {
-      html += '<button onclick="setCohortZoom(\''+co.id+'\')" style="background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer">+ Add Zoom link</button>';
-    }
-    if (co.whatsapp) {
-      html += '<a href="'+co.whatsapp+'" target="_blank" style="font-size:11px;background:#25D366;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">💬 Open WhatsApp</a>';
-      html += '<button onclick="setCohortWhatsApp(\''+co.id+'\')" style="background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer">Edit</button>';
-    } else {
-      html += '<button onclick="setCohortWhatsApp(\''+co.id+'\')" style="background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:4px 10px;border-radius:99px;font-size:11px;cursor:pointer">+ Add WhatsApp link</button>';
-    }
-    html += '</div>';
-
-    if (members.length === 0) {
-      html += '<div style="color:#ACA495;font-size:12px;padding:12px;text-align:center;background:#FDEFF5;border-radius:8px">No clients assigned yet</div>';
-    } else {
-      html += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">';
-      members.forEach(function(m) {
-        var initials = m.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2);
-        html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#FDEFF5;border-radius:8px;cursor:pointer" onclick="openClient(\''+m.id+'\')"><div style="width:24px;height:24px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#C9266B">'+initials+'</div><div style="flex:1;font-size:12px;color:#C9266B">'+m.name+'</div><button onclick="event.stopPropagation();removeFromCohort(\''+m.id+'\',\''+co.id+'\')" style="background:none;border:none;color:#ACA495;cursor:pointer;font-size:14px">×</button></div>';
-      });
-      html += '</div>';
-      html += '<div style="display:flex;gap:6px"><button onclick="broadcastToCohort(\''+co.id+'\',\'email\')" style="flex:1;background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:6px;border-radius:99px;font-size:11px;cursor:pointer">📧 Email all</button><button onclick="broadcastToCohort(\''+co.id+'\',\'sms\')" style="flex:1;background:#FDEFF5;color:#C9266B;border:1.5px solid #F5D5E3;padding:6px;border-radius:99px;font-size:11px;cursor:pointer">💬 SMS all</button></div>';
-    }
-    html += '</div>';
-  });
-
-  html += '</div>';
-  html += '<div style="margin-top:18px;text-align:center"><button onclick="addNewCohort()" style="background:#EC2C8A;color:white;border:none;padding:8px 18px;border-radius:99px;font-size:12px;font-weight:700;cursor:pointer">+ Create new cohort</button></div>';
-
-  el.innerHTML = html;
+  }
+  _saveCohorts();
+  branded.toast('Saved');
+  renderCohortManager();
 }
 
-function showAddToCohort(cohortId) {
-  var unassigned = clients.filter(function(c) {
-    var alreadyIn = (c.programs || []).some(function(p) { return p.cohort === cohortId; });
-    return !alreadyIn;
+async function showAddToCohort(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var unassigned = (clients||[]).filter(function(c) {
+    return !(c.programs||[]).some(function(p){ return p.cohort === cohortId; });
   });
-  if (unassigned.length === 0) { alert('All clients already in this cohort.'); return; }
-  var names = unassigned.map(function(c, i) { return (i+1)+'. '+c.name; }).join('\n');
-  var pick = prompt('Pick a client to add:\n\n'+names+'\n\nEnter the number:');
-  if (!pick) return;
-  var idx = parseInt(pick) - 1;
-  if (isNaN(idx) || idx < 0 || idx >= unassigned.length) return;
-  var c = unassigned[idx];
-  var prog = (c.programs || []).find(function(p) { return p.workbook === 'mdc'; });
+  if (unassigned.length === 0) { branded.alert('All clients are already in this cohort.', { title:'Nothing to add' }); return; }
+  // Build a styled chooser inside the branded modal (we drop into the modal host directly)
+  var host = document.getElementById('branded-modal-host');
+  document.getElementById('branded-modal-icon').textContent = '👥';
+  document.getElementById('branded-modal-title').textContent = 'Add a client to ' + (co.name||'this cohort');
+  var body = document.getElementById('branded-modal-body');
+  body.style.whiteSpace = 'normal';
+  body.innerHTML = '<div style="font-size:13px;color:var(--stone);margin-bottom:10px">Pick a client to assign to this cohort. They\'ll get a new MDC programme entry tied to this cohort.</div>' +
+    '<div style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">' +
+    unassigned.map(function(c) {
+      var initials = c.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2);
+      return '<button onclick="confirmAddToCohort(\''+c.id+'\',\''+cohortId+'\')" style="display:flex;align-items:center;gap:10px;padding:10px;background:white;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;text-align:left;width:100%">' +
+        '<div style="width:28px;height:28px;border-radius:99px;background:var(--bubblegum);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--magenta)">'+initials+'</div>' +
+        '<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--magenta);font-weight:600">'+c.name+'</div><div style="font-size:11px;color:var(--stone)">'+(c.biz||c.email||'')+'</div></div>' +
+      '</button>';
+    }).join('') + '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var cancel = document.createElement('button');
+  cancel.className = 'btn-sm';
+  cancel.textContent = 'Cancel';
+  cancel.onclick = function() { host.style.display = 'none'; body.style.whiteSpace = 'pre-wrap'; };
+  actions.appendChild(cancel);
+  host.style.display = 'flex';
+}
+
+async function confirmAddToCohort(clientId, cohortId) {
+  var c = (clients||[]).find(function(x){ return x.id === clientId; });
+  if (!c) return;
+  var prog = (c.programs||[]).find(function(p){ return p.workbook === 'mdc'; });
   if (!prog) {
     if (!c.programs) c.programs = [];
     prog = {
       id:'prog-mdc-'+Date.now(), program:'mdc', workbook:'mdc', label:'MDC Cohort',
-      sessionDate:new Date().toISOString(), status:'active', cohort:cohortId,
+      sessionDate:new Date().toISOString().split('T')[0], status:'active', cohort:cohortId,
       sessionNotes:[], plan:[], notes:{}, tasks:[]
     };
     c.programs.push(prog);
   } else { prog.cohort = cohortId; }
-  if (typeof persistClient === 'function') persistClient(c);
+  if (typeof persistClient === 'function') await persistClient(c);
+  document.getElementById('branded-modal-host').style.display = 'none';
+  document.getElementById('branded-modal-body').style.whiteSpace = 'pre-wrap';
+  branded.toast(c.name + ' added to cohort');
   renderCohortManager();
 }
 
-function removeFromCohort(clientId, cohortId) {
-  if (!confirm('Remove from cohort?')) return;
-  var c = clients.find(function(x) { return x.id === clientId; });
+async function confirmRemoveFromCohort(clientId, cohortId) {
+  var c = (clients||[]).find(function(x){ return x.id === clientId; });
   if (!c) return;
-  (c.programs || []).forEach(function(p) { if (p.cohort === cohortId) p.cohort = null; });
-  if (typeof persistClient === 'function') persistClient(c);
+  var ok = await branded.confirm('Remove ' + c.name + ' from this cohort? Their MDC programme record stays — only the cohort link is removed.', { title:'Remove from cohort?', okLabel:'Remove', danger:true });
+  if (!ok) return;
+  (c.programs||[]).forEach(function(p){ if (p.cohort === cohortId) p.cohort = null; });
+  if (typeof persistClient === 'function') await persistClient(c);
+  branded.toast('Removed');
   renderCohortManager();
 }
 
-function setCohortWhatsApp(cohortId) {
-  var co = (MDC_COHORTS||[]).find(function(x) { return x.id === cohortId; });
+async function confirmDeleteCohort(cohortId) {
+  var co = _findCohort(cohortId);
   if (!co) return;
-  var url = prompt('WhatsApp group invite link:', co.whatsapp || '');
-  if (url === null) return; // user cancelled
-  co.whatsapp = url.trim();
-  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
+  var members = _cohortMembers(cohortId);
+  var msg = members.length
+    ? 'Delete the "' + (co.name||'Untitled') + '" cohort? Its ' + members.length + ' member' + (members.length===1?'':'s') + ' will keep their MDC programme record but lose the cohort link.'
+    : 'Delete the empty "' + (co.name||'Untitled') + '" cohort?';
+  var ok = await branded.confirm(msg, { title:'Delete cohort?', okLabel:'Delete', danger:true });
+  if (!ok) return;
+  members.forEach(function(c) {
+    (c.programs||[]).forEach(function(p){ if (p.cohort === cohortId) p.cohort = null; });
+    if (typeof persistClient === 'function') persistClient(c);
+  });
+  if (Array.isArray(MDC_COHORTS)) {
+    var idx = MDC_COHORTS.findIndex(function(x){ return x.id === cohortId; });
+    if (idx >= 0) MDC_COHORTS.splice(idx, 1);
+    _saveCohorts();
+  }
+  branded.toast('Cohort deleted');
   renderCohortManager();
 }
 
-function setCohortZoom(cohortId) {
-  var co = (MDC_COHORTS||[]).find(function(x) { return x.id === cohortId; });
-  if (!co) return;
-  var url = prompt('Zoom meeting link for this cohort:', co.zoomLink || '');
-  if (url === null) return;
-  co.zoomLink = url.trim();
-  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
-  renderCohortManager();
-}
-
-function setCohortDates(cohortId) {
-  var co = (MDC_COHORTS||[]).find(function(x) { return x.id === cohortId; });
-  if (!co) return;
-  var start = prompt('Cohort start date (YYYY-MM-DD):', co.start || '');
-  if (start === null) return;
-  var end = prompt('Cohort end date (YYYY-MM-DD):', co.end || '');
-  if (end === null) return;
-  var nextDate = prompt('Next session date (YYYY-MM-DD, leave blank for none):', co.nextSessionDate || '');
-  if (nextDate === null) return;
-  var nextTime = '';
-  if (nextDate) {
-    nextTime = prompt('Next session time (e.g. "10:00am" or "14:00", leave blank if not set):', co.nextSessionTime || '');
-    if (nextTime === null) return;
-  }
-  co.start = start.trim();
-  co.end = end.trim();
-  co.nextSessionDate = nextDate.trim();
-  co.nextSessionTime = nextTime.trim();
-  // Refresh the legacy "dates" label so older code still has something
-  if (co.start && co.end) {
-    try {
-      var s = new Date(co.start), e = new Date(co.end);
-      co.dates = s.toLocaleDateString('en-AU', {month:'short',year:'numeric'}) + ' – ' + e.toLocaleDateString('en-AU', {month:'short',year:'numeric'});
-    } catch(_) {}
-  }
-  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
-  renderCohortManager();
-}
-
-function addNewCohort() {
-  var name = prompt('Cohort name:');
-  if (!name) return;
-  var start = prompt('Start date (YYYY-MM-DD, optional):') || '';
-  var end   = prompt('End date (YYYY-MM-DD, optional):') || '';
-  var zoomLink = prompt('Zoom link for cohort sessions (optional):') || '';
-  var legacyDates = '';
-  if (start && end) {
-    try {
-      var s = new Date(start), e = new Date(end);
-      legacyDates = s.toLocaleDateString('en-AU', {month:'short',year:'numeric'}) + ' – ' + e.toLocaleDateString('en-AU', {month:'short',year:'numeric'});
-    } catch(_) {}
-  }
-  if (!Array.isArray(MDC_COHORTS)) window.MDC_COHORTS = [];
-  MDC_COHORTS.push({
+async function addNewCohort() {
+  var name = await branded.prompt('What\'s this cohort called?', '', 'e.g. MDC May 2026', { title:'New cohort', okLabel:'Create' });
+  if (name === null || !name.trim()) return;
+  if (!Array.isArray(window.MDC_COHORTS)) window.MDC_COHORTS = [];
+  var newCo = {
     id: 'cohort-' + Date.now(),
     name: name.trim(),
-    start: start.trim(),
-    end: end.trim(),
-    dates: legacyDates,
-    whatsapp: '',
-    zoomLink: zoomLink.trim(),
-    nextSessionDate: '',
-    nextSessionTime: '',
+    start: '', end: '', dates: '',
+    whatsapp: '', zoomLink: '',
+    nextSessionDate: '', nextSessionTime: '',
     active: true,
-  });
-  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
+  };
+  MDC_COHORTS.push(newCo);
+  _saveCohorts();
+  // Auto-expand the new cohort so Phoebe can fill in dates inline
+  window._expandedCohorts[newCo.id] = true;
+  branded.toast('Cohort created — fill in dates below');
   renderCohortManager();
 }
 
-function broadcastToCohort(cohortId, channel) {
-  var members = clients.filter(function(c) {
-    return (c.programs || []).some(function(p) { return p.cohort === cohortId; });
-  });
-  if (members.length === 0) { alert('No members.'); return; }
+async function broadcastToCohort(cohortId, channel) {
+  var members = _cohortMembers(cohortId);
+  if (members.length === 0) { branded.alert('No members to broadcast to.'); return; }
+  var co = _findCohort(cohortId);
   var label = channel === 'email' ? 'email' : 'SMS';
-  var msg = prompt('Send '+label+' to '+members.length+' member'+(members.length!==1?'s':'')+':');
-  if (!msg) return;
-  alert('Would broadcast: "'+msg.slice(0,40)+(msg.length>40?'…':'')+'" to '+members.length+' clients.\n\nNote: requires Resend API (email) or Twilio (SMS) configured.');
+  var msg = await branded.prompt('Send ' + label + ' to ' + members.length + ' member' + (members.length===1?'':'s') + ' of ' + (co.name||'this cohort'), '', 'Type your message…', { title:'Broadcast', okLabel:'Send' });
+  if (!msg || !msg.trim()) return;
+  // For now this is staged — Phoebe approves before send. Plug into send-message.mts later.
+  branded.alert('Broadcast staged for ' + members.length + ' clients:\n\n"' + msg.slice(0,200) + (msg.length>200?'…':'') + '"\n\n(Multi-recipient send not yet wired to backend — will batch through /api/send-message in the next pass.)', { title:'Ready to send' });
 }
 
 // ============================================================
@@ -5282,6 +5698,16 @@ function renderHome() {
 
   var html = '';
 
+  // Quick actions FIRST so the most-used moves are right where the eye lands
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">';
+  html += '<button onclick="openAddClient()" style="background:#EC2C8A;border:none;color:white;padding:10px 18px;border-radius:99px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(236,44,138,0.18)">+ Add client</button>';
+  html += '<button onclick="showPage(\'clients\')" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">👥 All clients</button>';
+  html += '<button onclick="showPage(\'task-sheet\')" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">✅ Task sheet</button>';
+  html += '<button onclick="openLogCommModal()" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">📞 Log communication</button>';
+  html += '<button onclick="showPage(\'mdc-group\'); renderMDCGroup()" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">💡 MDC cohort</button>';
+  html += '<button onclick="showPage(\'cohort-manager\'); renderCohortManager()" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">👥 Cohort manager</button>';
+  html += '</div>';
+
   // Stats grid
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px">';
   html += statCard(allTasks.length, 'open tasks', '#EC2C8A', "showPage('task-sheet')");
@@ -5372,13 +5798,8 @@ function renderHome() {
     html += '<div style="background:white;border:2px dashed #F5D5E3;border-radius:14px;padding:48px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">✨</div><div style="font-size:16px;color:#C9266B;margin-bottom:6px;font-weight:700">All caught up</div><div style="font-size:13px;color:#ACA495">No open tasks, check-ins, or upcoming sessions. Ready when you are.</div></div>';
   }
 
-  // Quick actions footer
-  html += '<div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap">';
-  html += '<button onclick="showPage(\'clients\')" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">👥 All clients</button>';
-  html += '<button onclick="showPage(\'task-sheet\')" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">✅ Task sheet</button>';
-  html += '<button onclick="openLogCommModal()" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">📞 Log communication</button>';
-  html += '<button onclick="openAddClient()" style="background:#EC2C8A;border:none;color:white;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">+ Add client</button>';
-  html += '</div>';
+  // (Quick actions row was previously here at the bottom — moved to the top
+  // of the page so Phoebe doesn't have to scroll past everything to use them.)
 
   el.innerHTML = html;
   console.log('[Home] rendered, html length:', html.length);
@@ -5493,7 +5914,7 @@ async function saveCommunicationLog() {
   var date     = document.getElementById('log-comm-date').value || new Date().toISOString().split('T')[0];
   var note     = document.getElementById('log-comm-note').value.trim();
   var client   = clients.find(function(c) { return c.id === clientId; });
-  if (!client) { alert('Pick a client first.'); return; }
+  if (!client) { branded.alert('Pick a client first.'); return; }
 
   var typeIcons  = { call:'📞', email:'📧', sms:'💬', meeting:'🤝' };
   var typeLabels = { call:'Phone call', email:'Email', sms:'Text', meeting:'Meeting' };
@@ -5523,16 +5944,8 @@ async function saveCommunicationLog() {
   }
 }
 
-function broadcastToCohort(cohortId, channel) {
-  var members = clients.filter(function(c) {
-    return (c.programs || []).some(function(p) { return p.cohort === cohortId; });
-  });
-  if (members.length === 0) { alert('No members.'); return; }
-  var label = channel === 'email' ? 'email' : 'SMS';
-  var msg = prompt('Send '+label+' to '+members.length+' member'+(members.length!==1?'s':'')+':');
-  if (!msg) return;
-  alert('Would broadcast: "'+msg.slice(0,40)+(msg.length>40?'…':'')+'" to '+members.length+' clients.\n\nNote: requires Resend API (email) or Twilio (SMS) configured.');
-}
+// (Old sync broadcastToCohort with native prompt removed in v8100 —
+// the async branded.* version lives in the rewritten cohort manager block above.)
 </script>
 </body>
 </html>
