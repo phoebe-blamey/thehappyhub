@@ -12,7 +12,7 @@
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v8100 loaded successfully (branded modals · cohort manager rewrite · AI helpers in tasks · client MDC weeks · earned-only badges)
+✓ The Happy Hub — Build v8110 loaded successfully · live at hub.phoebeblamey.com.au
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 
@@ -463,7 +463,17 @@
         <div class="settings-card">
           <h4>🔌 Calendly webhook</h4>
           <p>When a client books the 90-Day Business Builder, a client file is auto-created with all intake answers. Add this URL in Calendly → Integrations → Webhooks → invitee.created:</p>
-          <div class="code-block" id="webhook-url-display">https://the-happy-hub.netlify.app/api/calendly-webhook</div>
+          <div class="code-block" id="webhook-url-display">https://hub.phoebeblamey.com.au/api/calendly-webhook</div>
+          <script>
+            // Auto-fill the webhook URL with whatever origin Phoebe is currently
+            // viewing the site under, so the displayed URL is always correct
+            // (works on hub.phoebeblamey.com.au, the netlify.app fallback, or
+            // even a local preview).
+            (function() {
+              var el = document.getElementById('webhook-url-display');
+              if (el) el.textContent = window.location.origin + '/api/calendly-webhook';
+            })();
+          </script>
         </div>
 
         <div class="settings-card">

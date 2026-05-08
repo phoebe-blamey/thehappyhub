@@ -1,11 +1,11 @@
 ---
 name: deploy
-description: Deploy The Happy Hub to production at https://the-happy-hub.netlify.app. Auto-invoke when the user says "Deploy updates", "Deploy this", "Deploy now", "Push live", "Ship it", "Push to main", or any clear request to push the current local state of the thehappyhub project to GitHub for Netlify auto-deploy. Bumps the vNNNN stamp in public/index.html, commits, pushes, and verifies the live site picks up the new version.
+description: Deploy The Happy Hub to production at https://hub.phoebeblamey.com.au. Auto-invoke when the user says "Deploy updates", "Deploy this", "Deploy now", "Push live", "Ship it", "Push to main", or any clear request to push the current local state of the thehappyhub project to GitHub for Netlify auto-deploy. Bumps the vNNNN stamp in public/index.html, commits, pushes, and verifies the live site picks up the new version.
 ---
 
 # Deploy The Happy Hub
 
-Run a full deploy of the current local state of `thehappyhub` to https://the-happy-hub.netlify.app.
+Run a full deploy of the current local state of `thehappyhub` to https://hub.phoebeblamey.com.au (the canonical Netlify URL https://the-happy-hub.netlify.app also serves the same site).
 
 ## Steps
 
@@ -25,7 +25,7 @@ Run a full deploy of the current local state of `thehappyhub` to https://the-hap
 
 6. **Poll the live site** for the new version stamp:
    ```
-   curl -s https://the-happy-hub.netlify.app/ | grep -oE "v[0-9]{4,5}" | head -1
+   curl -s https://hub.phoebeblamey.com.au/ | grep -oE "v[0-9]{4,5}" | head -1
    ```
    Check every 15 seconds for up to 6 attempts (~90 seconds total). Stop as soon as you see the new version.
 

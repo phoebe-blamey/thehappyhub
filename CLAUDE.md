@@ -22,9 +22,12 @@ End-to-end flow it automates:
 
 ## Live URLs
 
-- **Production:** https://the-happy-hub.netlify.app
+- **Production (canonical):** https://hub.phoebeblamey.com.au — primary URL Phoebe sends to clients
+- **Production (Netlify default):** https://the-happy-hub.netlify.app — still works, both serve the same site
+- **WordPress redirect:** https://phoebeblamey.com.au/login → bounces to hub.phoebeblamey.com.au, preserves `?client=XXX` query
 - **GitHub:** https://github.com/phoebe-blamey/thehappyhub
 - **Netlify project:** the-happy-hub (site ID `a5871e51-a1bb-435a-b2f8-c80b0b6cc230`)
+- **DNS:** SiteGround manages all DNS for phoebeblamey.com.au; `hub` is a CNAME → `the-happy-hub.netlify.app`. Don't change nameservers — would break the main site + email.
 - **Old/deprecated Netlify:** phoebe-breakthrough-hub (site ID `fc6283a5-68a5-491c-b013-d9a87ef35b1b`) — do not deploy here
 
 ## Architecture
@@ -140,7 +143,7 @@ In rough priority order:
 2. `git add` + `git commit` with a clear message
 3. `git push origin main`
 4. Netlify auto-deploys in ~60 seconds — both static files AND functions
-5. Verify by checking the version stamp in the topbar at https://the-happy-hub.netlify.app
+5. Verify by checking the version stamp in the topbar at https://hub.phoebeblamey.com.au (or the netlify.app URL — both serve the same site)
 
 **Important:** Drag-and-drop deploys ONLY upload static files, not functions. Always push via Git so functions deploy too.
 
