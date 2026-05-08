@@ -292,6 +292,21 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 .prog-opt .p-name { font-size: 12px; font-weight: 600; color: var(--magenta); }
 .prog-opt .p-desc { font-size: 11px; color: var(--stone); margin-top: 2px; }
 
+/* ========== PROGRAM TABS (within a client) ========== */
+.prog-tabs-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; padding: 4px 0; }
+.prog-tab-btn { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px;
+  background: white; border: 1.5px solid var(--border); border-radius: 99px; cursor: pointer;
+  font-family: var(--f-body); font-size: 13px; color: var(--magenta); transition: all 0.15s;
+  white-space: nowrap; }
+.prog-tab-btn:hover { border-color: var(--hot-pink); background: var(--marshmallow); }
+.prog-tab-btn.active { background: var(--hot-pink); border-color: var(--hot-pink); color: white; }
+.prog-tab-btn.active .prog-tab-date { color: rgba(255,255,255,0.85); }
+.prog-tab-icon { font-size: 14px; line-height: 1; }
+.prog-tab-label { font-weight: 600; }
+.prog-tab-date { font-size: 11px; color: var(--stone); white-space: nowrap; }
+.prog-tab-add { border-style: dashed; color: var(--stone); font-weight: 600; padding: 7px 16px; }
+.prog-tab-add:hover { color: var(--hot-pink); border-style: solid; background: var(--marshmallow); }
+
 /* ========== CLIENT PORTAL ========== */
 .client-layout { flex: 1; overflow-y: auto; }
 .client-hero { background: var(--magenta); color: white; padding: 32px 24px 28px; }
@@ -378,7 +393,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7711 loaded successfully
+✓ The Happy Hub — Build v7712 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -941,21 +956,24 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   <div class="modal" id="broadcast-modal-content"></div>
 </div>
 
-<!-- ========== ADD CLIENT MODAL ========== -->
+<!-- ========== ADD CLIENT / ADD PROGRAM MODAL ========== -->
+<!-- Reused for both flows: openAddClient() shows all fields, openAddProgram(clientId) hides client fields -->
 <div class="modal-overlay" id="add-modal">
   <div class="modal">
-    <h3>Add new client</h3>
-    <div class="form-group">
-      <label>Full name *</label>
-      <input id="new-name" placeholder="Sarah Chen">
-    </div>
-    <div class="form-group">
-      <label>Email</label>
-      <input id="new-email" placeholder="sarah@example.com">
-    </div>
-    <div class="form-group">
-      <label>Business / role</label>
-      <input id="new-biz" placeholder="Health coach, Melbourne">
+    <h3 id="add-modal-title">Add new client</h3>
+    <div id="add-client-fields">
+      <div class="form-group">
+        <label>Full name *</label>
+        <input id="new-name" placeholder="Sarah Chen">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input id="new-email" placeholder="sarah@example.com">
+      </div>
+      <div class="form-group">
+        <label>Business / role</label>
+        <input id="new-biz" placeholder="Health coach, Melbourne">
+      </div>
     </div>
     <div class="form-group">
       <label>Session date</label>
@@ -1398,7 +1416,7 @@ function buildClientProgramTabs(client) {
       '<span class="prog-tab-date">' + (p.locked ? '🔒 ' : '') + dateStr + '</span>' +
       '</div>';
   }).join('') +
-  '<div class="prog-tab-btn prog-tab-add" onclick="openAddClient()" title="Add new program">+ Add</div>';
+  '<div class="prog-tab-btn prog-tab-add" onclick="openAddProgram(\'' + client.id.replace(/\'/g, "\\\\'") + '\')" title="Add another program for this client">+ Add</div>';
 }
 
 // Safer lookup that avoids closures-in-strings issues
@@ -1550,9 +1568,40 @@ async function saveNotes() {
 }
 
 // ========== ADD CLIENT / PROGRAM ==========
+// addingProgramFor: when set to a clientId, the modal is in "add program to existing client" mode.
+// When null, it's the regular "add new client" flow.
+var addingProgramFor = null;
+
 function openAddClient() {
+  addingProgramFor = null;
+  document.getElementById('add-modal-title').textContent = 'Add new client';
+  var fields = document.getElementById('add-client-fields');
+  if (fields) fields.style.display = '';
+  // Clear inputs from any prior program-only run
+  ['new-name','new-email','new-biz','new-intake'].forEach(function(f) {
+    var el = document.getElementById(f); if (el) el.value = '';
+  });
+  document.getElementById('new-date').value = '';
   document.getElementById('add-modal').classList.add('open');
 }
+
+function openAddProgram(clientId) {
+  var client = clients.find(function(c) { return c.id === clientId; });
+  if (!client) { alert('Client not found.'); return; }
+  addingProgramFor = clientId;
+  document.getElementById('add-modal-title').textContent = 'Add program for ' + client.name;
+  var fields = document.getElementById('add-client-fields');
+  if (fields) fields.style.display = 'none';
+  // Reset program selection + date + intake
+  document.querySelectorAll('.prog-opt').forEach(function(o, i) {
+    o.classList.toggle('selected', i === 0);
+  });
+  selectedNewProg = '90day';
+  document.getElementById('new-date').value = '';
+  document.getElementById('new-intake').value = '';
+  document.getElementById('add-modal').classList.add('open');
+}
+
 function closeModal() {
   document.getElementById('add-modal').classList.remove('open');
 }
@@ -1563,12 +1612,6 @@ function selectProg(el) {
 }
 
 async function createClient() {
-  var name = document.getElementById('new-name').value.trim();
-  if (!name) { alert('Name is required'); return; }
-  var email = (document.getElementById('new-email').value || '').toLowerCase().trim();
-  // Check if client with this email exists
-  var existing = email ? clients.find(function(c) { return c.email === email; }) : null;
-  var code = name.split(' ')[0].toUpperCase().slice(0,4) + Math.floor(Math.random()*900+100);
   var progEntry = {
     id: selectedNewProg + '-' + Date.now(),
     program: selectedNewProg,
@@ -1578,7 +1621,7 @@ async function createClient() {
     status: 'upcoming', locked: false,
     intake: document.getElementById('new-intake').value.trim(),
     websiteUrl: '', websiteSocial: '',
-    notes: { themes:'',leaks:'',opps:'',patterns:'',private:'',research:'' },
+    notes: { themes:'',leaks:'',opps:'',patterns:'',private:'',research:'',summary:'' },
     plan: [], taskDone: {},
     mdcWorkbook: selectedNewProg === 'mdc' ? { businessSnapshot:'',vision:'',meNow:'',sprintFocus:'',weeklyCheckins:{} } : undefined,
     happyHour: selectedNewProg === 'happyhour' ? { assets:'',discussed:'',actions:'',resources:'' } : undefined,
@@ -1586,28 +1629,50 @@ async function createClient() {
   };
 
   var client;
-  if (existing) {
-    existing.programs = existing.programs || [];
-    existing.programs.push(progEntry);
-    client = existing;
+
+  if (addingProgramFor) {
+    // ── Adding another program to an existing client ─────────────────────
+    client = clients.find(function(c) { return c.id === addingProgramFor; });
+    if (!client) { alert('Client not found.'); return; }
+    client.programs = client.programs || [];
+    client.programs.push(progEntry);
   } else {
-    client = {
-      id: 'client-' + (email || name).replace(/[^a-z0-9]/gi,'-').toLowerCase() + '-' + Date.now(),
-      name: name, email: email,
-      biz: document.getElementById('new-biz').value.trim(),
-      clientAccess: code, status: 'active',
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      programs: [progEntry], source: 'manual',
-    };
-    clients.push(client);
+    // ── Creating a brand new client (with their first program) ───────────
+    var name = document.getElementById('new-name').value.trim();
+    if (!name) { alert('Name is required'); return; }
+    var email = (document.getElementById('new-email').value || '').toLowerCase().trim();
+    var existing = email ? clients.find(function(c) { return c.email === email; }) : null;
+    var code = name.split(' ')[0].toUpperCase().slice(0,4) + Math.floor(Math.random()*900+100);
+
+    if (existing) {
+      // Email matched an existing client — append program to them
+      existing.programs = existing.programs || [];
+      existing.programs.push(progEntry);
+      client = existing;
+    } else {
+      client = {
+        id: 'client-' + (email || name).replace(/[^a-z0-9]/gi,'-').toLowerCase() + '-' + Date.now(),
+        name: name, email: email,
+        biz: document.getElementById('new-biz').value.trim(),
+        clientAccess: code, status: 'active',
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        programs: [progEntry], source: 'manual',
+      };
+      clients.push(client);
+    }
   }
+
   // Auto-add tasks for the new program
   await autoAddTasksForProgram(client, progEntry);
   await persistClient(client);
   renderClients();
   closeModal();
-  ['new-name','new-email','new-biz','new-intake'].forEach(function(f) { document.getElementById(f).value=''; });
+  ['new-name','new-email','new-biz','new-intake'].forEach(function(f) {
+    var el = document.getElementById(f); if (el) el.value = '';
+  });
   document.getElementById('new-date').value = '';
+  // Clear program-only state for next time
+  addingProgramFor = null;
   openClient(client.id);
 }
 
