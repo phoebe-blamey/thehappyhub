@@ -13,7 +13,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v8400 — DATA SAFETY: safe merge, optimistic concurrency, save indicator, queued retries">
+<meta name="hmh-build" content="v8500 — visual fillers, softer to-do, hero My Why, suggested-action-to-task, free-form wins">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -569,6 +569,16 @@
         </div>
 
         <div class="settings-card">
+          <h4>📱 My phone number (shown to clients)</h4>
+          <p>Optional — when set, a "Call or text Phoebe" link appears in the client Help drawer with this number. Leave blank to hide it.</p>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <input id="coach-phone-input" type="tel" placeholder="+61 4XX XXX XXX" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:14px;color:var(--magenta);background:var(--paper);outline:none;width:220px">
+            <button class="btn-sm primary" onclick="saveCoachPhone()">Save</button>
+            <span id="coach-phone-saved" style="font-size:12px;color:var(--teal)"></span>
+          </div>
+        </div>
+
+        <div class="settings-card">
           <h4>📧 Email sending (Gmail API — live)</h4>
           <p>Outbound emails from the platform send via the Gmail API as <strong>phoebe@phoebeblamey.com.au</strong> and appear in your Gmail Sent folder automatically.</p>
           <p style="margin-top:8px;font-size:12px;color:var(--stone)">Configured via Netlify env vars: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, GOOGLE_SENDER_EMAIL. To rotate credentials, see CLAUDE.md.</p>
@@ -615,6 +625,16 @@
         <div id="client-hero-progress-wrap"></div>
         <!-- Earned-only badge ribbon — kept compact so the hero stays a hero -->
         <div id="client-hero-badges-wrap"></div>
+        <!-- "My Why" pin — promoted from inside each program into the hero
+             so the client's reason-for-being is visible from every tab.
+             Click to edit inline. Hidden if not yet written. -->
+        <div id="client-hero-why-wrap" style="display:none;margin-top:14px;background:rgba(255,255,255,0.14);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.22);border-radius:14px;padding:12px 16px;display:none;align-items:flex-start;gap:12px">
+          <span style="font-size:20px;line-height:1;flex-shrink:0;margin-top:1px">💛</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.85;margin-bottom:2px">My why</div>
+            <div id="client-hero-why-text" style="font-size:14px;line-height:1.4;font-style:italic" onclick="editClientWhyFromHero()" title="Click to edit"></div>
+          </div>
+        </div>
       </div>
     </div>
     <!-- New-note notification banner — shows when Phoebe has shared something
@@ -788,6 +808,16 @@
       </div>
       <div style="color:var(--stone);font-size:14px">→</div>
     </a>
+    <a href="https://calendly.com/phoebe-phoebeblamey/new-meeting" target="_blank" rel="noopener" class="help-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
+      onmouseover="this.style.borderColor='var(--hot-pink)';this.style.background='var(--marshmallow)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.background='white'">
+      <div style="font-size:24px;line-height:1">📅</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px">Book a session</div>
+        <div style="font-size:11px;color:var(--stone);margin-top:1px">Pick a time directly in Phoebe's calendar</div>
+      </div>
+      <div style="color:var(--stone);font-size:14px">→</div>
+    </a>
     <a href="mailto:phoebe@phoebeblamey.com.au" class="help-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
       onmouseover="this.style.borderColor='var(--hot-pink)';this.style.background='var(--marshmallow)'"
       onmouseout="this.style.borderColor='var(--border)';this.style.background='white'">
@@ -795,6 +825,19 @@
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:13px">Email Phoebe</div>
         <div style="font-size:11px;color:var(--stone);margin-top:1px">Get in touch any time</div>
+      </div>
+      <div style="color:var(--stone);font-size:14px">→</div>
+    </a>
+    <!-- Phoebe's phone — pulled from localStorage `hmh_coach_phone` so she
+         can set it via Settings. Only renders if a value is set; doesn't
+         expose a placeholder fake number. -->
+    <a id="help-phone-link" href="#" class="help-card" style="display:none;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
+      onmouseover="this.style.borderColor='var(--hot-pink)';this.style.background='var(--marshmallow)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.background='white'">
+      <div style="font-size:24px;line-height:1">📱</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px">Call or text Phoebe</div>
+        <div id="help-phone-display" style="font-size:11px;color:var(--stone);margin-top:1px"></div>
       </div>
       <div style="color:var(--stone);font-size:14px">→</div>
     </a>
@@ -1280,6 +1323,25 @@ async function sendWelcomeEmail(client) {
     return { error: String(e) };
   }
 }
+
+function saveCoachPhone() {
+  var input = document.getElementById('coach-phone-input');
+  var status = document.getElementById('coach-phone-saved');
+  if (!input) return;
+  var v = (input.value || '').trim();
+  if (v) localStorage.setItem('hmh_coach_phone', v);
+  else localStorage.removeItem('hmh_coach_phone');
+  status.textContent = v ? '✓ Saved — clients will see this in their Help drawer' : '✓ Cleared — phone hidden from clients';
+  setTimeout(function(){ status.textContent = ''; }, 4000);
+}
+
+// Pre-fill the phone input on coach page load
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(function() {
+    var input = document.getElementById('coach-phone-input');
+    if (input) input.value = localStorage.getItem('hmh_coach_phone') || '';
+  }, 200);
+});
 
 async function changeCoachPin() {
   var input = document.getElementById('new-coach-pin');
@@ -2066,6 +2128,21 @@ function toggleHelpPanel() {
   if (!p) return;
   var open = p.style.display === 'block';
   p.style.display = open ? 'none' : 'block';
+  // When opening, populate the dynamic items (phone link from settings)
+  if (!open) {
+    try {
+      var phone = (localStorage.getItem('hmh_coach_phone') || '').trim();
+      var phoneLink = document.getElementById('help-phone-link');
+      var phoneDisplay = document.getElementById('help-phone-display');
+      if (phone && phoneLink) {
+        phoneLink.href = 'tel:' + phone.replace(/[^+\d]/g, '');
+        phoneLink.style.display = 'flex';
+        if (phoneDisplay) phoneDisplay.textContent = phone;
+      } else if (phoneLink) {
+        phoneLink.style.display = 'none';
+      }
+    } catch(e) {}
+  }
 }
 
 // Help drawer "My resources" — coaches go to the Happy Hub page; clients see
@@ -2631,10 +2708,16 @@ async function createClient() {
 function renderPlanGrid(plan, taskDone, containerId, readonly) {
   var container = document.getElementById(containerId);
   if (!container) return;
+  // Empty-state message switches on whether this is the coach plan-grid editor
+  // (containerId === 'plan-grid') or any client-side rendering. The previous
+  // implementation switched on `readonly` which was wrong — clients on active
+  // programs got the coach message about "Zoom builder above" which doesn't
+  // exist in their view.
+  var isCoachView = (containerId === 'plan-grid');
   if (!plan || !plan.length) {
-    var emptyMsg = readonly
-      ? 'Your plan will appear here once you and Phoebe have shaped it together.'
-      : 'No plan yet. Use the Zoom builder above to generate one, apply a template, or click "+ Add section" below.';
+    var emptyMsg = isCoachView
+      ? 'No plan yet. Pull notes from your last session above, apply a saved template, or click "+ Add section" to start from scratch.'
+      : 'Your plan will appear here once you and Phoebe have shaped it together.';
     container.innerHTML = '<div style="color:var(--stone);font-size:13px;grid-column:1/-1;padding:12px 0">' + emptyMsg + '</div>';
     return;
   }
@@ -3324,6 +3407,9 @@ function loadClientPortal(client) {
 
   // Show the new-note banner if Phoebe has shared something the client hasn't read
   refreshNewNoteBanner(client);
+
+  // Hero "my why" line — always visible across tabs
+  if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
 }
 
 // Switches between the three top-level client tabs: Summary / Programs / Settings
@@ -3397,11 +3483,9 @@ function renderClientProgram(client, prog) {
   // Resources removed — now lives in the floating Help button (bottom-right "?").
   var lockNotice = isLocked ? '<div style="background:var(--marshmallow);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--stone)">🔒 This program has been completed and locked. Your work is preserved here for reference.</div>' : '';
 
-  // ── "My Why" pin — pulls the client's vision (5-year answer) from the MDC
-  // workbook if filled, falls back to a free-form client.why field, falls
-  // back to a gentle prompt to write one. Always at the top so they see it
-  // every time they open a program. -------------------------------------
-  var whyPin = renderClientWhyPin(client, prog);
+  // "My Why" pin moved to the hero (always visible, every tab) — see
+  // updateClientHeroWhy below. We no longer inject it inside each program.
+  var whyPin = '';
 
   // Full achievements grid (with locked badges) — bottom of page in a collapsed
   // accordion so the screen feels lighter on first load.
@@ -3467,10 +3551,10 @@ function renderClientProgram(client, prog) {
       makeClientWorkbookField(client.id, prog.id, 'sprintFocus',      '🎯 Sprint focus — the one thing', 'What is my one thing to focus on now?', wb.sprintFocus, 'The one thing I\'m focusing on this sprint…', isLocked) +
       makeClientWorkbookField(client.id, prog.id, 'valueHelp',        '💡 My magic — value proposition', 'Start with the change my client gets.', wb.valueHelp, 'I help ________ who feel ________ avoid ________ so they become ________', isLocked) +
       makeClientWorkbookField(client.id, prog.id, 'acquisition',      '📈 Acquisition — client\'s path', 'How do clients first encounter me?', wb.acquisition, 'Where do clients first encounter me? What makes them feel safe? Where do decisions stall?', isLocked) +
-      (isLocked ? '' : '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">' +
-        '<button class="btn-sm" onclick="toggleWorkbookDesignView()" title="Toggle a workbook-style print preview">🎨 Design view</button>' +
-        '<button class="btn-sm primary" onclick="window.print()" title="Print or save your filled workbook as PDF">🖨 Print my workbook</button>' +
-      '</div>') +
+      // (Design view + print buttons removed in v8500 — not useful in client portal context.
+      // The MDC sprint plan restructure that Phoebe asked for will likely make these
+      // obsolete anyway: future "workbook" stays free-form, sprints become a custom
+      // plan Phoebe builds from each Zoom transcript, sharable across cohort members.)
       '</div>';
     var checkinHtml = isLocked ? '' :
       '<div class="client-section"><h3>My weekly check-in</h3>' +
@@ -3495,11 +3579,12 @@ function renderClientProgram(client, prog) {
     area.innerHTML = content;
   }
 
-  // Update hero progress + earned badge ribbon
+  // Update hero progress + earned badge ribbon + "My why" line
   document.getElementById('client-hero-progress-wrap').innerHTML = progressHtml;
   document.getElementById('client-hero-prog').textContent = pi.label||prog.label;
   var ribbonEl = document.getElementById('client-hero-badges-wrap');
   if (ribbonEl) ribbonEl.innerHTML = (typeof renderEarnedBadgeRibbon === 'function') ? renderEarnedBadgeRibbon(client) : '';
+  if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
 }
 
 // Renders shared session notes for the client portal — filters prog.sessionNotes
@@ -3513,14 +3598,21 @@ function renderClientSharedNotes(prog) {
   return notes.map(function(n) {
     var dateStr = n.date ? new Date(n.date).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}) : 'Session';
     var zoomLink = n.zoomUrl ? '<a href="'+n.zoomUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--mist);color:var(--teal);padding:5px 12px;border-radius:99px;text-decoration:none;font-weight:600;margin-right:8px">🎥 Watch recording</a>' : '';
-    var summary = n.aiSummary ? '<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">AI session summary</div><div style="font-size:13px;line-height:1.7;color:var(--magenta);white-space:pre-wrap">'+n.aiSummary+'</div></div>' : '';
+    // Client sees this as just "Session summary" — no need to expose the AI plumbing.
+    // Phoebe sees the same field labelled "AI session summary" on her side (line ~4624).
+    var summary = n.aiSummary ? '<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Session summary</div><div style="font-size:13px;line-height:1.7;color:var(--magenta);white-space:pre-wrap">'+n.aiSummary+'</div></div>' : '';
     var actions = (n.suggestedActions && n.suggestedActions.length)
       ? '<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Suggested actions</div>' +
         n.suggestedActions.map(function(a, i) {
           var done = (n.actionDone && n.actionDone[i]) === true;
-          return '<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;cursor:pointer;font-size:13px;color:var(--magenta);line-height:1.5">' +
-            '<input type="checkbox" '+(done?'checked':'')+' onchange="toggleClientSuggestedAction(\''+prog.id+'\',\''+n.id+'\','+i+',this.checked)" style="margin-top:3px">' +
-            '<span'+(done?' style="text-decoration:line-through;opacity:0.6"':'')+'>'+a+'</span></label>';
+          var addedAsTask = n.actionAddedAsTask && n.actionAddedAsTask[i];
+          return '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;font-size:13px;color:var(--magenta);line-height:1.5">' +
+            '<input type="checkbox" '+(done?'checked':'')+' onchange="toggleClientSuggestedAction(\''+prog.id+'\',\''+n.id+'\','+i+',this.checked)" style="margin-top:3px;cursor:pointer" title="Mark as done">' +
+            '<span style="flex:1"' + (done?' style="flex:1;text-decoration:line-through;opacity:0.6"':'') + '>' + a + '</span>' +
+            (addedAsTask
+              ? '<span style="font-size:10px;font-weight:700;color:var(--teal);background:var(--mist);padding:3px 9px;border-radius:99px;flex-shrink:0;white-space:nowrap" title="This is now in your to-do list">✓ On my to-do</span>'
+              : '<button onclick="addSuggestedActionToTasks(\''+prog.id+'\',\''+n.id+'\','+i+')" class="btn-sm" style="font-size:10px;padding:3px 9px;flex-shrink:0;white-space:nowrap" title="Add this to my to-do list">+ Add to to-do</button>') +
+          '</div>';
         }).join('') + '</div>'
       : '';
     var bodyText = n.text ? '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--magenta);margin-top:6px">'+n.text+'</div>' : '';
@@ -3569,8 +3661,17 @@ function renderClientSummary(client) {
     '<div style="font-size:13px;color:var(--stone)">Here\'s what\'s on your plate today.</div>' +
   '</div>';
 
+  // Countdown to next session (only renders if there's one scheduled)
+  html += renderNextSessionCountdown(client);
+
   // Daily check-in (Phase C) — mood emoji + one-liner, builds streak
   html += renderClientDailyCheckin(client);
+
+  // 30-day streak calendar — visual record of activity, never empty
+  html += renderStreakCalendar(client);
+
+  // Phoebe says… rotating wisdom card (different quote each day)
+  html += renderWisdomCard();
 
   // Stats row — open / overdue / wins / programs
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">' +
@@ -3600,26 +3701,40 @@ function renderClientSummary(client) {
       '</div></div>';
   }
 
-  // To-do list — overdue at top, then due today, then upcoming
+  // To-do list — gently grouped, soft language so it feels supportive not
+  // like a deadline-tracker. Overdue is collapsed if there are 4+ to keep
+  // the page from feeling like a wall of red.
   html += '<div class="client-section"><h3 style="font-size:14px;letter-spacing:0.04em">✅ My to-do list</h3>';
   if (openTasks.length === 0 && doneTasks.length === 0) {
-    html += '<div style="color:var(--stone);font-size:13px;padding:8px 0">Nothing on your list yet — Phoebe will add tasks for you here.</div>';
+    html += '<div style="color:var(--stone);font-size:13px;padding:8px 0">Nothing on your list yet — Phoebe will pop tasks here as you work together. ✨</div>';
   } else {
+    var totalShown = openTasks.length;
+    var summary = totalShown === 0
+      ? 'You\'re on top of things — nothing open right now.'
+      : 'You\'ve got ' + totalShown + ' on your plate' + (overdue.length > 0 ? ' · gentle nudge: ' + overdue.length + ' from earlier' : '') + (dueToday.length > 0 ? ' · ' + dueToday.length + ' for today' : '') + '.';
+    html += '<div style="font-size:12px;color:var(--stone);margin-bottom:10px;line-height:1.5">' + summary + '</div>';
     if (overdue.length > 0) {
-      html += '<div style="font-size:11px;color:var(--hot-pink);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:8px 0 6px">⚠️ Overdue</div>';
+      // 4+ overdue → collapse by default to avoid a wall of red
+      var overdueCollapsed = overdue.length >= 4;
+      var overdueHeading = overdueCollapsed
+        ? '<summary style="cursor:pointer;list-style:none;font-size:11px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:8px 0 6px">From earlier · ' + overdue.length + ' (click to view)</summary>'
+        : '<div style="font-size:11px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:8px 0 6px">From earlier · ' + overdue.length + '</div>';
+      if (overdueCollapsed) html += '<details>' + overdueHeading;
+      else html += overdueHeading;
       overdue.forEach(function(t){ html += clientTaskRow(t, client.id, 'overdue'); });
+      if (overdueCollapsed) html += '</details>';
     }
     if (dueToday.length > 0) {
-      html += '<div style="font-size:11px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 6px">📌 Due today</div>';
+      html += '<div style="font-size:11px;color:var(--hot-pink);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 6px">For today</div>';
       dueToday.forEach(function(t){ html += clientTaskRow(t, client.id, 'today'); });
     }
     var upcoming = openTasks.filter(function(t){ return !t.dueDate || (t.dueDate > today); });
     if (upcoming.length > 0) {
-      html += '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 6px">🌟 Coming up</div>';
+      html += '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 6px">On the horizon</div>';
       upcoming.forEach(function(t){ html += clientTaskRow(t, client.id, 'upcoming'); });
     }
     if (doneTasks.length > 0) {
-      html += '<details style="margin-top:10px"><summary style="cursor:pointer;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em">✓ Completed (' + doneTasks.length + ')</summary>';
+      html += '<details style="margin-top:10px"><summary style="cursor:pointer;font-size:11px;color:var(--teal);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;list-style:none">🌿 Already ticked off · ' + doneTasks.length + '</summary>';
       doneTasks.slice(0,10).forEach(function(t){ html += clientTaskRow(t, client.id, 'done'); });
       html += '</details>';
     }
@@ -3670,6 +3785,142 @@ function summaryStatCard(num, label, color) {
   return '<div style="background:white;border:1.5px solid var(--border);border-left:4px solid '+color+';border-radius:14px;padding:14px 16px">' +
     '<div style="font-family:var(--f-head);font-size:28px;font-weight:800;color:'+color+';line-height:1">'+num+'</div>' +
     '<div style="font-size:11px;color:var(--stone);margin-top:3px;text-transform:uppercase;letter-spacing:0.06em;font-weight:600">'+label+'</div>' +
+  '</div>';
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// VISUAL "BLANK SPACE" FILLERS for the client Summary tab.
+// Three components designed to keep the screen alive even when the client
+// has no tasks/wins/notes yet. All read existing client data — no new
+// fields required.
+// ═════════════════════════════════════════════════════════════════════
+
+// 30-day streak calendar — last 30 days as a 7×N grid of dots.
+// Filled = day with a check-in. Empty outline = no check-in.
+// Today is highlighted with a ring.
+function renderStreakCalendar(client) {
+  var today = new Date(); today.setHours(0,0,0,0);
+  var dates = [];
+  for (var i = 29; i >= 0; i--) {
+    var d = new Date(today); d.setDate(d.getDate() - i);
+    dates.push(d.toISOString().split('T')[0]);
+  }
+  var checkInDates = new Set((client.checkIns||[]).map(function(c){ return c.date; }));
+  var taskDates = new Set();
+  (client.tasks||[]).forEach(function(t) {
+    if (t.completedAt) {
+      try { taskDates.add(new Date(t.completedAt).toISOString().split('T')[0]); } catch(e) {}
+    }
+  });
+  var winDates = new Set();
+  (client.programs||[]).forEach(function(p) {
+    (p.wins||[]).forEach(function(w) { if (w.date) winDates.add(w.date); });
+  });
+
+  var cells = dates.map(function(d) {
+    var hasCheckin = checkInDates.has(d);
+    var hasTask = taskDates.has(d);
+    var hasWin = winDates.has(d);
+    var hasAny = hasCheckin || hasTask || hasWin;
+    var isToday = d === dates[dates.length-1];
+    var bg = 'transparent';
+    var border = '1.5px solid #FCE8F0';
+    if (hasWin) { bg = '#FBF219'; border = '1.5px solid #E8A020'; }       // win = sunshine
+    else if (hasCheckin) { bg = '#EC2C8A'; border = '1.5px solid #C9266B'; } // checkin = pink
+    else if (hasTask) { bg = '#F0A3C7'; border = '1.5px solid #EC2C8A'; }    // task done = bubblegum
+    var ring = isToday ? 'box-shadow:0 0 0 2px white,0 0 0 4px #EC2C8A' : '';
+    var date = new Date(d);
+    var title = date.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}) + (hasAny ? ' · ' + (hasWin?'win 🏆':'') + (hasCheckin?(hasWin?', ':'')+'checked in':'') + (hasTask?((hasCheckin||hasWin)?', ':'')+'task done':'') : ' · no activity');
+    return '<div title="' + title + '" style="width:18px;height:18px;border-radius:50%;background:' + bg + ';border:' + border + ';cursor:default;' + ring + '"></div>';
+  }).join('');
+
+  var totalActive = dates.filter(function(d){ return checkInDates.has(d) || taskDates.has(d) || winDates.has(d); }).length;
+
+  return '<div class="client-section">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+      '<h3 style="font-size:14px;letter-spacing:0.04em;margin:0">📅 My last 30 days</h3>' +
+      '<div style="font-size:11px;color:var(--stone);font-weight:600">' + totalActive + ' active day' + (totalActive===1?'':'s') + '</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">' + cells + '</div>' +
+    '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:var(--stone)">' +
+      '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#EC2C8A"></span>Check-in</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#F0A3C7"></span>Task ticked</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#FBF219;border:1px solid #E8A020"></span>Win logged</span>' +
+    '</div>' +
+  '</div>';
+}
+
+// Phoebe says... — a rotating wisdom card. Selects deterministically by
+// day-of-month so the client sees a different quote each visit but it
+// doesn't churn within a single day. All quotes are in Phoebe's voice
+// (warm, direct, Australian, no jargon).
+var PHOEBE_WISDOM = [
+  { quote: "You don't need a 5-year plan. You need to know what you're doing this week.", tag: 'Action' },
+  { quote: "If you're undercharging, you're disrespecting your future clients — they need you to keep doing this work.", tag: 'Pricing' },
+  { quote: "The hardest part of business isn't the strategy. It's deciding you're allowed to want what you want.", tag: 'Mindset' },
+  { quote: "Done is better than perfect. Always. Without exception.", tag: 'Action' },
+  { quote: "Your network already has the answers. You just haven't asked yet.", tag: 'Growth' },
+  { quote: "Money doesn't fix money problems. Habits do.", tag: 'Money' },
+  { quote: "You're not too much. You're just talking to the wrong people.", tag: 'Positioning' },
+  { quote: "If a client says 'I can't afford it', you haven't sold the change — you've sold the work.", tag: 'Sales' },
+  { quote: "The plan you'll actually follow beats the plan that looks good on paper. Every time.", tag: 'Action' },
+  { quote: "Stop apologising for charging what you're worth. The right clients want to pay you.", tag: 'Pricing' },
+  { quote: "Your business should fund your life, not consume it.", tag: 'Boundaries' },
+  { quote: "When in doubt, ring three clients. They'll tell you exactly what's broken.", tag: 'Strategy' },
+  { quote: "If it's been on your to-do list for three weeks, it's not actually on your to-do list.", tag: 'Action' },
+  { quote: "You don't need more leads. You need to follow up the ones you've already got.", tag: 'Growth' },
+  { quote: "Profit isn't selfish. Profit is what lets you keep helping people.", tag: 'Money' },
+  { quote: "The version of you who started this isn't the version of you who'll grow it. That's normal.", tag: 'Mindset' },
+];
+
+function renderWisdomCard() {
+  // Day-of-month index → same quote all day, different tomorrow
+  var idx = new Date().getDate() % PHOEBE_WISDOM.length;
+  var w = PHOEBE_WISDOM[idx];
+  return '<div class="client-section" style="background:linear-gradient(135deg,#FFFBE8 0%,#FDEFF5 100%);border-color:rgba(232,160,32,0.25);position:relative;overflow:hidden">' +
+    '<div style="position:absolute;top:14px;right:18px;font-size:11px;color:#A07030;font-weight:700;text-transform:uppercase;letter-spacing:0.08em">' + w.tag + '</div>' +
+    '<div style="display:flex;align-items:flex-start;gap:14px">' +
+      '<div style="font-size:36px;line-height:1;flex-shrink:0">💡</div>' +
+      '<div style="flex:1;padding-right:60px">' +
+        '<div style="font-size:11px;color:var(--hot-pink);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Phoebe says…</div>' +
+        '<div style="font-size:15px;color:var(--magenta);line-height:1.5;font-style:italic">"' + w.quote + '"</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+// Countdown to the next scheduled session — looks across all programs and
+// finds the soonest sessionDate that's >= today. Returns empty string if
+// there's nothing scheduled (so the card hides cleanly).
+function renderNextSessionCountdown(client) {
+  var today = new Date(); today.setHours(0,0,0,0);
+  var todayStr = today.toISOString().split('T')[0];
+  var next = null;
+  (client.programs||[]).forEach(function(p) {
+    if (!p.sessionDate || p.locked || p.status === 'complete') return;
+    if (p.sessionDate < todayStr) return; // past
+    if (!next || p.sessionDate < next.date) {
+      next = { date: p.sessionDate, prog: p };
+    }
+  });
+  if (!next) return '';
+  var d = new Date(next.date);
+  var days = Math.round((d.getTime() - today.getTime()) / 86400000);
+  var dateStr = d.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' });
+  var label;
+  if (days === 0) label = 'Today!';
+  else if (days === 1) label = 'Tomorrow';
+  else if (days < 7) label = 'In ' + days + ' days';
+  else if (days < 14) label = 'Next week';
+  else label = 'In ' + days + ' days';
+  var pi = PROGRAMS[next.prog.program] || {};
+  return '<div class="client-section" style="background:linear-gradient(135deg,#FDEFF5,#FFFDFA);border-color:rgba(236,44,138,0.25);display:flex;align-items:center;gap:16px;flex-wrap:wrap">' +
+    '<div style="font-family:var(--f-head);font-size:36px;color:var(--hot-pink);line-height:1;flex-shrink:0">' + (days === 0 ? '🎉' : '📅') + '</div>' +
+    '<div style="flex:1;min-width:200px">' +
+      '<div style="font-size:11px;color:var(--hot-pink);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">Next session</div>' +
+      '<div style="font-family:var(--f-head);font-size:18px;color:var(--magenta);line-height:1.2">' + label + '</div>' +
+      '<div style="font-size:12px;color:var(--stone);margin-top:2px">' + dateStr + ' · ' + (pi.label || next.prog.program) + ' with Phoebe</div>' +
+    '</div>' +
   '</div>';
 }
 
@@ -4010,13 +4261,23 @@ function clientTaskRow(t, clientId, urgency) {
   var dueStr = t.dueDate ? new Date(t.dueDate).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) : '';
   var checkBg = t.done ? 'background:var(--hot-pink);border-color:var(--hot-pink)' : '';
   var checkInner = t.done ? '<span style="color:white;font-size:11px;line-height:1">✓</span>' : '';
-  var bg = urgency === 'overdue' ? '#FFF8FB' : urgency === 'today' ? '#FFFDFA' : 'white';
-  var border = urgency === 'overdue' ? 'rgba(236,44,138,0.3)' : 'var(--border-soft)';
+  // Softer palette per row — gentle pink for overdue (not alarming red), warm
+  // cream for today, plain white for upcoming. Avoids the "wall of warnings"
+  // feel that overwhelmed clients on the previous design.
+  var bg = urgency === 'overdue' ? '#FFFCFD' : urgency === 'today' ? '#FFFDF8' : 'white';
+  var border = urgency === 'overdue' ? 'rgba(236,44,138,0.18)' : 'var(--border-soft)';
+  // Friendly date label: "from 8 May" instead of "Due 8 May ⚠️"
+  var dateLabel = '';
+  if (dueStr) {
+    if (urgency === 'overdue') dateLabel = 'from ' + dueStr;
+    else if (urgency === 'today') dateLabel = 'for today';
+    else dateLabel = 'by ' + dueStr;
+  }
   return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid '+border+';border-radius:8px;margin-bottom:6px;background:'+bg+'">' +
     '<div onclick="clientToggleTaskDone(\''+clientId+'\',\''+t.id+'\')" style="width:20px;height:20px;border-radius:99px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;margin-top:1px;'+checkBg+'">'+checkInner+'</div>' +
     '<div style="flex:1;min-width:0">' +
       '<div style="font-size:13px;color:var(--magenta);'+(t.done?'text-decoration:line-through;opacity:0.5':'')+'">' + (t.text||'') + '</div>' +
-      (dueStr ? '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + (urgency === 'overdue' ? '⚠️ ' : '') + 'Due ' + dueStr + '</div>' : '') +
+      (dateLabel ? '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + dateLabel + '</div>' : '') +
     '</div>' +
   '</div>';
 }
@@ -4221,6 +4482,53 @@ function toggleWorkbookDesignView() {
   }
 }
 
+// Updates the hero-strip "My Why" pill (the new always-visible position).
+// Source: client.why (free-form they typed) → MDC vision answer (auto-pulled).
+// If empty, shows a subtle "+ Add my why" prompt so they can write one with
+// a click. Visible on every tab of the client portal.
+function updateClientHeroWhy(client) {
+  var wrap = document.getElementById('client-hero-why-wrap');
+  var textEl = document.getElementById('client-hero-why-text');
+  if (!wrap || !textEl) return;
+  var fromMdc = '';
+  (client.programs||[]).forEach(function(p) {
+    if (p.workbook === 'mdc' && p.mdcWorkbook && p.mdcWorkbook.vision && !fromMdc) fromMdc = p.mdcWorkbook.vision;
+  });
+  var displayed = (client.why && client.why.trim()) || fromMdc || '';
+  if (displayed) {
+    textEl.textContent = '"' + displayed + '"';
+    textEl.style.cursor = 'pointer';
+    textEl.style.opacity = '1';
+    wrap.style.display = 'flex';
+  } else {
+    textEl.innerHTML = '<span style="opacity:0.7">+ Add my why</span>';
+    textEl.style.cursor = 'pointer';
+    wrap.style.display = 'flex';
+  }
+}
+
+async function editClientWhyFromHero() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var current = client.why || '';
+  var fromMdc = '';
+  (client.programs||[]).forEach(function(p) {
+    if (p.workbook === 'mdc' && p.mdcWorkbook && p.mdcWorkbook.vision && !fromMdc) fromMdc = p.mdcWorkbook.vision;
+  });
+  var defaultVal = current || fromMdc || '';
+  var newWhy = await branded.prompt(
+    'In a sentence — what are you actually doing all this for?',
+    defaultVal,
+    'e.g. So I can be home for school pickup and still hit $400k',
+    { title:'My why', okLabel:'Save' }
+  );
+  if (newWhy === null) return;
+  client.why = (newWhy || '').trim();
+  await persistClient(client);
+  updateClientHeroWhy(client);
+  branded.toast('Saved');
+}
+
 // "My Why" pin — the client's reason-for-being card shown at the top of every
 // program. Pulls from (in order): client.why (free-form), MDC workbook vision
 // answer, MDC workbook businessSnapshot. If none, prompts the client to write
@@ -4305,6 +4613,50 @@ async function saveClientWorkbookField(clientId, progId, field, value) {
   prog.mdcWorkbook = prog.mdcWorkbook || {};
   prog.mdcWorkbook[field] = value;
   await persistClient(client);
+}
+
+// Convert a suggested action into a real client task — appears on the
+// to-do list immediately, marked clientVisible so the client sees it
+// (well, they typed it themselves effectively). Tracks `actionAddedAsTask`
+// on the source note so we don't duplicate if they tap it twice.
+async function addSuggestedActionToTasks(progId, noteId, index) {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p){ return p.id === progId; });
+  if (!prog) return;
+  var note = (prog.sessionNotes||[]).find(function(n){ return n.id === noteId; });
+  if (!note) return;
+  var actionText = (note.suggestedActions||[])[index];
+  if (!actionText) return;
+  // De-dup
+  note.actionAddedAsTask = note.actionAddedAsTask || {};
+  if (note.actionAddedAsTask[index]) return;
+  client.tasks = client.tasks || [];
+  // Default due-date: 1 week from now
+  var due = new Date(); due.setDate(due.getDate() + 7);
+  client.tasks.push({
+    id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    progId: prog.id,
+    text: actionText,
+    dueDate: due.toISOString().split('T')[0],
+    done: false,
+    isAuto: false,
+    clientVisible: true,
+    fromSuggestedAction: { noteId: noteId, index: index },
+    createdAt: new Date().toISOString()
+  });
+  note.actionAddedAsTask[index] = true;
+  await persistClient(client);
+  branded.toast('Added to your to-do list ✓');
+  if (typeof fireConfetti === 'function') fireConfetti(15);
+  // Re-render — the suggested action now shows the "✓ On my to-do" chip
+  // and the to-do list now shows the new task
+  renderClientProgram(client, prog);
+  // Refresh summary tab in case it's open
+  if (typeof renderClientSummary === 'function') {
+    var summaryArea = document.getElementById('client-summary-area');
+    if (summaryArea && summaryArea.style.display !== 'none') renderClientSummary(client);
+  }
 }
 
 async function toggleClientSuggestedAction(progId, noteId, index, checked) {
@@ -6218,9 +6570,11 @@ function renderWinsTracker(client, prog) {
     '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);margin-bottom:12px">Log a win</div>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
     '<div><div class="form-label">Metric</div>' +
-    '<select id="win-metric" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper)">' +
-    ['Revenue','Leads','Clients won','Email list','Online revenue','Pipeline','Time saved','Opportunities','Other'].map(function(m){return '<option>'+m+'</option>';}).join('') +
-    '</select></div>' +
+    '<input list="win-metric-suggestions" id="win-metric" placeholder="e.g. Revenue, Leads, anything…" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none">' +
+    '<datalist id="win-metric-suggestions">' +
+    ['Revenue','Leads','Clients won','Email list','Online revenue','Pipeline','Time saved','Opportunities','Pricing','Confidence','Workload','Hours per week','Conversion rate','Referrals'].map(function(m){return '<option value="'+m+'">';}).join('') +
+    '</datalist>' +
+    '</div>' +
     '<div><div class="form-label">Date</div>' +
     '<input type="date" id="win-date" value="'+new Date().toISOString().split('T')[0]+'" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper)"></div>' +
     '<div><div class="form-label">Before</div>' +

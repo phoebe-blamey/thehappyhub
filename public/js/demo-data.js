@@ -29,7 +29,7 @@
         workbook:'90day', cohort:null, sessionDate:'2026-05-06', status:'active', locked:false,
         intake:'Test client for platform testing.',
         websiteUrl:'', websiteSocial:'', sessionNotes:[],
-        notes:{themes:'Platform testing',leaks:'N/A',opps:'All features',patterns:'Test',private:'Test client',research:''},
+        notes:{themes:'',leaks:'',opps:'',patterns:'',private:"Test client — Phoebe's end-to-end testing account",research:''},
         plan:[{month:1,tasks:['Test the 90-day plan','Check task tracking','Try the wins tracker']},
               {month:2,tasks:['Test MDC workbook','Try research brief','Check profitability']},
               {month:3,tasks:['Review all features','Check client portal','Final review']}],
