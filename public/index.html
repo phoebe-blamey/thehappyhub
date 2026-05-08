@@ -393,7 +393,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7713 loaded successfully
+✓ The Happy Hub — Build v7714 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -1275,6 +1275,8 @@ async function enterCoach() {
     document.getElementById('coach-hub').classList.add('active');
     await loadClients();
     console.log('Clients loaded:', clients.length, clients.map(function(c){return c.name;}));
+    // Run weekly accountability check (Mondays only, once per Monday)
+    await runWeeklyAccountabilityCheck();
     renderClients();
     renderHome();
     showPage('home');
@@ -3232,7 +3234,34 @@ function renderTasksPanel(client, progId) {
   var cid = client.id;
   var today = new Date().toISOString().split('T')[0];
 
+  // ── "This week" accountability panel ────────────────────────────────────
+  var weekEnd = new Date();
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  var weekEndStr = weekEnd.toISOString().split('T')[0];
+  var weekTasks = tasks.filter(function(t) {
+    return t.dueDate && t.dueDate >= today && t.dueDate <= weekEndStr;
+  });
+  var weekDone = weekTasks.filter(function(t) { return t.done; });
+  var weekPct  = weekTasks.length > 0 ? Math.round((weekDone.length / weekTasks.length) * 100) : 0;
+  var overdueCount = pending.filter(function(t) { return t.dueDate && t.dueDate < today; }).length;
+  var weekPanelHtml =
+    '<div style="background:var(--marshmallow);border-radius:12px;padding:14px 16px;margin-bottom:14px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+    '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700">📅 This week</div>' +
+    '<div style="font-size:12px;color:var(--stone)">' +
+      (weekTasks.length === 0
+        ? 'Nothing due in the next 7 days'
+        : weekDone.length + ' of ' + weekTasks.length + ' done · ' + weekPct + '%') +
+      (overdueCount > 0 ? '<span style="margin-left:10px;color:var(--hot-pink);font-weight:700">' + overdueCount + ' overdue</span>' : '') +
+    '</div></div>' +
+    (weekTasks.length > 0
+      ? '<div style="background:white;border-radius:99px;height:8px;overflow:hidden"><div style="background:var(--hot-pink);height:100%;width:' + weekPct + '%;transition:width 0.3s"></div></div>'
+      : '') +
+    '</div>';
+
   el.innerHTML =
+    weekPanelHtml +
+
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
     '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta)">' + pending.length + ' pending tasks</div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
@@ -4527,6 +4556,63 @@ function renderHome() {
 
   el.innerHTML = html;
   console.log('[Home] rendered, html length:', html.length);
+}
+
+// ============================================================
+// WEEKLY ACCOUNTABILITY — runs on every Monday's first load.
+// For each client with incomplete tasks from last week (Mon-Sun),
+// auto-creates a "Weekly check-in" task on Phoebe's behalf so the
+// client doesn't drop off her radar.
+// ============================================================
+async function runWeeklyAccountabilityCheck() {
+  try {
+    var now = new Date();
+    if (now.getDay() !== 1) return; // Only on Mondays (0=Sun, 1=Mon)
+    var todayStr = now.toISOString().split('T')[0];
+    var lastRun  = localStorage.getItem('hmh_last_monday_check') || '';
+    if (lastRun === todayStr) return; // Already ran today
+
+    var lastMonday = new Date(now); lastMonday.setDate(lastMonday.getDate() - 7);
+    var lastSunday = new Date(now); lastSunday.setDate(lastSunday.getDate() - 1);
+    var lastMondayStr = lastMonday.toISOString().split('T')[0];
+    var lastSundayStr = lastSunday.toISOString().split('T')[0];
+
+    var changedClients = [];
+    (clients || []).forEach(function(c) {
+      if (!c) return;
+      var hasIncompleteFromLastWeek = (c.tasks || []).some(function(t) {
+        return t && !t.done && t.dueDate && t.dueDate >= lastMondayStr && t.dueDate <= lastSundayStr;
+      });
+      if (!hasIncompleteFromLastWeek) return;
+
+      // Don't duplicate — skip if a Weekly check-in for this Monday already exists
+      var alreadyHasCheckin = (c.tasks || []).some(function(t) {
+        return t && t.autoSource === 'weekly-accountability' && t.dueDate === todayStr;
+      });
+      if (alreadyHasCheckin) return;
+
+      c.tasks = c.tasks || [];
+      c.tasks.push({
+        id: 'weekly-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+        text: 'Weekly check-in — ' + c.name + ' has unfinished tasks from last week',
+        dueDate: todayStr,
+        done: false,
+        isAuto: true,
+        autoSource: 'weekly-accountability',
+        createdAt: now.toISOString(),
+        clientVisible: false,
+      });
+      changedClients.push(c);
+    });
+
+    if (changedClients.length) {
+      console.log('[WeeklyCheck] auto-created check-ins for', changedClients.length, 'clients');
+      await Promise.all(changedClients.map(function(c) { return persistClient(c); }));
+    }
+    localStorage.setItem('hmh_last_monday_check', todayStr);
+  } catch (e) {
+    console.error('[WeeklyCheck] error:', e);
+  }
 }
 
 // ============================================================
