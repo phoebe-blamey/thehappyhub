@@ -1236,3 +1236,31 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   body { padding-bottom: env(safe-area-inset-bottom); }
 }
 
+/* ── 17. Workbook PDF print mode ─────────────────────────────────────
+   When body has .printing-workbook (toggled by downloadWorkbookPdf()),
+   hide everything except the targeted .workbook-print-area, and reveal
+   the .workbook-print-only header/footer blocks. The browser's native
+   print dialog can then "Save as PDF" — gives clients a clean filled-in
+   PDF copy without us shipping a PDF generator library.
+   Also fires on the @media print pseudo so printing directly (Ctrl-P
+   from the workbook section) does the right thing too. */
+@media print {
+  body * { visibility: hidden !important; }
+  .workbook-print-area, .workbook-print-area * { visibility: visible !important; }
+  .workbook-print-area {
+    position: absolute !important; left: 0; top: 0; width: 100% !important;
+    padding: 24px !important; box-shadow: none !important; border: none !important;
+    background: white !important;
+  }
+  .workbook-screen-only { display: none !important; }
+  .workbook-print-only  { display: block !important; }
+  .workbook-print-area textarea {
+    border: 1px solid #d4d4d4 !important; background: white !important;
+    page-break-inside: avoid; min-height: 60px !important; box-shadow: none !important;
+    color: #2a2a2a !important;
+  }
+  .workbook-section-heading { page-break-before: auto; page-break-after: avoid; }
+}
+body.printing-workbook .workbook-print-area .workbook-screen-only { display: none !important; }
+body.printing-workbook .workbook-print-area .workbook-print-only  { display: block !important; }
+

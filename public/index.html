@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v10500 — perf: long-cache icons via _headers · async fonts (preload+onload) · trimmed font weights · SW precache expanded · idle-time SW register">
+<meta name="hmh-build" content="v10600 — MDC: current-cohort selector + sessions list w/ per-session Zoom · resource broadcast · recording-ready emails · expanded fillable workbook + PDF download">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -6397,19 +6397,38 @@ function renderClientProgram(client, prog) {
       '</div></div>' + weekSessionHtml;
     var sprintNotesBlock = sharedNotesHtml ? '<div class="client-section"><h3>Sprint notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '';
     // Fillable workbook — client can answer all the workbook prompts directly.
-    // Buttons row at top: Print, Design (toggle "design" view stylesheet)
-    var workbookHtml = '<div class="client-section"><h3>My MDC workbook</h3>' +
-      '<p style="font-size:13px;color:var(--stone);margin-bottom:14px">Answer when you\'re ready — your responses save automatically and Phoebe can see them.</p>' +
-      makeClientWorkbookField(client.id, prog.id, 'businessSnapshot', '📸 Business snapshot', 'The exact truth of where you stand today.', wb.businessSnapshot, 'My business right now — what I do, revenue, customers, systems…', isLocked) +
-      makeClientWorkbookField(client.id, prog.id, 'vision',           '🌟 Vision — Future me', 'Five years from now, you\'re already there. It\'s done!', wb.vision, 'Five years from now I am…', isLocked) +
-      makeClientWorkbookField(client.id, prog.id, 'meNow',             '🪞 Me now — where I\'m winning', 'Take a moment for appreciation, not improvement.', wb.meNow, 'Where I\'m already winning…', isLocked) +
-      makeClientWorkbookField(client.id, prog.id, 'sprintFocus',      '🎯 Sprint focus — the one thing', 'What is my one thing to focus on now?', wb.sprintFocus, 'The one thing I\'m focusing on this sprint…', isLocked) +
-      makeClientWorkbookField(client.id, prog.id, 'valueHelp',        '💡 My magic — value proposition', 'Start with the change my client gets.', wb.valueHelp, 'I help ________ who feel ________ avoid ________ so they become ________', isLocked) +
-      makeClientWorkbookField(client.id, prog.id, 'acquisition',      '📈 Acquisition — client\'s path', 'How do clients first encounter me?', wb.acquisition, 'Where do clients first encounter me? What makes them feel safe? Where do decisions stall?', isLocked) +
-      // (Design view + print buttons removed in v8500 — not useful in client portal context.
-      // The MDC sprint plan restructure that Phoebe asked for will likely make these
-      // obsolete anyway: future "workbook" stays free-form, sprints become a custom
-      // plan Phoebe builds from each Zoom transcript, sharable across cohort members.)
+    // Save persists automatically. Download button uses window.print() with a
+    // print-only stylesheet that hides everything except .workbook-print-area
+    // so clients on basic-tech can save it as a real PDF via the browser's
+    // standard "Save as PDF" print dialog.
+    var clientFirst = (client.name || '').split(' ')[0];
+    var workbookHtml = '<div class="client-section workbook-print-area" id="client-workbook-print-' + prog.id + '">' +
+      '<div class="workbook-print-only" style="display:none;font-family:var(--f-head);font-size:24px;color:var(--magenta);margin-bottom:6px">Money Dollars Cents — My Workbook</div>' +
+      '<div class="workbook-print-only" style="display:none;font-size:13px;color:var(--stone);margin-bottom:18px">' + (clientFirst || 'Client') + (client.biz ? ' · ' + client.biz : '') + ' · ' + new Date().toLocaleDateString('en-AU', {day:'numeric', month:'long', year:'numeric'}) + '</div>' +
+      '<div class="workbook-screen-only" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:8px">' +
+        '<h3 style="margin:0">📘 My MDC workbook</h3>' +
+        '<button onclick="downloadWorkbookPdf(\'' + prog.id + '\')" class="btn-sm primary" style="font-size:12px">📥 Download as PDF</button>' +
+      '</div>' +
+      '<p class="workbook-screen-only" style="font-size:13px;color:var(--stone);margin-bottom:14px">Answer when you\'re ready — your responses save automatically and Phoebe can see them. Hit "Download as PDF" any time to save a personal copy.</p>' +
+      // ── 💰 MONEY — mindset, money story, what wealth means
+      '<div class="workbook-section-heading" style="font-family:var(--f-head);font-size:16px;color:var(--hot-pink);margin:18px 0 10px;padding-bottom:6px;border-bottom:1.5px solid var(--border-soft)">💰 Money — your story, your mindset</div>' +
+      makeClientWorkbookField(client.id, prog.id, 'moneyStory',       '💭 My money story', 'What you grew up believing about money — and what you believe now.', wb.moneyStory, 'When I was growing up, money meant… Today, money means…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'wealthDefinition', '✨ What wealth means to me', 'Beyond the bank balance — what does a wealthy life look like for you?', wb.wealthDefinition, 'Wealth, for me, looks like…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'meNow',            '🪞 Where I\'m already winning', 'Take a moment for appreciation, not improvement.', wb.meNow, 'Where I\'m already winning right now…', isLocked) +
+      // ── 📊 DOLLARS — the real numbers
+      '<div class="workbook-section-heading" style="font-family:var(--f-head);font-size:16px;color:var(--hot-pink);margin:24px 0 10px;padding-bottom:6px;border-bottom:1.5px solid var(--border-soft)">📊 Dollars — the real numbers</div>' +
+      makeClientWorkbookField(client.id, prog.id, 'businessSnapshot', '📸 Business snapshot', 'The exact truth of where you stand today.', wb.businessSnapshot, 'What I do, revenue last 12 months, number of clients, my hours, what I pay myself…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'numbersIKnow',     '🔢 The numbers I actually know', 'Be honest — what do you track today vs guess at?', wb.numbersIKnow, 'Numbers I track regularly… Numbers I guess at… Numbers I avoid…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'profitLeaks',      '💸 Where I think money is leaking', 'No judgement — just where you suspect dollars are slipping.', wb.profitLeaks, 'Subscriptions I don\'t use, pricing that\'s too low, time on the wrong work…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'valueHelp',        '💡 My magic — value proposition', 'Start with the change your client gets.', wb.valueHelp, 'I help ________ who feel ________ avoid ________ so they become ________', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'acquisition',      '📈 How clients find me', 'How do clients first encounter you? What makes them feel safe? Where do decisions stall?', wb.acquisition, 'Where they find me, what makes them trust me, where they hesitate…', isLocked) +
+      // ── 💛 CENTS — the daily wins, the small stuff that compounds
+      '<div class="workbook-section-heading" style="font-family:var(--f-head);font-size:16px;color:var(--hot-pink);margin:24px 0 10px;padding-bottom:6px;border-bottom:1.5px solid var(--border-soft)">💛 Cents — small wins, big shifts</div>' +
+      makeClientWorkbookField(client.id, prog.id, 'vision',           '🌟 Vision — Future me', 'Five years from now, you\'re already there. It\'s done!', wb.vision, 'Five years from now I am… my business looks like… my life looks like…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'sprintFocus',      '🎯 Sprint focus — the one thing', 'What is your ONE thing to focus on right now?', wb.sprintFocus, 'The one thing I\'m focusing on this sprint…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'nextStepActions',  '✅ My next 3 steps', 'Three concrete actions you\'ll take in the next 14 days.', wb.nextStepActions, '1. …\n2. …\n3. …', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'whoIBecame',       '🌱 Who I become', 'When you\'ve done all of this — who will you have become?', wb.whoIBecame, 'I will be the kind of business owner who…', isLocked) +
+      '<div class="workbook-print-only" style="display:none;font-size:11px;color:var(--stone);margin-top:24px;padding-top:14px;border-top:1px solid var(--border-soft);font-style:italic">Money Dollars Cents · ' + clientFirst + ' · ' + new Date().toLocaleDateString('en-AU', {day:'numeric', month:'long', year:'numeric'}) + ' · phoebeblamey.com.au</div>' +
       '</div>';
     var checkinHtml = isLocked ? '' :
       '<div class="client-section"><h3>My weekly check-in</h3>' +
@@ -8887,6 +8906,24 @@ async function saveClientWorkbookField(clientId, progId, field, value) {
   await persistClient(client);
 }
 
+// "Download as PDF" — uses the browser's native print dialog to save a
+// clean, filled-in copy of the workbook. The print stylesheet (see
+// styles.css §17) hides everything else and reveals the workbook header
+// + footer. Works on every modern browser including iOS Safari (their
+// "Save to Files" sheet has a Save as PDF option).
+function downloadWorkbookPdf(progId) {
+  document.body.classList.add('printing-workbook');
+  // Slight delay so the layout settles (textarea heights re-flow once
+  // the print-only labels become visible). Then trigger print.
+  setTimeout(function() {
+    try { window.print(); }
+    catch (e) { branded.alert('Couldn\'t open print dialog. On mobile, try the share button → Print.'); }
+    // Clear the class shortly after — print() blocks until the dialog
+    // closes on most browsers, but iOS Safari fires it async.
+    setTimeout(function() { document.body.classList.remove('printing-workbook'); }, 500);
+  }, 100);
+}
+
 // Convert a suggested action into a real client task — appears on the
 // to-do list immediately, marked clientVisible so the client sees it
 // (well, they typed it themselves effectively). Tracks `actionAddedAsTask`
@@ -10029,6 +10066,146 @@ function addHubResource() {
   document.getElementById('add-resource-form').style.display='none';
   ['res-title','res-url','res-tags','res-desc'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   renderHappyHub('','','');
+  // Offer to notify the cohorts that opted into resource notifications
+  setTimeout(function() { offerToBroadcastNewResource(newResource); }, 200);
+}
+
+// After Phoebe adds a hub resource, ask if she wants to email the cohorts
+// that have notifyOnNewResource ticked. Skips silently if no cohorts have
+// opted in.
+async function offerToBroadcastNewResource(resource) {
+  var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
+  var optedIn = cohorts.filter(function(c){ return c.notifyOnNewResource && _cohortMembers(c.id).length > 0; });
+  if (!optedIn.length) return;
+  var totalMembers = optedIn.reduce(function(sum, c){ return sum + _cohortMembers(c.id).length; }, 0);
+  var ok = await branded.confirm(
+    'Email this resource to ' + totalMembers + ' member' + (totalMembers === 1 ? '' : 's') +
+    ' across ' + optedIn.length + ' cohort' + (optedIn.length === 1 ? '' : 's') +
+    ' that opted into resource notifications?\n\n"' + (resource.title||'') + '"',
+    { title: '📧 Notify cohorts?', okLabel: 'Yes, send', cancelLabel: 'Skip this one' }
+  );
+  if (!ok) return;
+  await broadcastResourceToCohorts(optedIn, resource);
+}
+
+async function broadcastResourceToCohorts(cohorts, resource) {
+  var seen = new Set(); // dedupe — same person could be in multiple cohorts
+  var sent = 0, failed = 0, skipped = 0;
+  branded.toast('Sending…');
+  for (var i = 0; i < cohorts.length; i++) {
+    var co = cohorts[i];
+    var members = _cohortMembers(co.id);
+    for (var j = 0; j < members.length; j++) {
+      var m = members[j];
+      if (!m.email || m.notificationsDisabled) { skipped++; continue; }
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      var subject = '✨ A new resource from Phoebe — ' + (resource.title || 'something useful');
+      var body =
+        'Hi ' + ((m.name||'there').split(' ')[0]) + ',\n\n' +
+        'Just dropped this in your hub — thought it might land for you:\n\n' +
+        (resource.title || '') + '\n' +
+        (resource.desc ? resource.desc + '\n' : '') +
+        (resource.url ? '\n→ ' + resource.url + '\n' : '') +
+        '\nIt\'s also in your portal under the ❓ help drawer → My resources.\n\nPhoebe x';
+      try {
+        var r = await fetch('/api/send-message', {
+          method:'POST', headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ type:'email', to:m.email, subject:subject, message:body, clientName:m.name }),
+        });
+        if (r.ok) sent++; else failed++;
+      } catch (e) { failed++; }
+    }
+  }
+  var summary = sent + ' sent' + (failed ? ' · ' + failed + ' failed' : '') + (skipped ? ' · ' + skipped + ' skipped' : '');
+  if (failed) branded.alert('Notify finished — ' + summary, { title:'Some failed' });
+  else        branded.success('Notified · ' + summary);
+  if (typeof logActivity === 'function') logActivity('resource-broadcast', 'Resource broadcast: ' + (resource.title||''), { detail: summary });
+}
+
+// After Phoebe approves an AI session summary, offer to email the client to
+// let them know the recording + polished notes are ready in their portal.
+// Cohort members whose cohort has notifyOnRecording=true get a "Yes, send"
+// default. Non-cohort clients still get asked but with a softer prompt — she
+// can always skip.
+async function offerToNotifyOfRecording(client, prog, note) {
+  if (!client || !note) return;
+  if (!client.email) return; // no email on file → silently skip
+  if (client.notificationsDisabled) return; // global opt-out
+  // Find any cohort this client belongs to that has notifyOnRecording on
+  var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
+  var clientCohortIds = (prog && prog.cohort) ? [prog.cohort] : [];
+  // Also check across all programs in case the matched program isn't a cohort one
+  (client.programs || []).forEach(function(p) { if (p && p.cohort && clientCohortIds.indexOf(p.cohort) === -1) clientCohortIds.push(p.cohort); });
+  var optedInCohort = cohorts.find(function(c) { return c.notifyOnRecording && clientCohortIds.indexOf(c.id) !== -1; });
+  var firstName = (client.name || 'them').split(' ')[0];
+  var promptMsg = optedInCohort
+    ? 'Email ' + firstName + ' that the ' + (optedInCohort.name || 'cohort') + ' recording + notes are ready in their portal?'
+    : 'Email ' + firstName + ' that their recording + notes are ready in their portal?';
+  var ok = await branded.confirm(promptMsg, {
+    title: '🎬 Notify ' + firstName + '?',
+    okLabel: 'Yes, send',
+    cancelLabel: optedInCohort ? 'Skip just this one' : 'Skip',
+  });
+  if (!ok) return;
+  await emailClientOfRecording(client, prog, note, optedInCohort);
+}
+
+async function emailClientOfRecording(client, prog, note, cohort) {
+  if (!client || !client.email) { branded.alert('No email on file for this client.'); return; }
+  var firstName = (client.name || 'there').split(' ')[0];
+  var dateLabel = '';
+  try { dateLabel = note.date ? new Date(note.date).toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' }) : ''; } catch(e) { dateLabel = note.date || ''; }
+  var sessionLabel = note.zoomTopic || (cohort ? cohort.name + ' session' : 'our session') + (dateLabel ? ' · ' + dateLabel : '');
+  var subject = '🎬 Your recording + notes are ready · ' + (dateLabel || 'your last session');
+  // Body uses the polished AI summary (note.aiSummary) Phoebe just approved.
+  // Plain text — keep it short, warm, no padding. Markdown headings stay
+  // readable in email clients without a renderer.
+  var summaryBlock = (note.aiSummary || note.text || '').trim();
+  var lines = [];
+  lines.push('Hi ' + firstName + ',');
+  lines.push('');
+  lines.push('The recording and notes from ' + sessionLabel + ' are ready for you.');
+  lines.push('');
+  if (summaryBlock) {
+    lines.push('Here\'s what we covered:');
+    lines.push('');
+    lines.push(summaryBlock);
+    lines.push('');
+  }
+  if (note.zoomVideoUrl) {
+    lines.push('🎬 Watch the recording: ' + note.zoomVideoUrl);
+    if (note.zoomPasscode) lines.push('   Passcode: ' + note.zoomPasscode);
+    lines.push('');
+  }
+  lines.push('Everything\'s also in your portal — log in any time to revisit your notes, tick off tasks, or log a win.');
+  lines.push('');
+  lines.push('Phoebe x');
+  var body = lines.join('\n');
+  branded.toast('Sending…');
+  try {
+    var r = await fetch('/api/send-message', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ type:'email', to: client.email, subject: subject, message: body, clientName: client.name }),
+    });
+    if (r.ok) {
+      branded.success('Emailed ' + firstName);
+      // Mark on the note so we don't double-notify
+      note.recordingNotifiedAt = new Date().toISOString();
+      try { await persistClient(client); } catch(e) {}
+      if (typeof logActivity === 'function') {
+        logActivity('recording-notify', 'Recording email sent · ' + client.name, {
+          clientId: client.id, clientName: client.name, progId: prog && prog.id,
+          detail: dateLabel || note.date || ''
+        });
+      }
+    } else {
+      branded.alert('Email failed to send. The recording is still in their portal — they\'ll see it next time they log in.', { title:'Send failed' });
+    }
+  } catch (e) {
+    branded.alert('Email failed: ' + (e.message || e), { title:'Send failed' });
+  }
 }
 
 function shareResourceWithClient(resourceId, resourceTitle) {
@@ -12208,22 +12385,99 @@ function _formatCohortDate(d, opts) {
   catch(e) { return d; }
 }
 
+// Current-cohort-first manager: a single cohort is "current" (active or
+// most-recent) and shows full management UI. Older cohorts collapse into
+// a History dropdown below. Phoebe's normal workflow lives in the current
+// cohort view; she rarely needs to touch old ones.
 function renderCohortManager() {
   var el = document.getElementById('cohort-manager-content');
   if (!el) { console.error('[CohortManager] Element not found'); return; }
-  var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [
-    { id:'cohort-1', name:'MDC Cohort 1', dates:'Apr–Jun 2026', whatsapp:'' }
-  ];
+  var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
+
+  if (!cohorts.length) {
+    el.innerHTML = '<div class="hub-empty">' +
+      '<span class="empty-emoji">💡</span>' +
+      '<div class="empty-title">No cohorts yet</div>' +
+      '<div class="empty-sub">Cohorts group MDC clients so they share a Zoom link, dates, and WhatsApp group. Make your first one to get started.</div>' +
+      '<button class="btn-sm primary" onclick="addNewCohort()">+ Create first cohort</button>' +
+      '</div>';
+    return;
+  }
+
+  // Pick the "current" cohort: explicit active flag wins, else most recent
+  // by start date. Phoebe can override with the dropdown.
+  var todayStr = new Date().toISOString().split('T')[0];
+  function isCurrent(c) {
+    if (c._userPicked) return true;
+    if (c.active) return true;
+    // Cohort whose date window contains today
+    if (c.start && c.end && c.start <= todayStr && c.end >= todayStr) return true;
+    return false;
+  }
+  var sorted = cohorts.slice().sort(function(a, b) { return (b.start || '').localeCompare(a.start || ''); });
+  // Pick: user-picked > active > date-window > newest by start
+  var picked = (window._currentCohortId && cohorts.find(function(c){ return c.id === window._currentCohortId; })) || null;
+  var current = picked || cohorts.find(isCurrent) || sorted[0];
+  var history = cohorts.filter(function(c){ return c.id !== current.id; });
+
+  var pickerOptions = sorted.map(function(c) {
+    var label = (c.name || 'Untitled') + (c.dates ? ' · ' + c.dates : '');
+    if (c.id === current.id) label += ' (current)';
+    return '<option value="' + c.id + '"' + (c.id === current.id ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+  }).join('');
 
   var headerHtml =
-    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">' +
-      '<div style="font-size:13px;color:var(--stone)">' + cohorts.length + ' cohort' + (cohorts.length===1?'':'s') + ' · click any cohort to expand</div>' +
-      '<button onclick="addNewCohort()" style="background:var(--hot-pink);color:white;border:none;padding:8px 16px;border-radius:99px;font-size:12px;font-weight:700;cursor:pointer">+ Create new cohort</button>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:18px">' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<label style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em">Current cohort</label>' +
+        '<select onchange="pickCohort(this.value)" style="border:1.5px solid var(--hot-pink);border-radius:99px;padding:8px 16px;font-family:var(--f-body);font-size:13px;font-weight:700;color:var(--magenta);background:var(--paper);outline:none;cursor:pointer;min-width:240px">' +
+          pickerOptions +
+        '</select>' +
+      '</div>' +
+      '<button onclick="addNewCohort()" class="btn-sm primary" style="font-size:12px;padding:8px 16px">+ New cohort</button>' +
     '</div>';
 
-  var cardsHtml = cohorts.map(function(co) { return renderCohortCard(co); }).join('');
+  // Auto-expand the picked cohort
+  window._expandedCohorts[current.id] = true;
+  var currentCard = renderCohortCard(current);
 
-  el.innerHTML = headerHtml + '<div style="display:flex;flex-direction:column;gap:14px">' + cardsHtml + '</div>';
+  // History block — collapsed list of older cohorts
+  var historyHtml = '';
+  if (history.length) {
+    historyHtml = '<details style="margin-top:24px;background:var(--marshmallow);border-radius:14px;padding:14px 18px">' +
+      '<summary style="cursor:pointer;list-style:none;font-size:12px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;display:flex;align-items:center;gap:8px">' +
+        '<span>📚 Previous cohorts · ' + history.length + '</span>' +
+        '<span style="margin-left:auto;font-size:14px">▾</span>' +
+      '</summary>' +
+      '<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">' +
+        history.map(function(c) {
+          var members = _cohortMembers(c.id);
+          var dateLabel = c.start && c.end
+            ? _formatCohortDate(c.start, {month:'short',year:'numeric'}) + ' – ' + _formatCohortDate(c.end, {month:'short',year:'numeric'})
+            : (c.dates || '');
+          return '<div style="display:flex;align-items:center;gap:10px;background:white;border:1px solid var(--border);border-radius:10px;padding:10px 14px;cursor:pointer" onclick="pickCohort(\'' + c.id + '\')">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-size:13px;color:var(--magenta);font-weight:700">' + escapeHtml(c.name || 'Untitled') + '</div>' +
+              '<div style="font-size:11px;color:var(--stone)">' + escapeHtml(dateLabel) + ' · ' + members.length + ' member' + (members.length === 1 ? '' : 's') + '</div>' +
+            '</div>' +
+            '<button class="btn-sm" style="font-size:11px;flex-shrink:0">Open →</button>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</details>';
+  }
+
+  el.innerHTML = headerHtml + currentCard + historyHtml;
+}
+
+// Switch which cohort is being viewed/managed
+function pickCohort(cohortId) {
+  window._currentCohortId = cohortId;
+  // Collapse all others, expand the picked one
+  Object.keys(window._expandedCohorts || {}).forEach(function(k) { window._expandedCohorts[k] = false; });
+  window._expandedCohorts = window._expandedCohorts || {};
+  window._expandedCohorts[cohortId] = true;
+  renderCohortManager();
 }
 
 function renderCohortCard(co) {
@@ -12312,13 +12566,289 @@ function renderCohortCard(co) {
     '<textarea onchange="updateCohortField(\''+co.id+'\',\'notes\',this.value)" placeholder="Anything you want to remember about this cohort — group dynamics, recurring themes, who needs extra support, decisions you\'ve made…" style="width:100%;min-height:100px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6">' + phoebeNotes + '</textarea>' +
   '</div>';
 
+  // Sessions list — every dated session for this cohort, with per-session
+  // Zoom controls. Phoebe asked for this so each weekly call has its own
+  // recording/transcript and she doesn't have to share the same Zoom URL
+  // forever.
+  var sessionsHtml = renderCohortSessionsList(co);
+
+  // Notification settings — what auto-emails fire for this cohort
+  var notifsHtml =
+    '<div style="margin-top:18px;padding:14px;background:var(--marshmallow);border-radius:12px">' +
+      '<div style="font-size:11px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">📧 Auto-email this cohort when…</div>' +
+      '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--magenta);padding:6px 0">' +
+        '<input type="checkbox"' + (co.notifyOnNewResource ? ' checked' : '') + ' onchange="updateCohortField(\'' + co.id + '\',\'notifyOnNewResource\',this.checked?\'true\':\'\')">' +
+        '<span>📚 I add a new resource to the Happy Hub</span>' +
+      '</label>' +
+      '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--magenta);padding:6px 0">' +
+        '<input type="checkbox"' + (co.notifyOnRecording ? ' checked' : '') + ' onchange="updateCohortField(\'' + co.id + '\',\'notifyOnRecording\',this.checked?\'true\':\'\')">' +
+        '<span>🎬 A session recording is ready for them</span>' +
+      '</label>' +
+      '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--magenta);padding:6px 0">' +
+        '<input type="checkbox"' + (co.notifyOnSessionDateChange ? ' checked' : '') + ' onchange="updateCohortField(\'' + co.id + '\',\'notifyOnSessionDateChange\',this.checked?\'true\':\'\')">' +
+        '<span>📅 The next session date / Zoom link changes</span>' +
+      '</label>' +
+      '<div style="font-size:11px;color:var(--stone);margin-top:8px;font-style:italic">Members who have notifications turned off (per-client setting) won\'t receive any of these.</div>' +
+    '</div>';
+
   return '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:16px 18px">' +
     head +
     detailFields +
+    sessionsHtml +
     '<div style="margin-top:18px;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Members</div>' +
     memberList + memberActions +
+    notifsHtml +
     notesBlock +
     '</div>';
+}
+
+// ── Cohort sessions — per-meeting calendar with create-Zoom buttons ───────
+// A cohort has a recurring slot at cohort.zoomLink, but each individual
+// session can have its own dedicated Zoom meeting (so each gets its own
+// recording + transcript + AI summary). Sessions are stored as
+// cohort.sessions = [{ id, date, time, topic, zoomMeetingId, zoomJoinUrl,
+// zoomPasscode }].
+function renderCohortSessionsList(co) {
+  var sessions = (co.sessions || []).slice().sort(function(a, b) {
+    return (a.date || '').localeCompare(b.date || '');
+  });
+  var html =
+    '<div style="margin-top:18px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+        '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em">📅 All sessions · ' + sessions.length + '</div>' +
+        '<button class="btn-sm primary" onclick="addCohortSession(\'' + co.id + '\')" style="font-size:11px">+ Add session</button>' +
+      '</div>';
+  if (!sessions.length) {
+    html += '<div class="hub-empty" style="background:var(--marshmallow);border-radius:10px;padding:18px 14px">' +
+      '<span class="empty-emoji">📅</span>' +
+      '<div class="empty-title">No sessions scheduled yet</div>' +
+      '<div class="empty-sub">Add the dates and times you\'ll meet with this cohort. Each session can have its own Zoom meeting (own recording + transcript) or share the cohort\'s recurring link.</div>' +
+      '<button class="btn-sm primary" onclick="addCohortSession(\'' + co.id + '\')">+ Add the first session</button>' +
+      '</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:6px">';
+    var todayStr = new Date().toISOString().split('T')[0];
+    sessions.forEach(function(s) {
+      var isPast = s.date && s.date < todayStr;
+      var dateLabel = s.date ? new Date(s.date + (s.time ? 'T' + parseTimeFlexible(s.time) : 'T00:00:00')).toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'short', year:'numeric' }) : 'No date';
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:' + (isPast ? '#F5F2F4' : 'white') + ';border:1px solid ' + (isPast ? 'var(--border-soft)' : 'var(--border)') + ';border-radius:10px' + (isPast ? ';opacity:0.85' : '') + '">' +
+        '<div style="font-size:18px;line-height:1">' + (isPast ? '✓' : '📅') + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<input type="date" value="' + (s.date||'') + '" onchange="updateCohortSession(\'' + co.id + '\',\'' + s.id + '\',\'date\',this.value)" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper)">' +
+            '<input type="text" value="' + (s.time||'').replace(/"/g,'&quot;') + '" onchange="updateCohortSession(\'' + co.id + '\',\'' + s.id + '\',\'time\',this.value)" placeholder="10:00am" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);width:90px">' +
+            '<input type="text" value="' + (s.topic||'').replace(/"/g,'&quot;') + '" onchange="updateCohortSession(\'' + co.id + '\',\'' + s.id + '\',\'topic\',this.value)" placeholder="Optional topic for this session" style="flex:1;min-width:160px;border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper)">' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap">' +
+            (s.zoomJoinUrl
+              ? '<a href="' + s.zoomJoinUrl + '" target="_blank" style="font-size:10px;background:#2D8CFF;color:white;padding:2px 8px;border-radius:99px;text-decoration:none;font-weight:600">🎬 Open Zoom</a>' +
+                '<button onclick="copyToClipboard(\'' + s.zoomJoinUrl.replace(/\'/g,'') + '\')" class="btn-sm" style="font-size:10px;padding:2px 8px;min-height:0">📋 Copy</button>' +
+                (s.zoomPasscode ? '<span style="font-size:10px;color:var(--stone)">code: <strong style="color:var(--magenta)">' + escapeHtml(s.zoomPasscode) + '</strong></span>' : '')
+              : '<button onclick="createSessionZoom(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm primary" style="font-size:10px;padding:3px 10px;min-height:0">🎬 Create Zoom link</button>') +
+            (s.zoomJoinUrl && co.notifyOnSessionDateChange ? '<button onclick="emailSessionLink(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm" style="font-size:10px;padding:3px 10px;min-height:0">📧 Email cohort</button>' : '') +
+          '</div>' +
+        '</div>' +
+        '<button onclick="deleteCohortSession(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm" style="font-size:14px;padding:4px 8px;color:var(--stone);min-height:0;background:none;border:none" title="Delete this session">×</button>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// Session CRUD
+function addCohortSession(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  co.sessions = co.sessions || [];
+  // Suggest a date based on the cohort's start + N weeks for the next
+  // session number, or default to next Monday
+  var nextDate = '';
+  if (co.sessions.length && co.sessions[co.sessions.length - 1].date) {
+    var last = new Date(co.sessions[co.sessions.length - 1].date);
+    last.setDate(last.getDate() + 7);
+    nextDate = last.toISOString().split('T')[0];
+  } else if (co.start) {
+    nextDate = co.start;
+  } else {
+    var d = new Date();
+    d.setDate(d.getDate() + (8 - d.getDay()) % 7); // next Monday
+    nextDate = d.toISOString().split('T')[0];
+  }
+  co.sessions.push({
+    id: 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+    date: nextDate,
+    time: co.nextSessionTime || '10:00am',
+    topic: '',
+    zoomJoinUrl: '',
+    zoomMeetingId: '',
+    zoomPasscode: '',
+    createdAt: new Date().toISOString(),
+  });
+  _saveCohorts();
+  renderCohortManager();
+}
+
+async function updateCohortSession(cohortId, sessionId, field, value) {
+  var co = _findCohort(cohortId);
+  if (!co || !co.sessions) return;
+  var s = co.sessions.find(function(x) { return x.id === sessionId; });
+  if (!s) return;
+  s[field] = value;
+  s.updatedAt = new Date().toISOString();
+  _saveCohorts();
+  // Don't re-render on every keystroke for the date/time/topic inputs —
+  // would steal focus. Re-render only when something structural changes
+  // (e.g. zoom link gets created via createSessionZoom which does call
+  // renderCohortManager itself).
+}
+
+async function deleteCohortSession(cohortId, sessionId) {
+  var co = _findCohort(cohortId);
+  if (!co || !co.sessions) return;
+  var ok = await branded.confirm('Remove this session? Doesn\'t cancel the Zoom meeting itself — you\'ll need to delete that in Zoom separately if you want it gone.', { title: 'Remove session?', okLabel: 'Remove', danger: true });
+  if (!ok) return;
+  co.sessions = co.sessions.filter(function(s) { return s.id !== sessionId; });
+  _saveCohorts();
+  renderCohortManager();
+}
+
+// Create a per-session Zoom meeting (NOT a recurring one — single instance
+// for that date/time). Uses the MDC template if Phoebe has saved one,
+// otherwise the built-in "mdc" preset.
+async function createSessionZoom(cohortId, sessionId) {
+  var co = _findCohort(cohortId);
+  if (!co || !co.sessions) return;
+  var s = co.sessions.find(function(x) { return x.id === sessionId; });
+  if (!s) return;
+  if (!s.date) { branded.alert('Set a date for this session first.'); return; }
+  branded.toast('Creating Zoom meeting…');
+  try {
+    var startTime = s.date + 'T' + parseTimeFlexible(s.time || '10:00am');
+    // Zoom expects ISO with Z or offset; treat input as Australia/Sydney
+    // and let Zoom's timezone field handle the rest.
+    var resp = await fetch('/api/zoom-create-meeting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        templateName: 'mdc',
+        cohortName: co.name + (s.topic ? ' · ' + s.topic : ''),
+        weekLabel: s.date,
+        recurring: false,
+        startDateTime: startTime,
+      })
+    });
+    var data = await resp.json();
+    if (resp.ok && data.success) {
+      s.zoomJoinUrl = data.joinUrl || '';
+      s.zoomMeetingId = String(data.meetingId || '');
+      s.zoomPasscode = data.passcode || '';
+      s.zoomTemplate = data.templateUsed || '';
+      s.updatedAt = new Date().toISOString();
+      _saveCohorts();
+      renderCohortManager();
+      branded.success('Zoom created · ' + new Date(s.date).toLocaleDateString('en-AU', { day:'numeric', month:'short' }));
+      // Push the join URL out to all members AND optionally email them
+      await propagateSessionZoomToMembers(co, s);
+      if (co.notifyOnSessionDateChange) {
+        emailSessionLink(cohortId, sessionId);
+      }
+    } else {
+      branded.error('Zoom create failed: ' + (data.error || 'unknown'));
+    }
+  } catch (err) {
+    branded.error('Zoom create failed: ' + (err.message || err));
+  }
+}
+
+// Push a per-session Zoom link onto every member's MDC program record so
+// they see it in their portal. Uses prog.upcomingSessions[] as a per-session
+// log (different from prog.zoomJoin which is the recurring cohort link).
+async function propagateSessionZoomToMembers(co, session) {
+  if (!co || !session) return;
+  var members = _cohortMembers(co.id);
+  for (var i = 0; i < members.length; i++) {
+    var m = members[i];
+    var changed = false;
+    (m.programs || []).forEach(function(p) {
+      if (!p || p.cohort !== co.id) return;
+      p.upcomingSessions = p.upcomingSessions || [];
+      var existing = p.upcomingSessions.find(function(x){ return x.id === session.id; });
+      if (existing) {
+        existing.date = session.date;
+        existing.time = session.time;
+        existing.topic = session.topic;
+        existing.zoomJoinUrl = session.zoomJoinUrl;
+        existing.zoomPasscode = session.zoomPasscode;
+        changed = true;
+      } else {
+        p.upcomingSessions.push({
+          id: session.id,
+          date: session.date,
+          time: session.time,
+          topic: session.topic,
+          zoomJoinUrl: session.zoomJoinUrl,
+          zoomPasscode: session.zoomPasscode,
+        });
+        changed = true;
+      }
+      // Also surface the next upcoming one as the program's primary
+      // zoomJoin so the hero rail keeps working
+      var todayStr = new Date().toISOString().split('T')[0];
+      var nextUpcoming = (p.upcomingSessions || [])
+        .filter(function(x){ return x.zoomJoinUrl && (!x.date || x.date >= todayStr); })
+        .sort(function(a, b){ return (a.date || '').localeCompare(b.date || ''); })[0];
+      if (nextUpcoming) {
+        p.zoomJoin = nextUpcoming.zoomJoinUrl;
+        p.zoomPasscode = nextUpcoming.zoomPasscode;
+      }
+    });
+    if (changed) {
+      m.updatedAt = new Date().toISOString();
+      try { await persistClient(m); } catch (e) { console.warn('[session-propagate] save failed', m.id, e); }
+    }
+  }
+}
+
+// Email a session's Zoom link to all cohort members
+async function emailSessionLink(cohortId, sessionId) {
+  var co = _findCohort(cohortId);
+  if (!co || !co.sessions) return;
+  var s = co.sessions.find(function(x){ return x.id === sessionId; });
+  if (!s || !s.zoomJoinUrl) { branded.alert('Create the Zoom link first.'); return; }
+  var members = _cohortMembers(cohortId);
+  if (!members.length) { branded.alert('No members in this cohort yet.'); return; }
+  var dateStr = new Date(s.date + 'T' + parseTimeFlexible(s.time||'10:00am')).toLocaleString('en-AU', {
+    weekday:'long', day:'numeric', month:'long', hour:'numeric', minute:'2-digit', hour12:true
+  });
+  var subject = (co.name || 'Cohort') + ' · ' + dateStr;
+  var msgBody =
+    'Hi {firstName},\n\n' +
+    'Quick reminder of our next ' + (co.name || 'cohort') + ' session.\n\n' +
+    'When: ' + dateStr + (s.topic ? '\nTopic: ' + s.topic : '') + '\n' +
+    'Zoom: ' + s.zoomJoinUrl + '\n' +
+    (s.zoomPasscode ? 'Passcode: ' + s.zoomPasscode + '\n' : '') +
+    '\nSee you there.\n\nPhoebe x';
+  branded.toast('Emailing ' + members.length + ' members…');
+  var sent = 0, failed = 0, skipped = 0;
+  for (var i = 0; i < members.length; i++) {
+    var m = members[i];
+    if (!m.email || m.notificationsDisabled) { skipped++; continue; }
+    var personal = msgBody.replace(/\{firstName\}/g, (m.name||'there').split(' ')[0]);
+    try {
+      var r = await fetch('/api/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type:'email', to:m.email, subject:subject, message:personal, clientName:m.name }),
+      });
+      if (r.ok) sent++; else failed++;
+    } catch (e) { failed++; }
+  }
+  var summary = sent + ' sent' + (failed ? ' · ' + failed + ' failed' : '') + (skipped ? ' · ' + skipped + ' skipped' : '');
+  if (failed) branded.alert('Email finished — ' + summary, { title:'Some sends failed' });
+  else        branded.success('Emailed ' + summary);
+  if (typeof logActivity === 'function') logActivity('cohort-broadcast', 'Emailed cohort: ' + (co.name||''), { detail: summary + ' · ' + dateStr });
 }
 
 function _cohortInput(cohortId, field, label, value, type, placeholder) {
@@ -12987,6 +13517,12 @@ function openTranscriptReview(clientId, progId, noteId) {
       logActivity('ai-summary', 'Session summary approved & shared · ' + client.name,
         { clientId: client.id, clientName: client.name, progId: prog.id, detail: (note.zoomTopic || 'Zoom session') });
     }
+    // Offer to email the client that the recording + polished notes are ready.
+    // Honors cohort.notifyOnRecording for opted-in cohorts; non-cohort clients
+    // still get a soft prompt so Phoebe can decide per-session.
+    setTimeout(function() {
+      if (typeof offerToNotifyOfRecording === 'function') offerToNotifyOfRecording(client, prog, note);
+    }, 250);
   };
   actions.appendChild(reject);
   actions.appendChild(approve);
