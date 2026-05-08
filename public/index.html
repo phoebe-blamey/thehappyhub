@@ -3,7 +3,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#A11E55">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PeaBe Hub">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
 <title>PeaBe Coaching Hub — Phoebe Blamey</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -13,7 +19,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v9300 — Netlify Blobs everywhere · custom badges, activity log, cohorts, plan templates, hub resources, hourly rate, coach phone, notifications, knowledge-bank chat all server-shared · 60s live-sync + tab-focus refresh">
+<meta name="hmh-build" content="v9400 — multi-device hardening · live-sync skips mid-edit, pauses when hidden, fingerprint dedupe · subtle sync dot · PWA manifest for add-to-home-screen · phone topbar reflow · iPhone notch safe-area">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -2021,43 +2027,118 @@ async function loadRemoteState(role) {
 }
 
 // Lightweight refresh — pulls fresh client list + activity log so a
-// long-open tab stays in sync without a manual reload. Wired from the
-// home page on a 60s interval and on tab-focus.
+// long-open tab stays in sync without a manual reload. Multi-device
+// reality means we have to be careful:
+//   - Pause polling when the tab is hidden (saves battery on phones,
+//     iPads). visibilitychange handler kicks an immediate sync on resume
+//     and restarts the timer.
+//   - NEVER clobber an in-flight edit. If the user has focus on an
+//     input / textarea / contenteditable, skip the auto-render. Their
+//     keystrokes will trigger a save which uses optimistic concurrency
+//     anyway, so they'll find out about a real conflict at save time.
+//   - Skip the render entirely when nothing changed — compare a small
+//     fingerprint instead of re-rendering blindly.
 var _liveSyncTimer = null;
+var _liveSyncBusy = false;
+var _lastSyncFingerprint = '';
+
+function isUserMidEdit() {
+  var ae = document.activeElement;
+  if (!ae) return false;
+  var tag = (ae.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (ae.isContentEditable) return true;
+  return false;
+}
+
+function clientFingerprint() {
+  // Cheap signature of "what would render differently" — based on per-client
+  // updatedAt timestamps. Works for both coach + client views since they
+  // both render off the clients array.
+  return (clients || []).map(function(c) {
+    return (c.id || '') + ':' + (c.updatedAt || '');
+  }).join('|');
+}
+
+function setSyncIndicator(state) {
+  // 'syncing' | 'synced' | '' (hidden). Two pills exist (coach + client topbars)
+  // so we just toggle a class on a body-level data attribute that the CSS picks up.
+  document.body.dataset.liveSync = state || '';
+}
+
 async function liveSyncTick() {
-  if (typeof loadClients === 'function') {
-    try { await loadClients(); } catch (e) {}
-  }
-  if (sessionGet && sessionGet(HMH_SESSION.ROLE) === 'coach') {
-    try { await loadActivityLogRemote(); } catch (e) {}
-    if (typeof renderHome === 'function') {
-      var pg = document.getElementById('page-home');
-      if (pg && pg.classList.contains('active')) renderHome();
+  if (_liveSyncBusy) return;
+  if (document.visibilityState === 'hidden') return; // never poll while away
+  _liveSyncBusy = true;
+  setSyncIndicator('syncing');
+  try {
+    if (typeof loadClients === 'function') {
+      try { await loadClients(); } catch (e) {}
     }
-  } else {
-    // Client side — re-render summary if visible, so wins/tasks Phoebe
-    // pushed from her end appear without manual refresh.
-    var client = clients.find(function(c){ return c.id === currentClientId; });
-    if (client) {
-      var sumEl = document.getElementById('client-summary-area');
-      if (sumEl && sumEl.style.display !== 'none' && typeof renderClientSummary === 'function') renderClientSummary(client);
-      var todosEl = document.getElementById('client-todos-area');
-      if (todosEl && todosEl.style.display !== 'none' && typeof renderClientTodosTab === 'function') renderClientTodosTab(client);
-      var winsEl = document.getElementById('client-wins-area');
-      if (winsEl && winsEl.style.display !== 'none' && typeof renderClientWinsTab === 'function') renderClientWinsTab(client);
+    var role = sessionGet ? sessionGet(HMH_SESSION.ROLE) : null;
+    if (role === 'coach') {
+      try { await loadActivityLogRemote(); } catch (e) {}
     }
+    // Did anything actually change? If not, skip the re-render entirely.
+    var fp = clientFingerprint();
+    if (fp === _lastSyncFingerprint) {
+      setSyncIndicator('synced');
+      return;
+    }
+    _lastSyncFingerprint = fp;
+    // If the user is typing, don't yank the DOM out from under them.
+    // The next tick (or save flush) will catch the change.
+    if (isUserMidEdit()) {
+      setSyncIndicator('synced');
+      return;
+    }
+    if (role === 'coach') {
+      if (typeof renderHome === 'function') {
+        var pg = document.getElementById('page-home');
+        if (pg && pg.classList.contains('active')) renderHome();
+      }
+    } else {
+      var client = clients.find(function(c){ return c.id === currentClientId; });
+      if (client) {
+        var sumEl = document.getElementById('client-summary-area');
+        if (sumEl && sumEl.style.display !== 'none' && typeof renderClientSummary === 'function') renderClientSummary(client);
+        var todosEl = document.getElementById('client-todos-area');
+        if (todosEl && todosEl.style.display !== 'none' && typeof renderClientTodosTab === 'function') renderClientTodosTab(client);
+        var winsEl = document.getElementById('client-wins-area');
+        if (winsEl && winsEl.style.display !== 'none' && typeof renderClientWinsTab === 'function') renderClientWinsTab(client);
+      }
+    }
+    setSyncIndicator('synced');
+  } finally {
+    _liveSyncBusy = false;
+    // Drop the indicator after a moment so it doesn't sit there permanently
+    setTimeout(function() {
+      if (document.body.dataset.liveSync === 'synced') document.body.dataset.liveSync = '';
+    }, 1500);
   }
 }
+
 function startLiveSync() {
   stopLiveSync();
-  _liveSyncTimer = setInterval(liveSyncTick, 60000); // every minute
+  // Slightly longer interval than before — 90s — because we now have
+  // tab-focus + on-action triggers that cover most real refresh moments.
+  _liveSyncTimer = setInterval(liveSyncTick, 90000);
 }
 function stopLiveSync() {
   if (_liveSyncTimer) { clearInterval(_liveSyncTimer); _liveSyncTimer = null; }
 }
-// Re-sync when the tab regains focus (covers the "left it open overnight" case)
+// Re-sync when the tab regains focus — covers the "phone was locked" or
+// "left the tab open overnight" cases. Pauses the interval while hidden
+// to save battery on mobile devices.
 document.addEventListener('visibilitychange', function() {
-  if (document.visibilityState === 'visible') liveSyncTick();
+  if (document.visibilityState === 'visible') {
+    liveSyncTick();
+    // Also restart the interval if it had been stopped (browsers throttle
+    // background timers heavily anyway, but belt-and-braces).
+    if (sessionGet && sessionGet(HMH_SESSION.ROLE)) startLiveSync();
+  } else {
+    stopLiveSync();
+  }
 });
 
 // ========== STATE ==========

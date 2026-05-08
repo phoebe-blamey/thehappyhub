@@ -1,0 +1,27 @@
+{
+  "name": "PeaBe Coaching Hub",
+  "short_name": "PeaBe Hub",
+  "description": "Phoebe Blamey's coaching platform — your private space to track your plan, tasks, wins and sessions.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FFFDFA",
+  "theme_color": "#A11E55",
+  "lang": "en-AU",
+  "categories": ["productivity", "lifestyle", "business"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%23A11E55'/><text x='256' y='340' text-anchor='middle' font-family='Poppins,sans-serif' font-size='280' font-weight='700' fill='%23FBF219'>P</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%23A11E55'/><text x='96' y='128' text-anchor='middle' font-family='Poppins,sans-serif' font-size='105' font-weight='700' fill='%23FBF219'>P</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

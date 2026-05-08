@@ -197,6 +197,32 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   30%  { background: #FFFBE8; transform: scale(1.02); }
   100% { background: white;   transform: scale(1); }
 }
+/* Live-sync indicator — a tiny pulsing dot that appears next to the topbar
+   date while the platform is pulling fresh data from Netlify Blobs. Subtle
+   so it doesn't feel like the page is misbehaving, just enough to confirm
+   that two-way share is alive. The body[data-live-sync] attribute is set
+   from JS in liveSyncTick. */
+.topbar-date { position: relative; }
+body[data-live-sync] .topbar-date::after {
+  content: ''; position: absolute; right: -10px; top: 50%;
+  width: 6px; height: 6px; border-radius: 99px;
+  background: rgba(255,255,255,0.6);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+body[data-live-sync="syncing"] .topbar-date::after {
+  background: #FBF219;
+  animation: liveSyncPulse 0.9s ease-in-out infinite;
+}
+body[data-live-sync="synced"] .topbar-date::after {
+  background: #B8DDD9;
+  transition: opacity 0.5s ease;
+}
+@keyframes liveSyncPulse {
+  0%, 100% { transform: translateY(-50%) scale(1);   opacity: 0.4; }
+  50%      { transform: translateY(-50%) scale(1.5); opacity: 1;   }
+}
+
 /* Custom badge animations — Phoebe picks one when she creates a custom badge.
    Each runs on the toast itself + the icon when the badge unlocks. */
 @keyframes badgeBounce {
@@ -435,6 +461,53 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   .prog-selector { grid-template-columns: 1fr; }
   .coach-main { padding: 16px; }
   .client-content { padding: 16px; }
+  /* Topbar reflow on tablet — date stays, less padding so logo + badge + date fit */
+  .topbar { padding: 0 14px; gap: 10px; }
+  .topbar-logo { font-size: 15px; }
+  .topbar-date { font-size: 11px; }
+}
+@media (max-width: 600px) {
+  /* Phone-sized topbar — drop the date to icon-only and tighten everything */
+  .topbar { padding: 0 12px; gap: 8px; height: 50px; }
+  .topbar-logo { font-size: 14px; }
+  .topbar-logo span { display: none; } /* hide "Coaching Hub" subtitle on phones */
+  .topbar-badge { padding: 2px 7px; font-size: 9px; }
+  .topbar-date {
+    font-size: 0; /* hide the date text */
+    padding: 0;
+    margin-left: 4px;
+  }
+  .topbar-date::before {
+    content: '📅'; font-size: 14px;
+  }
+  /* Make the live-sync dot still position correctly when text is hidden */
+  body[data-live-sync] .topbar-date::after { right: -8px; }
+  .btn-logout { padding: 4px 10px; font-size: 11px; }
+  /* Client tabs scroll horizontally on phones if they overflow */
+  .client-tabs { padding: 0 12px !important; }
+  .client-tab { padding: 12px 14px !important; font-size: 12px !important; }
+  /* Modal — give it room on small screens */
+  .modal { width: calc(100vw - 24px) !important; max-width: 100% !important; max-height: 90vh; padding: 18px !important; }
+  /* Default touch target — bigger, easier hit on small screens */
+  .btn-sm { min-height: 36px; font-size: 12px; }
+  .btn-sm.primary { min-height: 36px; }
+  /* Help FAB — slightly smaller so it doesn't crowd the thumb zone */
+  #help-fab { width: 48px !important; height: 48px !important; bottom: 18px !important; right: 18px !important; }
+  /* Cards — less padding on phones */
+  .client-section { padding: 14px !important; }
+  .three-card-story { grid-template-columns: 1fr !important; gap: 10px !important; }
+  /* Branded modal — no horizontal padding so a tiny phone uses every pixel */
+  #branded-modal-host > * { width: 100%; max-width: calc(100vw - 24px); }
+  /* Iframe-y stuff — sprint cards stack */
+  .sprint-card { padding: 14px !important; }
+}
+/* Respect iPhone notch / home-bar area when in standalone PWA mode */
+@supports (padding: env(safe-area-inset-top)) {
+  .topbar {
+    padding-top: env(safe-area-inset-top);
+    height: calc(54px + env(safe-area-inset-top));
+  }
+  body { padding-bottom: env(safe-area-inset-bottom); }
 }
 
 /* Force-visible rules for active pages and Task Sheet */
