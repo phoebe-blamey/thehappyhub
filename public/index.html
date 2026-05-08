@@ -19,7 +19,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v9500 — pulse feed (since-last-visit) · per-client status strip (where we're at + outstanding) · client→Phoebe review requests · my-journey timeline · KBank message timestamps · coach lastSeenAt">
+<meta name="hmh-build" content="v9600 — click-to-edit tasks · coach can tick client tasks · special notes · send welcome/credentials · merge clients · ⌘K search · cohort manager fixed + auto-Zoom · Zoom→program/resource/new client · PHOEBE_VOICE everywhere">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -67,8 +67,23 @@
     <div class="topbar-logo">PeaBe <span>Coaching Hub</span></div>
     <span class="topbar-badge badge-coach">Coach View</span>
     <span class="topbar-date" id="coach-topbar-date" style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:500;letter-spacing:0.02em;margin-left:6px" title="Today"></span>
-    <span id="save-status-pill" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9);margin-left:auto" title="Save status — saves happen automatically as you type"></span>
+    <button id="coach-search-trigger" onclick="openCoachSearch()" title="Search clients, tasks, settings (⌘K / Ctrl+K)" style="margin-left:auto;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.95);border:1px solid rgba(255,255,255,0.25);font-size:12px;padding:5px 12px 5px 10px;border-radius:99px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--f-body)">
+      🔎 <span class="search-trigger-label">Search</span> <span style="opacity:0.7;font-size:10px;border:1px solid rgba(255,255,255,0.3);padding:1px 5px;border-radius:4px;margin-left:2px" class="search-trigger-shortcut">⌘K</span>
+    </button>
+    <span id="save-status-pill" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Save status — saves happen automatically as you type"></span>
     <button class="btn-logout" onclick="logout()">Sign out</button>
+  </div>
+
+  <!-- ========== GLOBAL SEARCH (⌘K) ========== -->
+  <div id="coach-search-overlay" style="display:none;position:fixed;inset:0;background:rgba(40,15,40,0.45);backdrop-filter:blur(2px);z-index:9700;align-items:flex-start;justify-content:center;padding-top:14vh">
+    <div style="background:white;border-radius:16px;width:540px;max-width:calc(100vw - 32px);max-height:70vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(201,38,107,0.32);overflow:hidden;font-family:var(--f-body)">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+        <div style="font-size:18px">🔎</div>
+        <input id="coach-search-input" placeholder="Search clients, tasks, notes, settings…" autocomplete="off" oninput="renderCoachSearchResults()" onkeydown="handleCoachSearchKey(event)" style="flex:1;border:none;outline:none;font-family:var(--f-body);font-size:15px;color:var(--magenta);background:transparent">
+        <button onclick="closeCoachSearch()" style="background:none;border:none;font-size:18px;color:var(--stone);cursor:pointer;padding:0 4px;line-height:1">×</button>
+      </div>
+      <div id="coach-search-results" style="flex:1;overflow-y:auto;padding:8px"></div>
+    </div>
   </div>
   <div class="coach-layout">
     <div class="sidebar">
@@ -173,6 +188,8 @@
             <span class="client-link-url" id="detail-link"></span>
             <button class="btn-sm" onclick="openEditClient(currentClientId)" style="margin-left:auto;flex-shrink:0">✏️ Edit</button>
           </div>
+          <!-- Special notes — accessibility / preferences. Hidden if blank, prominent if not. -->
+          <div id="detail-special-notes" style="display:none"></div>
           <!-- Social + contact links -->
           <div style="margin-bottom:12px" id="social-panel"></div>
           <!-- Status strip — where we're at + what's outstanding for this client -->
@@ -2808,6 +2825,35 @@ var BADGES = {
   'phoebes-pick':    { icon:'⭐', name:"Phoebe's Pick",    desc:'Special recognition from Phoebe', tier:'gold', manual:true },
 };
 
+// ============================================================
+// PHOEBE_VOICE — the shared tone-of-voice rules. Every AI prompt
+// in the platform appends this so summaries, suggestions, plans
+// and assistant chats sound like Phoebe wrote them, not like
+// generic ChatGPT output. Lifted from her actual workbooks +
+// website + podcast notes; refined in CLAUDE.md.
+// ============================================================
+var PHOEBE_VOICE = (
+  "Voice and style — write as if Phoebe Blamey wrote it herself.\n" +
+  "- Australian English. organise / prioritise / colour / cosy. Not US spellings.\n" +
+  "- Warm, direct, conversational. No corporate jargon. NEVER use: leverage, synergy, ecosystem, robust, unlock, level up, game-changer, deep-dive (as a verb), deliverables, KPIs unless quoting.\n" +
+  "- Smart, real, empowering. She's a financial expert + business coach but speaks like a mate at a kitchen table — not a consultant.\n" +
+  "- Short sentences. Plain words. Specific over abstract. \"$5k month\" not \"meaningful revenue increase\".\n" +
+  "- Speak TO the client in second person (\"you\"). Refer to Phoebe as \"Phoebe\" or \"I\" depending on context — never \"the coach\" or \"your coach\".\n" +
+  "- Australian dates: 8 May 2026, never 5/8/2026. Australian times: 9:30am / 2:00pm — not 09:30 / 14:00.\n" +
+  "- Currency: AUD with $ prefix.\n" +
+  "- Money is doable, not scary. Her brand sits in \"happy money\" territory — abundance + practicality, never woo or fear.\n" +
+  "- Direct without being harsh. If something's off, say so — but with warmth. \"Your pricing is leaving money on the table\" not \"You're not optimising your pricing strategy\".\n" +
+  "- No padding, no diplomatic softening, no \"I hope this helps\" sign-offs.\n" +
+  "- Sign-off (when needed): \"Phoebe x\".\n" +
+  "- Clients are people, not \"users\". Other coaches are peers. Programs are programs not products."
+);
+
+// Convenience: prepend the voice rules to a user prompt for AI calls.
+// Use as `phoebeVoice(myPrompt)` rather than splicing strings everywhere.
+function phoebeVoice(prompt) {
+  return PHOEBE_VOICE + '\n\n────────────\n\n' + (prompt || '');
+}
+
 var BADGE_TIER_COLORS = {
   bronze:   { bg:'#FFE8D8', border:'#C99A6B', text:'#A06438' },
   silver:   { bg:'#E8E8F0', border:'#9CA3AF', text:'#4B5563' },
@@ -3395,11 +3441,9 @@ async function askKnowledgeBank(presetQuestion) {
   renderKBankHistory();
 
   var profile = buildKBankProfileContext(client);
-  var system = 'You are Phoebe Blamey\'s warm, smart AI assistant inside her coaching hub. ' +
-    'You answer questions for her clients using their own profile and plan. ' +
-    'Voice: warm, direct, conversational, Australian English. No corporate jargon. No "leverage", "synergy". ' +
-    'Speak to the client in second person ("you"). Cite their plan or notes when you answer. ' +
-    'If you genuinely do not have the info, say so honestly and suggest they message Phoebe. ' +
+  var system = PHOEBE_VOICE + '\n\n' +
+    'You are Phoebe Blamey\'s AI assistant inside her coaching hub. You answer questions for her clients using their own profile and plan. ' +
+    'Cite their plan or notes when you answer. If you genuinely do not have the info, say so honestly and suggest they message Phoebe. ' +
     'Be concise — 2-4 short paragraphs max, or a tight numbered list if it helps. ' +
     'Never make up dates, numbers, or session content that isn\'t in their profile.';
   // Build a flat conversation: profile context as the first user turn, then the chat
@@ -3706,6 +3750,360 @@ function toggleShowArchived() {
   var current = localStorage.getItem('hmh_show_archived') === '1';
   localStorage.setItem('hmh_show_archived', current ? '0' : '1');
   if (typeof renderClients === 'function') renderClients();
+}
+
+// ============================================================
+// GLOBAL SEARCH (⌘K / Ctrl+K) — Phoebe-side fuzzy match across
+// clients, their tasks, their session notes, special notes, and
+// every coach-side page. Keyboard navigable (↑/↓/Enter/Esc).
+// ============================================================
+var _coachSearchSelected = 0;
+
+function openCoachSearch() {
+  var overlay = document.getElementById('coach-search-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  setTimeout(function() {
+    var input = document.getElementById('coach-search-input');
+    if (input) { input.value = ''; input.focus(); }
+    _coachSearchSelected = 0;
+    renderCoachSearchResults();
+  }, 30);
+}
+function closeCoachSearch() {
+  var overlay = document.getElementById('coach-search-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+// Keyboard shortcut: ⌘K (Mac) / Ctrl+K (Windows). Skip when an input
+// already has focus and the keystroke isn't the modifier combo.
+document.addEventListener('keydown', function(e) {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    var coachActive = document.getElementById('coach-hub') && document.getElementById('coach-hub').classList.contains('active');
+    if (!coachActive) return;
+    e.preventDefault();
+    openCoachSearch();
+  }
+  if (e.key === 'Escape') {
+    var overlay = document.getElementById('coach-search-overlay');
+    if (overlay && overlay.style.display === 'flex') closeCoachSearch();
+  }
+});
+
+function handleCoachSearchKey(e) {
+  var results = window._coachSearchHits || [];
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _coachSearchSelected = Math.min(_coachSearchSelected + 1, Math.max(0, results.length - 1));
+    renderCoachSearchResults(true);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _coachSearchSelected = Math.max(0, _coachSearchSelected - 1);
+    renderCoachSearchResults(true);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    var hit = results[_coachSearchSelected];
+    if (hit && hit.action) hit.action();
+  }
+}
+
+function renderCoachSearchResults(skipReSearch) {
+  var input = document.getElementById('coach-search-input');
+  var resultsEl = document.getElementById('coach-search-results');
+  if (!input || !resultsEl) return;
+  var q = (input.value || '').toLowerCase().trim();
+  var hits;
+  if (skipReSearch && Array.isArray(window._coachSearchHits)) {
+    hits = window._coachSearchHits;
+  } else {
+    hits = collectSearchHits(q);
+    window._coachSearchHits = hits;
+    if (_coachSearchSelected >= hits.length) _coachSearchSelected = 0;
+  }
+  if (!hits.length) {
+    resultsEl.innerHTML = q
+      ? '<div style="padding:24px 18px;text-align:center;color:var(--stone);font-size:13px">No matches for "<strong>' + escapeHtml(q) + '</strong>"</div>'
+      : '<div style="padding:18px;color:var(--stone);font-size:12px;line-height:1.6">' +
+          '<div style="font-weight:700;color:var(--magenta);text-transform:uppercase;font-size:10px;letter-spacing:0.08em;margin-bottom:8px">Quick jumps</div>' +
+          renderSearchQuickJumps() +
+        '</div>';
+    return;
+  }
+  resultsEl.innerHTML = hits.map(function(h, i) {
+    var sel = i === _coachSearchSelected;
+    return '<div onclick="(window._coachSearchHits[' + i + '].action)();closeCoachSearch()" onmouseover="_coachSearchSelected=' + i + ';renderCoachSearchResults(true)" style="display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-radius:10px;margin-bottom:2px;' + (sel ? 'background:#FDEFF5' : '') + '">' +
+      '<div style="font-size:18px;width:24px;text-align:center;flex-shrink:0">' + (h.icon || '·') + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;color:var(--magenta);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + h.title + '</div>' +
+        (h.subtitle ? '<div style="font-size:11px;color:var(--stone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + h.subtitle + '</div>' : '') +
+      '</div>' +
+      '<div style="font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;flex-shrink:0">' + (h.kind || '') + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function renderSearchQuickJumps() {
+  var jumps = [
+    { kind:'page', icon:'🏠', title:'Home',          action: function(){ showPage('home'); closeCoachSearch(); } },
+    { kind:'page', icon:'👥', title:'All clients',   action: function(){ showPage('clients'); closeCoachSearch(); } },
+    { kind:'page', icon:'✅', title:'Task sheet',    action: function(){ showPage('task-sheet'); closeCoachSearch(); } },
+    { kind:'page', icon:'📊', title:'Revenue',       action: function(){ showPage('revenue'); closeCoachSearch(); } },
+    { kind:'page', icon:'💡', title:'MDC cohort',    action: function(){ showPage('cohort-manager'); closeCoachSearch(); } },
+    { kind:'page', icon:'⚙️', title:'Settings',      action: function(){ showPage('settings'); closeCoachSearch(); } },
+    { kind:'action', icon:'➕', title:'Add a client', action: function(){ openAddClient(); closeCoachSearch(); } },
+  ];
+  return jumps.map(function(j, i) {
+    return '<div onclick="window._coachSearchJumpFns[' + i + ']();" style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-radius:8px;margin-bottom:2px" onmouseover="this.style.background=\'#FDEFF5\'" onmouseout="this.style.background=\'transparent\'">' +
+      '<div style="font-size:16px;width:24px;text-align:center">' + j.icon + '</div>' +
+      '<div style="font-size:13px;color:var(--magenta);font-weight:600">' + j.title + '</div>' +
+      '<div style="margin-left:auto;font-size:10px;color:var(--stone);text-transform:uppercase">' + j.kind + '</div>' +
+      '</div>';
+  }).join('') + (function() {
+    window._coachSearchJumpFns = jumps.map(function(j){ return j.action; });
+    return '';
+  })();
+}
+
+function collectSearchHits(q) {
+  if (!q) return [];
+  var hits = [];
+  function score(text) {
+    if (!text) return 0;
+    var t = String(text).toLowerCase();
+    if (t === q) return 100;
+    if (t.indexOf(q) === 0) return 80;
+    if (t.indexOf(' ' + q) >= 0) return 60;
+    if (t.indexOf(q) >= 0) return 40;
+    return 0;
+  }
+  // Clients
+  (clients || []).forEach(function(c) {
+    if (!c) return;
+    var s = Math.max(score(c.name), score(c.email), score(c.biz), score(c.clientAccess));
+    if (s > 0) {
+      var sub = [c.biz, c.email].filter(Boolean).join(' · ') + (c.archived ? ' · archived' : '');
+      hits.push({ kind:'Client', icon:'👤', title:c.name + (c.archived ? ' (archived)' : ''), subtitle: sub, score: s, action: function(){ openClient(c.id); closeCoachSearch(); } });
+    }
+    // Tasks
+    (c.tasks || []).forEach(function(t) {
+      if (!t || !t.text) return;
+      var ts = score(t.text);
+      if (ts > 0) {
+        hits.push({ kind:'Task', icon: t.done ? '✅' : '📝', title:t.text, subtitle: c.name + (t.dueDate ? ' · due ' + t.dueDate : ''), score: ts - 5, action: function(){ openClient(c.id); switchTab('tasks'); closeCoachSearch(); } });
+      }
+    });
+    // Special notes
+    if (c.specialNotes) {
+      var ss = score(c.specialNotes);
+      if (ss > 0) hits.push({ kind:'Special', icon:'⚠️', title:'Special: ' + String(c.specialNotes).slice(0, 70), subtitle: c.name, score: ss - 2, action: function(){ openClient(c.id); closeCoachSearch(); } });
+    }
+    // Coach notes
+    (c.coachNotes || []).forEach(function(n) {
+      if (!n || !n.text) return;
+      var ns = score(n.text);
+      if (ns > 0) hits.push({ kind:'Note', icon:'📓', title: String(n.text).slice(0, 70), subtitle: c.name + (n.date ? ' · ' + n.date : ''), score: ns - 8, action: function(){ openClient(c.id); closeCoachSearch(); } });
+    });
+    // Session notes
+    (c.programs || []).forEach(function(p) {
+      (p.sessionNotes || []).forEach(function(n) {
+        if (!n || !n.text) return;
+        var ns = score(n.text);
+        if (ns > 0) hits.push({ kind:'Session', icon:'🗒', title: String(n.text).slice(0, 70), subtitle: c.name + (n.date ? ' · ' + n.date : ''), score: ns - 10, action: function(){ openClient(c.id); switchTab('session-notes'); closeCoachSearch(); } });
+      });
+    });
+  });
+  // Pages / actions
+  var pages = [
+    { title:'Home', icon:'🏠', go: function(){ showPage('home'); } },
+    { title:'All clients', icon:'👥', go: function(){ showPage('clients'); } },
+    { title:'Task sheet', icon:'✅', go: function(){ showPage('task-sheet'); } },
+    { title:'Revenue dashboard', icon:'📊', go: function(){ showPage('revenue'); } },
+    { title:'MDC cohort manager', icon:'💡', go: function(){ showPage('cohort-manager'); } },
+    { title:'Happy Hub resources', icon:'💛', go: function(){ showPage('happy-hub'); } },
+    { title:'Plan builder', icon:'📋', go: function(){ showPage('planner'); } },
+    { title:'Research brief', icon:'🔬', go: function(){ showPage('research'); } },
+    { title:'Settings', icon:'⚙️', go: function(){ showPage('settings'); } },
+    { title:'Add a new client', icon:'➕', go: function(){ openAddClient(); } },
+  ];
+  pages.forEach(function(p) {
+    var s = score(p.title);
+    if (s > 0) hits.push({ kind:'Page', icon:p.icon, title:p.title, subtitle:'Jump to', score: s, action: function(){ p.go(); closeCoachSearch(); } });
+  });
+  // Sort by score desc, cap at 30
+  hits.sort(function(a, b){ return (b.score || 0) - (a.score || 0); });
+  return hits.slice(0, 30);
+}
+
+// Re-trigger the welcome email — used when Calendly skipped it or the client
+// didn't receive the original. Reuses the existing sendWelcomeEmail helper
+// so the copy stays consistent with the auto-flow.
+async function resendWelcomeEmail(clientId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  if (!client.email) { branded.alert('No email on file — add one in ✏️ Edit first.'); return; }
+  var ok = await branded.confirm('Send the welcome email to ' + client.email + '?', { title:'Send welcome?', okLabel:'Send' });
+  if (!ok) return;
+  branded.toast('Sending…');
+  var result = await sendWelcomeEmail(client);
+  await persistClient(client);
+  if (result && result.sent) {
+    branded.success('Welcome email sent.');
+    if (typeof logActivity === 'function') logActivity('email', 'Welcome email re-sent · ' + client.name, { clientId: client.id, clientName: client.name, detail: 'Manual re-send' });
+  } else if (result && result.skipped) {
+    branded.alert('Notifications are off — turn them on in Settings, or remove the per-client opt-out.');
+  } else {
+    branded.error((result && result.error) || 'Send failed.');
+  }
+}
+
+// Send a stand-alone credentials/access reminder email. Useful when a client
+// has forgotten their access code or lost the welcome email. Phoebe-voice
+// short and warm — no over-explaining.
+async function sendCredentialsEmail(clientId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  if (!client.email) { branded.alert('No email on file — add one in ✏️ Edit first.'); return; }
+  if (!client.clientAccess) { branded.alert('This client doesn\'t have an access code yet.'); return; }
+  var ok = await branded.confirm('Send the portal link + code to ' + client.email + '?', { title:'Send access reminder?', okLabel:'Send' });
+  if (!ok) return;
+  var firstName = (client.name || '').split(' ')[0] || 'there';
+  var portalLink = window.location.origin + window.location.pathname + '?client=' + client.clientAccess;
+  var body = 'Hi ' + firstName + ',\n\n' +
+    'Here\'s how to get back into your hub:\n\n' +
+    'Portal: ' + portalLink + '\n' +
+    'Code:   ' + client.clientAccess + '\n\n' +
+    'Bookmark the link or save the code somewhere safe — it\'s yours.\n\n' +
+    'Phoebe x';
+  branded.toast('Sending…');
+  try {
+    var resp = await fetch('/api/send-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'email',
+        to: client.email,
+        subject: 'Your PeaBe Coaching Hub login',
+        message: body,
+        clientName: client.name,
+      }),
+    });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'send failed');
+    client.coachNotes = client.coachNotes || [];
+    client.coachNotes.unshift({
+      id: 'creds-' + Date.now(),
+      type: 'email',
+      text: '🔑 Access code re-sent to ' + client.email,
+      date: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString(),
+      visibleToClient: false,
+      autoSource: 'credentials-resend',
+    });
+    await persistClient(client);
+    branded.success('Sent.');
+    if (typeof logActivity === 'function') logActivity('email', 'Credentials re-sent · ' + client.name, { clientId: client.id, clientName: client.name });
+  } catch (e) {
+    branded.error('Send failed: ' + (e.message || e));
+  }
+}
+
+// Merge two client records. Phoebe picks a target (winner) and a source
+// (loser); we union programs/tasks/wins/notes/badges, prefer the target's
+// scalar fields where set, fall back to source where target is empty.
+// Source is then archived rather than deleted so we can recover if needed.
+async function openMergeClientModal(currentClientId) {
+  var keep = clients.find(function(c){ return c.id === currentClientId; });
+  if (!keep) return;
+  var others = clients.filter(function(c){ return c.id !== keep.id && !c.archived; });
+  if (!others.length) { branded.alert('No other active clients to merge with.'); return; }
+  var host = document.getElementById('branded-modal-host');
+  document.getElementById('branded-modal-icon').textContent = '🔀';
+  document.getElementById('branded-modal-title').textContent = 'Merge ' + keep.name;
+  var body = document.getElementById('branded-modal-body');
+  var optionsHtml = others.map(function(c) {
+    return '<option value="' + c.id + '">' + c.name + (c.email ? ' · ' + c.email : '') + '</option>';
+  }).join('');
+  body.innerHTML =
+    '<div style="font-size:13px;color:var(--stone);margin-bottom:12px;line-height:1.5">' +
+      'Pick the duplicate record to fold into <strong>' + escapeHtml(keep.name) + '</strong>. We\'ll combine their programs, tasks, wins, notes and badges. The duplicate gets archived so nothing\'s lost — you can restore from "Show archived" on the Clients page.' +
+    '</div>' +
+    '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Duplicate to fold in</label>' +
+    '<select id="merge-source" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;cursor:pointer;margin-bottom:8px"><option value="">— pick one —</option>' + optionsHtml + '</select>' +
+    '<div style="font-size:11px;color:var(--stone);font-style:italic">' + escapeHtml(keep.name) + '\'s scalar fields (name, business, why, etc) win. Empty fields fall back to the duplicate. The access code from <strong>' + escapeHtml(keep.name) + '</strong> stays — you can change it in Edit afterwards if needed.</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var cancel = document.createElement('button'); cancel.className = 'btn-sm'; cancel.textContent = 'Cancel';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  var go = document.createElement('button'); go.className = 'btn-sm primary'; go.textContent = 'Merge';
+  go.onclick = async function() {
+    var sourceId = document.getElementById('merge-source').value;
+    if (!sourceId) { branded.alert('Pick a duplicate first.'); return; }
+    var source = clients.find(function(c){ return c.id === sourceId; });
+    if (!source) return;
+    var ok = await branded.confirm('Fold ' + source.name + ' into ' + keep.name + '? The duplicate will be archived.', { title:'Merge?', okLabel:'Merge' });
+    if (!ok) return;
+    mergeClientRecords(keep, source);
+    source.archived = true;
+    source.archivedAt = new Date().toISOString();
+    source.mergedInto = keep.id;
+    await persistClient(source);
+    await persistClient(keep);
+    host.style.display = 'none';
+    branded.success(source.name + ' merged into ' + keep.name + '. Duplicate archived.');
+    if (typeof logActivity === 'function') logActivity('merge', source.name + ' merged into ' + keep.name, { clientId: keep.id, clientName: keep.name });
+    renderClients();
+    openClient(keep.id);
+  };
+  actions.appendChild(cancel); actions.appendChild(go);
+  host.style.display = 'flex';
+}
+
+// Pure merge — mutates `keep`. Doesn't touch `source` (caller archives it).
+function mergeClientRecords(keep, source) {
+  // Scalar fields — keep wins; if keep is blank, take from source
+  ['email','phone','biz','bio','why','specialNotes','health'].forEach(function(f) {
+    if (!keep[f] && source[f]) keep[f] = source[f];
+  });
+  // Socials object — union
+  keep.socials = Object.assign({}, source.socials || {}, keep.socials || {});
+  // Programs — concat (with same-id dedupe just in case)
+  keep.programs = keep.programs || [];
+  (source.programs || []).forEach(function(p) {
+    if (!keep.programs.some(function(kp){ return kp.id === p.id; })) keep.programs.push(p);
+  });
+  // Tasks — concat (dedupe by id)
+  keep.tasks = keep.tasks || [];
+  (source.tasks || []).forEach(function(t) {
+    if (!keep.tasks.some(function(kt){ return kt.id === t.id; })) keep.tasks.push(t);
+  });
+  // Wins — concat (dedupe by id)
+  keep.wins = keep.wins || [];
+  (source.wins || []).forEach(function(w) {
+    if (!keep.wins.some(function(kw){ return kw.id === w.id; })) keep.wins.push(w);
+  });
+  // Coach notes — concat
+  keep.coachNotes = keep.coachNotes || [];
+  (source.coachNotes || []).forEach(function(n) {
+    if (!keep.coachNotes.some(function(kn){ return kn.id === n.id; })) keep.coachNotes.push(n);
+  });
+  // Badges — union
+  keep.badges = keep.badges || [];
+  (source.badges || []).forEach(function(b) {
+    if (!keep.badges.some(function(kb){ return kb.id === b.id; })) keep.badges.push(b);
+  });
+  // Review requests — concat
+  keep.reviewRequests = keep.reviewRequests || [];
+  (source.reviewRequests || []).forEach(function(r) {
+    if (!keep.reviewRequests.some(function(kr){ return kr.id === r.id; })) keep.reviewRequests.push(r);
+  });
+  // Knowledge bank chat — concat
+  keep.kbankChat = (keep.kbankChat || []).concat(source.kbankChat || []);
+  // Daily commits — keep object, merge keys (keep wins on collision)
+  keep.dailyCommits = Object.assign({}, source.dailyCommits || {}, keep.dailyCommits || {});
+  // Bump updatedAt
+  keep.updatedAt = new Date().toISOString();
+  keep.mergedFrom = (keep.mergedFrom || []).concat([source.id]);
 }
 
 // Opens a client's portal in a new tab using their access code. Lets Phoebe
@@ -4637,7 +5035,12 @@ async function generateHappyHourSummary() {
   var hh = prog.happyHour || {};
   var outputEl = document.getElementById('hh-ai-output');
   outputEl.classList.add('show','streaming'); outputEl.textContent = '';
-  var prompt = 'You are Phoebe Blamey\'s assistant. Write a warm, professional Happy Hour session summary for client ' + client.name + '.\n\nAssets/Position: ' + (hh.assets||'') + '\nDiscussed: ' + (hh.discussed||'') + '\nActions: ' + (hh.actions||'') + '\n\nWrite in Phoebe\'s voice: smart, warm, direct, empowering. Structure: Here is what we learned (table of assets/goals), key conversations with clear explanations, specific action items, warm closing. This is education not financial advice.';
+  var prompt = phoebeVoice(
+    'Write a Happy Hour session summary for ' + client.name + '.\n\n' +
+    'Assets/Position: ' + (hh.assets||'') + '\nDiscussed: ' + (hh.discussed||'') + '\nActions: ' + (hh.actions||'') + '\n\n' +
+    'Structure: a short opener of what you took away, key conversations with clear explanations, specific action items, warm closing. ' +
+    'This is education, not financial advice.'
+  );
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
@@ -5899,16 +6302,114 @@ function renderUnmatchedZooms(unmatched) {
           '</div>' +
         '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
-          '<select id="zoom-assign-client-' + (r.id || r.uuid) + '" style="flex:1;min-width:160px;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);outline:none">' +
-            '<option value="">— pick existing client —</option>' + clientOpts +
+          '<select id="zoom-assign-target-' + (r.id || r.uuid) + '" onchange="updateZoomAssignButtons(\'' + (r.id || r.uuid) + '\')" style="flex:1;min-width:200px;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);outline:none">' +
+            '<option value="">— pick where it goes —</option>' +
+            '<optgroup label="Existing clients">' + clientOpts + '</optgroup>' +
+            '<optgroup label="Other">' +
+              '<option value="__new_client__">+ Create new client from this Zoom</option>' +
+              '<option value="__resource__">+ Save as resource (Happy Hub)</option>' +
+            '</optgroup>' +
           '</select>' +
-          '<button class="btn-sm primary" onclick="assignZoomToClient(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'') + '\')" style="font-size:11px">Assign &amp; pull transcript</button>' +
-          '<button class="btn-sm" onclick="createClientFromZoom(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'') + '\')" style="font-size:11px;background:white;color:var(--magenta);border-color:var(--hot-pink)">+ New client</button>' +
+          '<button class="btn-sm primary" onclick="handleZoomAssignment(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'').replace(/[<>]/g,'') + '\')" style="font-size:11px">Go →</button>' +
         '</div>' +
+        '<div id="zoom-assign-program-row-' + (r.id || r.uuid) + '" style="display:none;margin-top:6px;padding-left:6px"></div>' +
       '</div>';
     }).join('') +
-    '<div style="font-size:11px;color:var(--stone);margin-top:6px;font-style:italic">Recordings auto-match when the date is within ±1 day of a client\'s session date. If they\'re a new contact, hit "+ New client" to create one straight from the topic.</div>' +
+    '<div style="font-size:11px;color:var(--stone);margin-top:6px;font-style:italic">Recordings auto-match when the date is within ±1 day of a client\'s session date. Otherwise pick a destination above — existing client (with optional program), brand-new client, or save the recording as a resource in the Happy Hub library.</div>' +
   '</div>';
+}
+
+// When Phoebe picks a destination from the dropdown, surface a second
+// dropdown for choosing which program (if she picked an existing client)
+// so she can pin the recording to the right one.
+function updateZoomAssignButtons(meetingId) {
+  var sel = document.getElementById('zoom-assign-target-' + meetingId);
+  var progRow = document.getElementById('zoom-assign-program-row-' + meetingId);
+  if (!sel || !progRow) return;
+  var val = sel.value;
+  if (!val || val === '__new_client__' || val === '__resource__') {
+    progRow.style.display = 'none';
+    progRow.innerHTML = '';
+    return;
+  }
+  var client = clients.find(function(c){ return c.id === val; });
+  if (!client || !client.programs || !client.programs.length) {
+    progRow.style.display = 'none';
+    progRow.innerHTML = '';
+    return;
+  }
+  var progOpts = client.programs.filter(function(p){ return p.workbook !== 'none' && p.workbook !== 'inquiry'; })
+    .map(function(p) {
+      var label = (PROGRAMS[p.program] && PROGRAMS[p.program].label) || p.label || p.program;
+      var date = p.sessionDate ? ' · ' + p.sessionDate : '';
+      return '<option value="' + p.id + '">' + label + date + '</option>';
+    }).join('');
+  if (!progOpts) { progRow.style.display = 'none'; return; }
+  progRow.style.display = 'block';
+  progRow.innerHTML = '<label style="font-size:10px;color:var(--stone);display:block;margin-bottom:3px">Pin to program (latest by default):</label>' +
+    '<select id="zoom-assign-prog-' + meetingId + '" style="width:100%;max-width:300px;border:1.5px solid var(--border);border-radius:8px;padding:5px 9px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper)"><option value="">— latest program —</option>' + progOpts + '</select>';
+}
+
+// Single dispatch handler for the destination dropdown — routes to the right
+// flow depending on what Phoebe picked.
+async function handleZoomAssignment(meetingId, startTime, topic) {
+  var sel = document.getElementById('zoom-assign-target-' + meetingId);
+  if (!sel || !sel.value) { branded.alert('Pick where this recording goes first.'); return; }
+  var val = sel.value;
+  if (val === '__new_client__') {
+    return createClientFromZoom(meetingId, startTime, topic);
+  }
+  if (val === '__resource__') {
+    return saveZoomAsResource(meetingId, startTime, topic);
+  }
+  // Existing client — capture optional program override and call the
+  // assign helper. We add a hidden compatibility shim so the legacy
+  // assignZoomToClient (which reads zoom-assign-client-XX) still works.
+  var compatSel = document.createElement('select');
+  compatSel.id = 'zoom-assign-client-' + meetingId;
+  compatSel.style.display = 'none';
+  var opt = document.createElement('option'); opt.value = val; opt.selected = true;
+  compatSel.appendChild(opt);
+  document.body.appendChild(compatSel);
+  // Stash the program override so assignZoomToClient can use it
+  var progSel = document.getElementById('zoom-assign-prog-' + meetingId);
+  window._zoomAssignProgOverride = (progSel && progSel.value) ? progSel.value : null;
+  try {
+    await assignZoomToClient(meetingId, startTime, topic);
+  } finally {
+    if (compatSel.parentNode) compatSel.parentNode.removeChild(compatSel);
+    window._zoomAssignProgOverride = null;
+  }
+}
+
+// Save an unmatched Zoom as a Happy Hub resource — useful for general
+// content like webinars / training that isn't tied to a specific client.
+async function saveZoomAsResource(meetingId, startTime, topic) {
+  var title = await branded.prompt('Resource title', topic || 'Zoom recording', 'e.g. Pricing Q&A — May 2026', { title: 'Save as resource', okLabel: 'Save' });
+  if (!title) return;
+  // We don't have the recording URL here without an extra Zoom API call,
+  // so we save the title + topic + date and let Phoebe paste the actual
+  // URL later from her Zoom dashboard. Better than no record.
+  var resp = await branded.confirm(
+    'Saving "' + title + '" to your Happy Hub resources. You\'ll need to paste the watch link from Zoom afterwards (we don\'t have it without pulling the transcript). Continue?',
+    { title: 'Save as resource?', okLabel: 'Save' }
+  );
+  if (!resp) return;
+  if (!window._coachSettings) window._coachSettings = {};
+  var customs = window._coachSettings.hubResources || [];
+  customs.push({
+    id: 'r-zoom-' + Date.now(),
+    type: 'tool',
+    title: title,
+    url: '',
+    tags: ['recording', 'zoom'],
+    date: startTime ? startTime.split('T')[0] : new Date().toISOString().split('T')[0],
+    desc: 'Zoom recording — ' + (topic || 'session') + '. Add the watch link in Settings → Happy Hub.',
+    sourceZoomMeetingId: String(meetingId),
+  });
+  window._coachSettings.hubResources = customs;
+  flushCoachSettings();
+  branded.success('Saved as resource. Open the Happy Hub page to add the watch link.');
 }
 
 // Create a brand-new client from an unmatched Zoom recording. Pre-fills the
@@ -5958,13 +6459,16 @@ async function assignZoomToClient(meetingId, startTime, topic) {
   var clientId = sel.value;
   var client = clients.find(function(c){ return c.id === clientId; });
   if (!client) return;
-  // Pick the most recent program (or only program) for this client
+  // Pick the most recent program (or only program) for this client.
+  // If Phoebe explicitly chose one in the assignment dropdown, honour that.
   var progs = (client.programs||[]).filter(function(p){ return p.workbook !== 'none' && p.workbook !== 'inquiry'; });
   if (!progs.length) {
     branded.alert(client.name + ' doesn\'t have an active program yet — open their detail page and create one first.');
     return;
   }
-  var prog = progs[progs.length - 1];
+  var prog = (window._zoomAssignProgOverride
+    ? progs.find(function(p){ return p.id === window._zoomAssignProgOverride; })
+    : null) || progs[progs.length - 1];
   var sessionDate = startTime ? startTime.split('T')[0] : new Date().toISOString().split('T')[0];
   // Pull transcript via existing endpoint
   branded.toast('Pulling transcript…');
@@ -6179,7 +6683,11 @@ async function suggestClientWhy(targetClientId) {
         max_tokens: 200,
         messages: [{
           role: 'user',
-          content: 'Based on this client\'s profile, draft a single-sentence "why" — what are they actually doing all this for? Speak in first person ("I"), warm but direct, Australian English. Make it personal and specific to their situation. No corporate jargon. No "leverage" or "synergy". Maximum 25 words. Return ONLY the sentence, no quotes or commentary.\n\nProfile:\n' + ctx.join('\n')
+          content: phoebeVoice(
+            'Based on this client\'s profile, draft a single-sentence "why" — what they\'re actually doing all this for. ' +
+            'Speak in first person as the client (\"I\" / \"my\"), make it personal and specific to their situation. Maximum 25 words. ' +
+            'Return ONLY the sentence, no quotes or commentary.\n\nProfile:\n' + ctx.join('\n')
+          )
         }]
       })
     });
@@ -6585,8 +7093,8 @@ function clientTaskRow(t, clientId, urgency) {
     else dateLabel = 'by ' + dueStr;
   }
   return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid '+border+';border-radius:8px;margin-bottom:6px;background:'+bg+'">' +
-    '<div onclick="clientToggleTaskDone(\''+clientId+'\',\''+t.id+'\')" style="width:20px;height:20px;border-radius:99px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;margin-top:1px;'+checkBg+'">'+checkInner+'</div>' +
-    '<div style="flex:1;min-width:0">' +
+    '<div onclick="clientToggleTaskDone(\''+clientId+'\',\''+t.id+'\')" title="Tick to mark done" style="width:20px;height:20px;border-radius:99px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;margin-top:1px;'+checkBg+'">'+checkInner+'</div>' +
+    '<div style="flex:1;min-width:0;cursor:pointer" onclick="openEditTaskModal(\''+clientId+'\',\''+t.id+'\')" title="Tap to edit">' +
       '<div style="font-size:13px;color:var(--magenta);'+(t.done?'text-decoration:line-through;opacity:0.5':'')+'">' + (t.text||'') + '</div>' +
       (dateLabel ? '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + dateLabel + '</div>' : '') +
     '</div>' +
@@ -7113,9 +7621,93 @@ async function toggleTaskDone(clientId, taskId) {
   var client = clients.find(function(c) { return c.id === clientId; });
   if (!client) return;
   var task = (client.tasks||[]).find(function(t) { return t.id === taskId; });
-  if (task) { task.done = !task.done; task.doneAt = task.done ? new Date().toISOString() : null; }
+  if (task) {
+    task.done = !task.done;
+    task.doneAt = task.done ? new Date().toISOString() : null;
+    task.completedAt = task.doneAt; // pulse feed reads completedAt; keep both for compat
+    if (task.done) task.completedBy = (document.getElementById('coach-hub') && document.getElementById('coach-hub').classList.contains('active')) ? 'coach' : 'client';
+  }
   await persistClient(client);
   renderTasksPanel(client, currentProgramId);
+}
+
+// ============================================================
+// EDIT TASK — modal used by both coach and client to change a
+// task's text, due date, and (coach only) visibility flag. Same
+// function for both, role detected from active hub.
+// ============================================================
+function openEditTaskModal(clientId, taskId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var task = (client.tasks || []).find(function(t){ return t.id === taskId; });
+  if (!task) return;
+  var isCoach = document.getElementById('coach-hub') && document.getElementById('coach-hub').classList.contains('active');
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '✏️';
+  document.getElementById('branded-modal-title').textContent = 'Edit task';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Task</label>' +
+    '<textarea id="edit-task-text" rows="3" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.5;margin-bottom:10px">' + escapeHtml(task.text || '') + '</textarea>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">' +
+      '<div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Due date</label>' +
+      '<input type="date" id="edit-task-due" value="' + (task.dueDate || '') + '" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none"></div>' +
+      (isCoach
+        ? '<div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Visibility</label>' +
+          '<select id="edit-task-vis" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;cursor:pointer">' +
+            '<option value="true"' + (task.clientVisible !== false ? ' selected' : '') + '>✅ Visible to client</option>' +
+            '<option value="false"' + (task.clientVisible === false ? ' selected' : '') + '>🔒 Coach only</option>' +
+          '</select></div>'
+        : '') +
+    '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var del = document.createElement('button'); del.className = 'btn-sm'; del.textContent = '🗑 Delete'; del.style.background = 'white'; del.style.color = '#C0392B';
+  del.onclick = async function() {
+    var ok = await branded.confirm('Delete this task? Can\'t be undone.', { title:'Delete task?', okLabel:'Delete', danger:true });
+    if (!ok) return;
+    client.tasks = (client.tasks || []).filter(function(t){ return t.id !== taskId; });
+    await persistClient(client);
+    host.style.display = 'none';
+    refreshTaskRender(client);
+  };
+  var cancel = document.createElement('button'); cancel.className = 'btn-sm'; cancel.textContent = 'Cancel';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  var save = document.createElement('button'); save.className = 'btn-sm primary'; save.textContent = 'Save';
+  save.onclick = async function() {
+    var newText = (document.getElementById('edit-task-text').value || '').trim();
+    if (!newText) { branded.alert('Task text can\'t be empty.'); return; }
+    task.text = newText;
+    task.dueDate = (document.getElementById('edit-task-due').value || '').trim();
+    if (isCoach) {
+      task.clientVisible = document.getElementById('edit-task-vis').value !== 'false';
+    }
+    task.editedAt = new Date().toISOString();
+    await persistClient(client);
+    host.style.display = 'none';
+    refreshTaskRender(client);
+  };
+  actions.appendChild(del); actions.appendChild(cancel); actions.appendChild(save);
+  host.style.display = 'flex';
+}
+
+// Re-render whichever task surface is currently visible
+function refreshTaskRender(client) {
+  if (typeof renderTasksPanel === 'function' && currentProgramId) renderTasksPanel(client, currentProgramId);
+  if (typeof renderClientSummary === 'function') {
+    var sumEl = document.getElementById('client-summary-area');
+    if (sumEl && sumEl.style.display !== 'none') renderClientSummary(client);
+  }
+  if (typeof renderClientTodosTab === 'function') {
+    var todosEl = document.getElementById('client-todos-area');
+    if (todosEl && todosEl.style.display !== 'none') renderClientTodosTab(client);
+  }
+  if (typeof renderTaskSheet === 'function') {
+    var ts = document.getElementById('task-sheet-content');
+    if (ts && ts.offsetParent !== null) renderTaskSheet();
+  }
 }
 
 async function deleteTask(clientId, taskId) {
@@ -7750,6 +8342,22 @@ openProgram = function(client, progId) {
   if (!prog) return;
   // 3. Render all panels — deferred slightly to ensure DOM is ready
   setTimeout(function() {
+    // Special notes banner — accessibility / quirks Phoebe must remember
+    var snEl = document.getElementById('detail-special-notes');
+    if (snEl) {
+      if (client.specialNotes && client.specialNotes.trim()) {
+        snEl.style.display = 'block';
+        snEl.innerHTML = '<div style="background:#FFFBE8;border:2px solid #E8A020;border-radius:12px;padding:12px 14px;margin-bottom:12px;display:flex;gap:10px;align-items:flex-start">' +
+          '<div style="font-size:20px;line-height:1;flex-shrink:0">⚠️</div>' +
+          '<div style="flex:1"><div style="font-size:11px;font-weight:700;color:#A07030;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Special notes</div>' +
+          '<div style="font-size:13px;color:#A07030;line-height:1.5;white-space:pre-wrap">' + escapeHtml(client.specialNotes) + '</div></div>' +
+          '<button onclick="openEditClient(\'' + client.id + '\')" class="btn-sm" style="font-size:11px;background:white;color:#A07030;flex-shrink:0">✏️</button>' +
+          '</div>';
+      } else {
+        snEl.style.display = 'none';
+        snEl.innerHTML = '';
+      }
+    }
     // Status strip — "where we're at" + "what's outstanding" — first thing
     // Phoebe sees when she opens a client. Re-renders on every openClient.
     var statusEl = document.getElementById('client-status-strip');
@@ -8367,16 +8975,17 @@ function renderSingleTask(t, clientId, today) {
   var dueStr = t.dueDate ? new Date(t.dueDate).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) : '';
   var visLabel = t.clientVisible ? '<span style="font-size:10px;background:var(--mist);color:var(--teal);padding:2px 6px;border-radius:99px">Client visible</span>' : '<span style="font-size:10px;background:var(--marshmallow);color:var(--stone);padding:2px 6px;border-radius:99px">Coach only</span>';
   return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-soft)">' +
-    '<div onclick="toggleTaskDone(\''+clientId+'\',\''+t.id+'\')" style="width:18px;height:18px;border-radius:99px;border:2px solid var(--border);flex-shrink:0;cursor:pointer;margin-top:2px;'+(t.done?'background:var(--hot-pink);border-color:var(--hot-pink)':'')+'" ></div>' +
-    '<div style="flex:1">' +
+    '<div onclick="toggleTaskDone(\''+clientId+'\',\''+t.id+'\')" title="Tick to mark done" style="width:18px;height:18px;border-radius:99px;border:2px solid var(--border);flex-shrink:0;cursor:pointer;margin-top:2px;'+(t.done?'background:var(--hot-pink);border-color:var(--hot-pink)':'')+'" ></div>' +
+    '<div style="flex:1;cursor:pointer" onclick="openEditTaskModal(\''+clientId+'\',\''+t.id+'\')" title="Click to edit">' +
     '<div style="font-size:13px;color:var(--magenta);'+(t.done?'text-decoration:line-through;opacity:0.5':'')+'">' + t.text + '</div>' +
     '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">' +
     visLabel +
     (t.isAuto ? '<span style="font-size:10px;background:#FFF5E8;color:#A07030;padding:2px 6px;border-radius:99px">⚡ Auto</span>' : '') +
     (isOverdue ? '<span style="font-size:10px;background:var(--marshmallow);color:var(--hot-pink);padding:2px 6px;border-radius:99px;font-weight:700">OVERDUE</span>' : '') +
     (dueStr ? '<span style="font-size:11px;color:var(--stone)">Due '+dueStr+'</span>' : '') +
+    (t.completedBy === 'coach' && t.done ? '<span style="font-size:10px;background:#FDEFF5;color:var(--hot-pink);padding:2px 6px;border-radius:99px">ticked by you</span>' : '') +
     '</div></div>' +
-    '<button onclick="deleteTask(\''+clientId+'\',\''+t.id+'\')" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--stone);padding:0;flex-shrink:0">×</button>' +
+    '<button onclick="event.stopPropagation();openEditTaskModal(\''+clientId+'\',\''+t.id+'\')" title="Edit" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--stone);padding:0;flex-shrink:0">✏️</button>' +
     '</div>';
 }
 
@@ -8691,6 +9300,9 @@ function renderClientActions(client, prog) {
     '<button class="btn-sm" onclick="openAwardBadgeModal(\''+cid+'\')" title="Award a manual or custom badge to celebrate a moment">🎖 Award badge</button>' +
     '<button class="btn-sm" onclick="switchTab(\'message\')">📧 Message</button>' +
     '<button class="btn-sm" onclick="openClientPortalAsClient(\''+cid+'\')" title="Open the client\'s hub in a new tab — see what they see">👁 View as client</button>' +
+    '<button class="btn-sm" onclick="resendWelcomeEmail(\''+cid+'\')" title="Send the welcome email — useful if it was skipped or they say they didn\'t get it">💌 Send welcome</button>' +
+    '<button class="btn-sm" onclick="sendCredentialsEmail(\''+cid+'\')" title="Re-send their portal link + access code — for when they\'ve forgotten">🔑 Send code</button>' +
+    '<button class="btn-sm" onclick="openMergeClientModal(\''+cid+'\')" title="Merge this client with a duplicate record">🔀 Merge</button>' +
     '<button class="btn-sm" onclick="switchTab(\'intake\')">📋 Intake</button>' +
     (prog.zoomJoin ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm primary">🎬 Zoom</a>' : '') +
     '<div style="margin-left:auto;display:flex;align-items:center;gap:8px">' +
@@ -8788,6 +9400,8 @@ function openEditClient(clientId) {
     '</div>' +
     '<div style="margin-bottom:10px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);display:block;margin-bottom:5px">Their why <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--stone)">— shows on their hub hero strip</span></label>' +
     '<input id="edit-why" value="' + (client.why || '').replace(/"/g,'&quot;') + '" placeholder="e.g. Be home for school pickup and still hit $400k" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;font-style:italic"></div>' +
+    '<div style="margin-bottom:10px;background:#FFFBE8;border:1.5px solid #E8A020;border-radius:10px;padding:10px 12px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#A07030;display:block;margin-bottom:5px">⚠️ Special notes / accessibility <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--stone)">— shows on the client detail header so you never miss it</span></label>' +
+    '<textarea id="edit-special-notes" rows="2" placeholder="e.g. Deaf — needs Zoom captions on. Don\'t call before 9am AEST. Prefers WhatsApp." style="width:100%;border:1.5px solid #E8A020;border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:#A07030;background:white;outline:none;resize:vertical;line-height:1.5">' + escapeHtml(client.specialNotes || '') + '</textarea></div>' +
     '<div style="margin-bottom:10px"><label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);display:block;margin-bottom:5px">Client profile / bio</label>' +
     '<textarea id="edit-bio" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6">'+( client.bio||'')+'</textarea></div>' +
     '<div style="background:var(--marshmallow);border-radius:10px;padding:12px 14px;margin-bottom:10px">' +
@@ -8831,6 +9445,10 @@ async function saveEditClient(clientId) {
   // seed it before they fill it themselves so the hub never feels empty.
   var newWhy = document.getElementById('edit-why')?.value.trim();
   if (newWhy != null) client.why = newWhy;
+  // Special notes (accessibility / preferences) — shown prominently so
+  // Phoebe never misses them before a session
+  var newSpecial = document.getElementById('edit-special-notes')?.value.trim();
+  if (newSpecial != null) client.specialNotes = newSpecial;
   client.notificationsDisabled = !!document.getElementById('edit-notifs-disabled')?.checked;
   client.socials = client.socials||{};
   ['website','linkedin','instagram','facebook','tiktok','whatsapp'].forEach(function(f) {
@@ -8875,7 +9493,8 @@ async function runDeepDive(clientId) {
     'Program: '+((prog&&prog.label)||''),
   ].join('\n');
 
-  var prompt = 'You are Phoebe Blamey\'s expert research assistant. Do a full business deep dive for this coaching client.\n\n' +
+  var prompt = phoebeVoice(
+    'You are doing a full business deep dive for one of Phoebe\'s coaching clients.\n\n' +
     '**Use the web_search tool** to actually look this person and their business up before writing. Search for:\n' +
     '- Their business name + their full name to find recent activity\n' +
     '- Their website (visit it if a URL is provided)\n' +
@@ -8901,7 +9520,8 @@ async function runDeepDive(clientId) {
     '3-5 specific actions this client could take in the next 30 days that would make a visible difference.\n\n' +
     '## CLIENT RATING\n' +
     'Rate this client on: Revenue potential (1-10), Engagement likelihood (1-10), Coaching complexity (1-10). Explain each rating briefly.\n\n' +
-    'Be specific, practical, direct. This is for a highly experienced business coach. Australian English.';
+    'Be specific, practical, direct. This is for a highly experienced business coach.'
+  );
 
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -9375,7 +9995,12 @@ async function generateImpactStatement(clientId, progId) {
   var winsText = (prog.wins||[]).map(function(w){
     return w.metric+': '+(w.before?w.before+' → ':'')+w.after+(w.note?' ('+w.note+')':'');
   }).join('\n');
-  var prompt = 'You are Phoebe Blamey\'s copywriter. Write a punchy shareable impact statement for client '+client.name+' in the '+prog.label+' program.\n\nResults:\n'+winsText+'\n\nWrite in Phoebe\'s voice: smart, warm, direct, real. Structure:\n1. Bold headline result\n2. 2-3 sentences on the transformation\n3. A closing line that\'s share-worthy\n\nUnder 100 words. Feel real, not corporate. No "unlock", "level up" or "game-changer".';
+  var prompt = phoebeVoice(
+    'Write a punchy shareable impact statement for ' + client.name + ' in the ' + prog.label + ' program.\n\n' +
+    'Results:\n' + winsText + '\n\n' +
+    'Structure:\n1. Bold headline result\n2. 2-3 sentences on the transformation\n3. A closing line that\'s share-worthy\n\n' +
+    'Under 100 words. Feel real, not corporate.'
+  );
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
@@ -9521,7 +10146,16 @@ async function generateBusinessInsights() {
       var r=getClientRating(c);
       return c.name+' ('+c.biz+'): rating '+r.score+'/10, '+r.label;
     }).join('\n');
-  var prompt = 'You are Phoebe Blamey\'s strategic advisor. Analyse her coaching business.\n\n'+ctx+'\n\nProvide:\n1. WHAT\'S WORKING — best performing patterns\n2. WHERE TO FOCUS — biggest opportunities right now\n3. REVENUE GAPS — where money is being left on the table\n4. CLIENT SUCCESS PATTERNS — who is getting the best results and why\n5. ONE BOLD MOVE — single highest-impact action in the next 30 days\n\nBe specific and direct. Speak as a peer.';
+  var prompt = phoebeVoice(
+    'You are Phoebe Blamey\'s strategic advisor. Analyse her coaching business.\n\n' + ctx + '\n\n' +
+    'Provide:\n' +
+    '1. WHAT\'S WORKING — best performing patterns\n' +
+    '2. WHERE TO FOCUS — biggest opportunities right now\n' +
+    '3. REVENUE GAPS — where money is being left on the table\n' +
+    '4. CLIENT SUCCESS PATTERNS — who is getting the best results and why\n' +
+    '5. ONE BOLD MOVE — single highest-impact action in the next 30 days\n\n' +
+    'Be specific and direct. Speak as a peer.'
+  );
   try {
     var resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1200,messages:[{role:'user',content:prompt}]})});
     var data=await resp.json();
@@ -9818,6 +10452,9 @@ function renderCohortCard(co) {
     '</div>' +
     '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
       (co.zoomLink ? '<a href="'+co.zoomLink+'" target="_blank" style="font-size:11px;background:#2D8CFF;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">🎬 Open Zoom</a>' : '') +
+      (co.zoomLink ? '<button onclick="copyToClipboard(\''+(co.zoomLink||'').replace(/\'/g,'')+'\')" class="btn-sm" style="font-size:11px">📋 Copy join link</button>' : '') +
+      (co.zoomPasscode ? '<span style="font-size:11px;background:white;border:1px solid var(--border);padding:4px 10px;border-radius:99px;color:var(--magenta)">Passcode: <strong>'+escapeHtml(co.zoomPasscode)+'</strong></span>' : '') +
+      (!co.zoomLink ? '<button onclick="createCohortZoomMeeting(\''+co.id+'\')" class="btn-sm primary" style="font-size:11px">+ Create Zoom meeting</button>' : '') +
       (co.whatsapp ? '<a href="'+co.whatsapp+'" target="_blank" style="font-size:11px;background:#25D366;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">💬 Open WhatsApp</a>' : '') +
       '<button class="btn-sm" onclick="confirmDeleteCohort(\''+co.id+'\')" style="margin-left:auto;color:#C0392B;border-color:rgba(192,57,43,0.3);background:white">🗑 Delete cohort</button>' +
     '</div>';
@@ -9990,20 +10627,106 @@ async function addNewCohort() {
   var name = await branded.prompt('What\'s this cohort called?', '', 'e.g. MDC May 2026', { title:'New cohort', okLabel:'Create' });
   if (name === null || !name.trim()) return;
   if (!Array.isArray(window.MDC_COHORTS)) window.MDC_COHORTS = [];
+  var autoZoom = await branded.confirm(
+    'Spin up a recurring Zoom meeting for this cohort? It\'ll come back with a join URL you can share with members. You can edit it any time after.',
+    { title: 'Auto-create Zoom?', okLabel: 'Yes, create one', cancelLabel: 'No, I\'ll add it manually' }
+  );
   var newCo = {
     id: 'cohort-' + Date.now(),
     name: name.trim(),
     start: '', end: '', dates: '',
     whatsapp: '', zoomLink: '',
+    zoomMeetingId: '', zoomPasscode: '', zoomStartUrl: '',
     nextSessionDate: '', nextSessionTime: '',
     active: true,
+    notes: '',
   };
   MDC_COHORTS.push(newCo);
   _saveCohorts();
   // Auto-expand the new cohort so Phoebe can fill in dates inline
   window._expandedCohorts[newCo.id] = true;
-  branded.toast('Cohort created — fill in dates below');
   renderCohortManager();
+  if (autoZoom) {
+    branded.toast('Creating Zoom meeting…');
+    try {
+      var resp = await fetch('/api/zoom-create-meeting', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: name.trim() + ' · MDC',
+          durationMinutes: 90,
+          recurring: true,
+          agenda: 'Recurring MDC cohort session — set up by Phoebe via the hub.',
+        })
+      });
+      var data = await resp.json();
+      if (resp.ok && data.success) {
+        newCo.zoomLink = data.joinUrl || '';
+        newCo.zoomStartUrl = data.startUrl || '';
+        newCo.zoomMeetingId = String(data.meetingId || '');
+        newCo.zoomPasscode = data.passcode || '';
+        _saveCohorts();
+        renderCohortManager();
+        branded.success('Cohort + Zoom created. Share the join link with members or copy from the cohort card.');
+      } else {
+        branded.alert('Cohort created, but the Zoom meeting couldn\'t be auto-spun up. Add the link manually below.\n\n' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      branded.alert('Cohort created, but Zoom auto-create failed. Add the link manually.\n\n' + (err.message || err));
+    }
+  } else {
+    branded.toast('Cohort created — fill in dates and Zoom link below');
+  }
+}
+
+// Spin up a Zoom meeting for an existing cohort that doesn't have one yet
+// (Phoebe said "no" earlier, or the meeting was deleted on Zoom's side).
+async function createCohortZoomMeeting(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  branded.toast('Creating Zoom meeting…');
+  try {
+    var resp = await fetch('/api/zoom-create-meeting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic: (co.name || 'Cohort') + ' · MDC',
+        durationMinutes: 90,
+        recurring: true,
+        agenda: 'Recurring MDC cohort session.',
+      })
+    });
+    var data = await resp.json();
+    if (resp.ok && data.success) {
+      co.zoomLink = data.joinUrl || '';
+      co.zoomStartUrl = data.startUrl || '';
+      co.zoomMeetingId = String(data.meetingId || '');
+      co.zoomPasscode = data.passcode || '';
+      _saveCohorts();
+      renderCohortManager();
+      branded.success('Zoom meeting linked to ' + co.name);
+    } else {
+      branded.error('Zoom create failed: ' + (data.error || 'unknown'));
+    }
+  } catch (err) {
+    branded.error('Zoom create failed: ' + (err.message || err));
+  }
+}
+
+// Generic clipboard copy used by the cohort row + anywhere else that needs it
+function copyToClipboard(text) {
+  if (!text) return;
+  try {
+    navigator.clipboard.writeText(text);
+    branded.toast('Copied');
+  } catch (e) {
+    // Older browsers fallback
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); branded.toast('Copied'); } catch (_) {}
+    document.body.removeChild(ta);
+  }
 }
 
 async function broadcastToCohort(cohortId, channel) {
@@ -10033,17 +10756,17 @@ async function runTranscriptReview(client, prog, note) {
   if (note.aiSummaryStatus === 'in-progress') return;
   note.aiSummaryStatus = 'in-progress';
   try {
-    var prompt = 'You are Phoebe Blamey\'s editor. Below is a raw Zoom transcript from a coaching session with ' + (client.name || 'a client') +
+    var prompt = phoebeVoice(
+      'You are Phoebe Blamey\'s editor. Below is a raw Zoom transcript from a coaching session with ' + (client.name || 'a client') +
       (client.biz ? ' (' + client.biz + ')' : '') + '. Turn it into a polished, client-facing session summary.\n\n' +
       'Structure (use these exact headings):\n' +
       '## What we covered\n' +
       '## Your wins this session\n' +
       '## Action items for you\n' +
       '## What I\'m sitting with\n\n' +
-      'Voice: warm, direct, conversational, Australian English. Speak to the client in second person ("you"). ' +
-      'Strip filler, half-sentences and the noise of real speech. Keep specifics: numbers, names, deadlines. ' +
-      'No corporate jargon. No "leverage", "synergy". Maximum 400 words total.\n\n' +
-      'TRANSCRIPT:\n' + String(note.zoomTranscript).slice(0, 18000);
+      'Strip filler, half-sentences and the noise of real speech. Keep specifics: numbers, names, deadlines. Maximum 400 words total.\n\n' +
+      'TRANSCRIPT:\n' + String(note.zoomTranscript).slice(0, 18000)
+    );
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
