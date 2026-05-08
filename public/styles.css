@@ -395,8 +395,10 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 .page.active { display: block !important; }
 #task-sheet-content { display: block !important; min-height: 100px; }
 
-/* === BODY PADDING (banner offset) === */
-body{padding-top:36px}
+/* === BODY PADDING (banner offset) ===
+   Banner removed in v8300 — keep rule at 0 so older cached HTML still
+   renders cleanly without the offset. */
+body{padding-top:0}
 
 /* ─────────────────────────────────────────────────────────────────────
    Compact UX touch-ups for the client portal — tighter than before so

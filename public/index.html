@@ -11,10 +11,10 @@
 
 </head>
 <body>
-<div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v8200 loaded · client portal redesign: tabs, to-do summary, settings, medal badges
-<button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
-</div>
+<!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
+     no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
+<meta name="hmh-build" content="v8300 — Phase C, plan templates, uncategorised Zooms, activity feed">
+<style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
 <div id="landing">
@@ -274,13 +274,20 @@
             <div id="inline-plan-output" class="ai-output"></div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-            <div style="font-size:12px;color:var(--stone)">Click any task to edit it directly</div>
-            <div style="display:flex;gap:8px">
+            <div style="font-size:12px;color:var(--stone)">Click any task or section title to edit it directly</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="btn-sm" onclick="toggleBuilder()" id="toggle-builder-btn">+ Build from Zoom</button>
-              <button class="btn-sm" onclick="addPlanTask()">+ Add task</button>
+              <button class="btn-sm primary" onclick="addPlanSection()">+ Add section</button>
+              <button class="btn-sm" onclick="saveCurrentPlanAsTemplate()" title="Save the current plan structure as a reusable template for other clients">💾 Save as template</button>
             </div>
           </div>
           <div class="plan-grid" id="plan-grid"></div>
+          <!-- Templates strip — shows saved plan templates Phoebe can apply
+               to this client's plan with one click. localStorage-backed. -->
+          <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border-soft)">
+            <div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">📋 Plan templates · click to apply to this client</div>
+            <div id="plan-template-chips"></div>
+          </div>
         </div>
 
         <!-- RESEARCH TAB removed — content now lives inside the Intake tab -->
@@ -2106,8 +2113,9 @@ function openProgram(client, progId) {
     (prog.websiteUrl ? '<div class="intake-answer"><div class="intake-q">Website</div><div class="intake-a"><a href="' + prog.websiteUrl + '" target="_blank" style="color:var(--hot-pink)">' + prog.websiteUrl + '</a></div></div>' : '') +
     (prog.websiteSocial ? '<div class="intake-answer"><div class="intake-q">Social</div><div class="intake-a">' + prog.websiteSocial + '</div></div>' : '');
 
-  // Plan
+  // Plan + saved templates strip
   renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
+  if (typeof renderPlanTemplateChips === 'function') renderPlanTemplateChips();
 
   // MDC / HH specific
   if (prog.workbook === 'mdc') renderMDCContent(prog);
@@ -2339,47 +2347,171 @@ function renderPlanGrid(plan, taskDone, containerId, readonly) {
   var container = document.getElementById(containerId);
   if (!container) return;
   if (!plan || !plan.length) {
-    container.innerHTML = '<div style="color:var(--stone);font-size:13px;grid-column:1/-1;padding:12px 0">No plan yet. Use the Zoom builder above to generate one automatically.</div>';
+    var emptyMsg = readonly
+      ? 'Your plan will appear here once you and Phoebe have shaped it together.'
+      : 'No plan yet. Use the Zoom builder above to generate one, apply a template, or click "+ Add section" below.';
+    container.innerHTML = '<div style="color:var(--stone);font-size:13px;grid-column:1/-1;padding:12px 0">' + emptyMsg + '</div>';
     return;
   }
-  var labels = ['Month 1 — Foundation','Month 2 — Momentum','Month 3 — Breakthrough'];
+  // Default labels for the legacy 3-month plan; if a section has its own
+  // `label`, use that instead. New custom sections always have `label`.
+  var defaultLabels = ['Month 1 — Foundation','Month 2 — Momentum','Month 3 — Breakthrough'];
   container.innerHTML = plan.map(function(m, i) {
-    var cls = ['m1','m2','m3'][i]||'m1';
+    var cls = ['m1','m2','m3'][i % 3] || 'm1';
+    var heading = m.label || defaultLabels[i] || ('Month ' + (m.month || (i+1)));
+    var sectionId = (m.month != null) ? String(m.month) : ('s' + i);
+    var headingEditable = (!readonly && containerId === 'plan-grid')
+      ? ' contenteditable="true" onblur="savePlanSectionLabel(\'' + sectionId + '\',this.textContent)" style="cursor:text" title="Click to rename this section"'
+      : '';
+    var deleteBtn = (!readonly && containerId === 'plan-grid' && plan.length > 1)
+      ? '<button onclick="deletePlanSection(\'' + sectionId + '\')" class="btn-sm" style="margin-left:auto;font-size:11px;padding:2px 8px;background:transparent;border:none;color:var(--stone);cursor:pointer" title="Remove this section">×</button>'
+      : '';
     return '<div class="plan-month ' + cls + '">' +
-      '<div class="plan-month-header"><div class="month-num">' + m.month + '</div><span>' + (labels[i]||'Month '+m.month) + '</span></div>' +
+      '<div class="plan-month-header" style="display:flex;align-items:center;gap:8px">' +
+        '<div class="month-num">' + (m.month != null ? m.month : (i+1)) + '</div>' +
+        '<span' + headingEditable + '>' + heading + '</span>' +
+        deleteBtn +
+      '</div>' +
       '<div class="plan-tasks">' +
       (m.tasks||[]).map(function(t, ti) {
-        var key = m.month+'-'+ti;
+        var key = sectionId + '-' + ti;
         var done = taskDone && taskDone[key];
-        var ea = (!readonly && containerId==='plan-grid') ? ' contenteditable="true" onblur="saveTaskEdit('+m.month+','+ti+',this)"' : '';
+        var ea = (!readonly && containerId === 'plan-grid') ? ' contenteditable="true" onblur="saveTaskEdit(\'' + sectionId + '\',' + ti + ',this)"' : '';
+        var deleteTask = (!readonly && containerId === 'plan-grid')
+          ? '<button onclick="deletePlanTask(\'' + sectionId + '\',' + ti + ')" style="margin-left:auto;background:none;border:none;color:var(--stone);cursor:pointer;font-size:14px;opacity:0.4" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.4" title="Remove">×</button>'
+          : '';
         return '<div class="plan-task">' +
-          '<div class="task-check '+(done?'done':'')+'" onclick="'+(readonly?'':'toggleTask('+m.month+','+ti+')')+'" style="'+(readonly?'cursor:default':'')+'" ></div>' +
-          '<div class="task-text '+(done?'done':'')+'"'+ea+'>' + t + '</div></div>';
-      }).join('') + '</div></div>';
+          '<div class="task-check '+(done?'done':'')+'" onclick="'+(readonly?'':'toggleTask(\'' + sectionId + '\','+ti+')')+'" style="'+(readonly?'cursor:default':'')+'" ></div>' +
+          '<div class="task-text '+(done?'done':'')+'"'+ea+'>' + t + '</div>' +
+          deleteTask +
+        '</div>';
+      }).join('') +
+      ((!readonly && containerId === 'plan-grid')
+        ? '<button onclick="addTaskToSection(\'' + sectionId + '\')" class="btn-sm" style="margin-top:8px;font-size:11px;background:transparent;border:1px dashed var(--border);color:var(--stone);width:100%">+ Add task</button>'
+        : '') +
+      '</div></div>';
   }).join('');
 }
 
-async function toggleTask(month, idx) {
+// Helper: find a plan section by sectionId (which is either the legacy month
+// number as a string "1"/"2"/"3", or a synthetic "s0"/"s1"/... for newer
+// custom sections that don't have a month number).
+function findPlanSection(plan, sectionId) {
+  if (!plan) return null;
+  // Try as month number first
+  var asNum = parseInt(sectionId, 10);
+  if (!isNaN(asNum) && String(asNum) === sectionId) {
+    var byMonth = plan.find(function(m){ return m.month === asNum; });
+    if (byMonth) return byMonth;
+  }
+  // Fall back to index from "s<idx>"
+  if (sectionId && sectionId.indexOf('s') === 0) {
+    var idx = parseInt(sectionId.slice(1), 10);
+    if (!isNaN(idx) && plan[idx]) return plan[idx];
+  }
+  return null;
+}
+
+async function toggleTask(sectionId, idx) {
   var client = clients.find(function(c) { return c.id === currentClientId; });
   if (!client) return;
   var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
   if (!prog) return;
-  var key = month+'-'+idx;
+  var key = sectionId + '-' + idx;
   prog.taskDone = prog.taskDone || {};
   prog.taskDone[key] = !prog.taskDone[key];
+  // Note: legacy `taskDone` keyed by `month-idx` still works because sectionId
+  // for legacy sections is the month number as a string (e.g. "1").
   await persistClient(client);
   renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
 }
 
-async function saveTaskEdit(month, idx, el) {
+async function saveTaskEdit(sectionId, idx, el) {
   var client = clients.find(function(c) { return c.id === currentClientId; });
   if (!client) return;
   var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
   if (!prog || !prog.plan) return;
-  var mp = prog.plan.find(function(m) { return m.month === month; });
+  var mp = findPlanSection(prog.plan, sectionId);
   if (mp) { mp.tasks[idx] = el.textContent.trim(); await persistClient(client); }
 }
 
+async function deletePlanTask(sectionId, idx) {
+  var client = clients.find(function(c) { return c.id === currentClientId; });
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
+  if (!prog || !prog.plan) return;
+  var section = findPlanSection(prog.plan, sectionId);
+  if (!section) return;
+  section.tasks.splice(idx, 1);
+  await persistClient(client);
+  renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
+}
+
+async function addTaskToSection(sectionId) {
+  var client = clients.find(function(c) { return c.id === currentClientId; });
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
+  if (!prog || !prog.plan) return;
+  var section = findPlanSection(prog.plan, sectionId);
+  if (!section) return;
+  section.tasks = section.tasks || [];
+  section.tasks.push('New task — click to edit');
+  await persistClient(client);
+  renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
+}
+
+async function savePlanSectionLabel(sectionId, newLabel) {
+  var client = clients.find(function(c) { return c.id === currentClientId; });
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
+  if (!prog || !prog.plan) return;
+  var section = findPlanSection(prog.plan, sectionId);
+  if (section) {
+    section.label = (newLabel || '').trim();
+    await persistClient(client);
+  }
+}
+
+async function deletePlanSection(sectionId) {
+  var ok = await branded.confirm('Remove this section and all its tasks? This can\'t be undone.', { title:'Remove section?', okLabel:'Remove', danger:true });
+  if (!ok) return;
+  var client = clients.find(function(c) { return c.id === currentClientId; });
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
+  if (!prog || !prog.plan) return;
+  var idx = prog.plan.findIndex(function(m) {
+    var asNum = parseInt(sectionId, 10);
+    if (!isNaN(asNum) && m.month === asNum) return true;
+    if (sectionId.indexOf('s') === 0) return prog.plan.indexOf(m) === parseInt(sectionId.slice(1), 10);
+    return false;
+  });
+  if (idx >= 0) {
+    prog.plan.splice(idx, 1);
+    await persistClient(client);
+    renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
+    branded.toast('Section removed');
+  }
+}
+
+async function addPlanSection() {
+  var label = await branded.prompt('Name this section', '', 'e.g. Marketing audit, Lead gen review, Pricing reset', { title:'New plan section', okLabel:'Add section' });
+  if (!label || !label.trim()) return;
+  var client = clients.find(function(c) { return c.id === currentClientId; });
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
+  if (!prog) return;
+  prog.plan = prog.plan || [];
+  prog.plan.push({
+    month: prog.plan.length + 1, // also assign a month number for legacy compat
+    label: label.trim(),
+    tasks: ['New task — click to edit']
+  });
+  await persistClient(client);
+  renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
+  branded.toast('Section added');
+}
+
+// Kept the old name for any existing onclick handlers — now adds to the FIRST section.
 async function addPlanTask() {
   var client = clients.find(function(c) { return c.id === currentClientId; });
   if (!client) return;
@@ -2390,6 +2522,92 @@ async function addPlanTask() {
   } else { prog.plan[0].tasks.push('New task — click to edit'); }
   await persistClient(client);
   renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
+}
+
+// =====================================================================
+// PLAN TEMPLATES
+// Phoebe can save the current plan structure (sections + their tasks) as
+// a reusable template and apply it to any other client. Templates live
+// in localStorage so they survive page reloads but stay on her device.
+// =====================================================================
+var PLAN_TEMPLATES_KEY = 'hmh_plan_templates';
+
+function getPlanTemplates() {
+  try { return JSON.parse(localStorage.getItem(PLAN_TEMPLATES_KEY) || '[]'); }
+  catch(e) { return []; }
+}
+function savePlanTemplates(arr) {
+  try { localStorage.setItem(PLAN_TEMPLATES_KEY, JSON.stringify(arr)); } catch(e) {}
+}
+
+async function saveCurrentPlanAsTemplate() {
+  var client = clients.find(function(c) { return c.id === currentClientId; });
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
+  if (!prog || !prog.plan || !prog.plan.length) {
+    branded.alert('Add some sections to the plan first, then save it as a template.');
+    return;
+  }
+  var name = await branded.prompt('Name this template', '', 'e.g. "MDC starter plan", "90-day for service businesses"', { title:'Save plan as template', okLabel:'Save template' });
+  if (!name || !name.trim()) return;
+  var templates = getPlanTemplates();
+  templates.unshift({
+    id: 'tpl-' + Date.now(),
+    name: name.trim(),
+    program: prog.program,
+    sections: prog.plan.map(function(m) { return { month: m.month, label: m.label || '', tasks: (m.tasks||[]).slice() }; }),
+    createdAt: new Date().toISOString()
+  });
+  savePlanTemplates(templates);
+  branded.toast('Template saved');
+  renderPlanTemplateChips();
+}
+
+async function applyPlanTemplate(templateId) {
+  var templates = getPlanTemplates();
+  var tpl = templates.find(function(t) { return t.id === templateId; });
+  if (!tpl) return;
+  var client = clients.find(function(c) { return c.id === currentClientId; });
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
+  if (!prog) return;
+  var hasExisting = prog.plan && prog.plan.length > 0 && (prog.plan[0].tasks||[]).length > 0;
+  if (hasExisting) {
+    var ok = await branded.confirm('This client already has a plan. Replace it with the "' + tpl.name + '" template? Their progress on existing tasks will be cleared.', { title:'Replace existing plan?', okLabel:'Replace', danger:true });
+    if (!ok) return;
+  }
+  prog.plan = tpl.sections.map(function(s) { return { month: s.month, label: s.label || '', tasks: (s.tasks||[]).slice() }; });
+  prog.taskDone = {};
+  await persistClient(client);
+  renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
+  branded.toast('Template applied');
+}
+
+async function deletePlanTemplate(templateId) {
+  var ok = await branded.confirm('Delete this template?', { title:'Delete template?', okLabel:'Delete', danger:true });
+  if (!ok) return;
+  var templates = getPlanTemplates().filter(function(t) { return t.id !== templateId; });
+  savePlanTemplates(templates);
+  renderPlanTemplateChips();
+  branded.toast('Template deleted');
+}
+
+// Renders the templates chip strip below the plan grid (and the +section button)
+function renderPlanTemplateChips() {
+  var el = document.getElementById('plan-template-chips');
+  if (!el) return;
+  var templates = getPlanTemplates();
+  if (!templates.length) {
+    el.innerHTML = '<span style="font-size:11px;color:var(--stone);font-style:italic">No templates saved yet — save the current plan as a template to reuse it.</span>';
+    return;
+  }
+  el.innerHTML = templates.map(function(t) {
+    var subtitle = (t.sections||[]).length + ' section' + (t.sections.length===1?'':'s');
+    return '<div style="display:inline-flex;align-items:center;gap:6px;background:var(--marshmallow);border:1.5px solid var(--border);border-radius:99px;padding:5px 6px 5px 12px;margin-right:6px;margin-bottom:6px">' +
+      '<button onclick="applyPlanTemplate(\'' + t.id + '\')" style="background:none;border:none;font-family:var(--f-body);font-size:12px;color:var(--magenta);font-weight:600;cursor:pointer" title="Apply this template — replaces current plan">' + t.name + ' <span style="font-size:10px;color:var(--stone);margin-left:4px;font-weight:500">' + subtitle + '</span></button>' +
+      '<button onclick="deletePlanTemplate(\'' + t.id + '\')" style="background:none;border:none;color:var(--stone);font-size:14px;cursor:pointer;line-height:1;padding:0 4px" title="Delete this template">×</button>' +
+    '</div>';
+  }).join('');
 }
 
 function toggleBuilder() {
@@ -2432,6 +2650,7 @@ async function fetchZoomTranscript() {
     } else {
       notes.value = data.transcript;
       status.textContent = '✓ Transcript pulled — building plan…';
+      logActivity('transcript', 'Transcript pulled from Zoom for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (data.meetingTopic||'Session') + ' · ' + (data.characterCount||'?') + ' chars' });
       setTimeout(buildPlanInline, 500);
     }
   } catch(e) {
@@ -2471,6 +2690,7 @@ async function buildPlanInline() {
       outputEl.classList.remove('show');
       status.textContent = '✓ Plan created and saved!';
       document.getElementById('inline-zoom-notes').value = '';
+      logActivity('ai-plan', 'AI plan generated for ' + clientName, { clientId: client.id, clientName: clientName, progId: prog.id, detail: 'From Zoom transcript · 3 months · ' + (prog.plan.reduce(function(t,m){return t+(m.tasks||[]).length;},0)) + ' tasks' });
       setTimeout(function() { status.textContent=''; toggleBuilder(); }, 2000);
     } else { outputEl.textContent = text; status.textContent = 'Review above'; }
   } catch(e) { outputEl.textContent = 'Error: ' + e.message; }
@@ -2652,13 +2872,20 @@ async function autoRunResearch() {
     '- Website: ' + (prog.websiteUrl||'Not provided') + '\n' +
     '- Social: ' + (prog.websiteSocial||'Not provided') + '\n' +
     '- Intake: ' + (prog.intake||'Not provided') + '\n\n' +
-    'Pre-session coaching brief:\n' +
+    'Pre-session coaching brief — use these EXACT section headings in this order:\n\n' +
+    '⚠️ FOR PHOEBE\'S ATTENTION — RED FLAGS\n' +
+    'The 3-5 things Phoebe MUST probe in the first session because they will trip this client up if not surfaced. ' +
+    'These are concerning patterns, contradictions, missing info, or red flags spotted from the website/LinkedIn/intake. ' +
+    'Be direct — no padding, no diplomatic softening. If you spot pricing chaos, mention it. If their ICP is unclear, say so. ' +
+    'If their stated goal doesn\'t match what their site sells, flag it. Each item: the flag (1 line) + WHY it matters (1 line) + the question Phoebe should ask.\n\n' +
     '1. DIGITAL PRESENCE AUDIT — messaging clarity, CTA strength, score /10. Cite specific things you saw on their site.\n' +
     '2. REVENUE LEAK SPOTS — based on their actual setup, not generic advice\n' +
     '3. OPPORTUNITIES — networks, referrals, quick wins\n' +
     '4. COACHING FOCUS AREAS — what Phoebe should probe in session\n' +
     '5. QUICK WINS — 3-5 specific first-30-day actions\n\n' +
-    'Sharp, practical, Australian English. For a highly experienced business coach.';
+    'Sharp, practical, Australian English. For a highly experienced business coach. ' +
+    'The "FOR PHOEBE\'S ATTENTION" section sits at the very top because it\'s the most important — ' +
+    'Phoebe reads it 60 seconds before the call to know what to listen for.';
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
@@ -2684,6 +2911,7 @@ async function autoRunResearch() {
     prog.notes.research = text;
     await persistClient(client);
     renderResearchHistory(prog);
+    logActivity('ai-brief', 'Research brief generated for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: 'With web search · ~' + Math.round(text.length/100) + '00 chars' });
     btn.textContent = '✓ Done'; setTimeout(function() { btn.textContent='✦ Generate research brief'; btn.disabled=false; }, 3000);
   } catch(e) { output.value='Error: '+e.message; btn.disabled=false; btn.textContent='✦ Generate research brief'; }
 }
@@ -2884,6 +3112,12 @@ function renderClientProgram(client, prog) {
   // Resources removed — now lives in the floating Help button (bottom-right "?").
   var lockNotice = isLocked ? '<div style="background:var(--marshmallow);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--stone)">🔒 This program has been completed and locked. Your work is preserved here for reference.</div>' : '';
 
+  // ── "My Why" pin — pulls the client's vision (5-year answer) from the MDC
+  // workbook if filled, falls back to a free-form client.why field, falls
+  // back to a gentle prompt to write one. Always at the top so they see it
+  // every time they open a program. -------------------------------------
+  var whyPin = renderClientWhyPin(client, prog);
+
   // Full achievements grid (with locked badges) — bottom of page in a collapsed
   // accordion so the screen feels lighter on first load.
   var fullAchievementsRaw = (typeof renderBadgesSection === 'function') ? renderBadgesSection(client) : '';
@@ -2921,7 +3155,7 @@ function renderClientProgram(client, prog) {
     var clientNotesHtml = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
     var reflectHtml = isLocked ? '' : '<div class="client-section"><h3>' + firstName + '\'s reflections</h3><textarea id="client-reflect-'+prog.id+'" onchange="saveClientReflection(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:100px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What did this session bring up for you? What are you noticing?">'+(prog.clientReflection||'')+'</textarea></div>';
     var clientWinsHtml = clientWinsSection(prog);
-    content = lockNotice + clientWinsHtml + planHtml + notesHtml + clientNotesHtml + reflectHtml + fullAchievementsAccordion;
+    content = lockNotice + whyPin + clientWinsHtml + planHtml + notesHtml + clientNotesHtml + reflectHtml + fullAchievementsAccordion;
     area.innerHTML = content;
     renderPlanGrid(prog.plan||[], prog.taskDone||{}, 'client-plan-grid-'+prog.id, isLocked);
   } else if (prog.workbook==='mdc') {
@@ -2959,7 +3193,7 @@ function renderClientProgram(client, prog) {
       '<textarea id="client-mdc-session-'+prog.id+'" onchange="saveClientMDCCheckin(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What came up for you this week? What can you change as a result?">'+(ci.clientSession||'')+'</textarea>' +
       '</div>';
     var clientNotesMdc = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
-    content = lockNotice + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + fullAchievementsAccordion;
+    content = lockNotice + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + fullAchievementsAccordion;
     area.innerHTML = content;
   } else if (prog.workbook==='happyhour') {
     var hh = prog.happyHour||{};
@@ -2969,10 +3203,10 @@ function renderClientProgram(client, prog) {
       (hh.resources?'<div class="intake-answer"><div class="intake-q">Resources</div><div class="intake-a" style="white-space:pre-wrap">'+hh.resources+'</div></div>':'') +
       (!hh.assets&&!hh.discussed?'<p style="color:var(--stone);font-size:13px">Your session summary will appear here after your Happy Hour.</p>':'');
     var clientNotesHh = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
-    content = lockNotice + '<div class="client-section"><h3>☀️ Your Happy Hour summary</h3>' + hhBody + '</div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + clientNotesHh + fullAchievementsAccordion;
+    content = lockNotice + whyPin + '<div class="client-section"><h3>☀️ Your Happy Hour summary</h3>' + hhBody + '</div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + clientNotesHh + fullAchievementsAccordion;
     area.innerHTML = content;
   } else {
-    content = lockNotice + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + fullAchievementsAccordion;
+    content = lockNotice + whyPin + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + fullAchievementsAccordion;
     area.innerHTML = content;
   }
 
@@ -3049,6 +3283,9 @@ function renderClientSummary(client) {
     '<div style="font-family:var(--f-head);font-size:22px;color:var(--magenta);margin-bottom:4px">' + timeGreeting + ', ' + firstName + ' 💛</div>' +
     '<div style="font-size:13px;color:var(--stone)">Here\'s what\'s on your plate today.</div>' +
   '</div>';
+
+  // Daily check-in (Phase C) — mood emoji + one-liner, builds streak
+  html += renderClientDailyCheckin(client);
 
   // Stats row — open / overdue / wins / programs
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">' +
@@ -3151,6 +3388,339 @@ function summaryStatCard(num, label, color) {
   '</div>';
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// ACTIVITY LOG — central feed for things that happened automatically.
+// Sources: Calendly bookings, AI social discovery, transcript pulls,
+// research brief generation, plan generation, AI session summaries.
+// Stored client-side in localStorage so Phoebe sees it the moment she
+// signs in — also surfaces on the Home dashboard ("Recent activity").
+// ═════════════════════════════════════════════════════════════════════
+var ACTIVITY_KEY = 'hmh_activity_log';
+var ACTIVITY_LIMIT = 80;
+
+function getActivityLog() {
+  try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '[]'); }
+  catch(e) { return []; }
+}
+
+function logActivity(kind, title, opts) {
+  opts = opts || {};
+  var entry = {
+    id: 'act-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    ts: new Date().toISOString(),
+    kind: kind,                      // 'calendly' | 'transcript' | 'ai-brief' | 'ai-plan' | 'ai-summary' | 'webhook' | 'system'
+    title: title || '',
+    clientId: opts.clientId || null,
+    clientName: opts.clientName || null,
+    progId: opts.progId || null,
+    icon: opts.icon || activityIconFor(kind),
+    detail: opts.detail || ''
+  };
+  var log = getActivityLog();
+  log.unshift(entry);
+  if (log.length > ACTIVITY_LIMIT) log = log.slice(0, ACTIVITY_LIMIT);
+  try { localStorage.setItem(ACTIVITY_KEY, JSON.stringify(log)); } catch(e) {}
+  // If the home page is rendered, refresh the activity strip live
+  if (typeof renderActivityFeed === 'function') {
+    var feed = document.getElementById('home-activity-feed');
+    if (feed) renderActivityFeed();
+  }
+  return entry;
+}
+
+function activityIconFor(kind) {
+  return ({
+    'calendly':   '📅',
+    'transcript': '🎬',
+    'ai-brief':   '🔬',
+    'ai-plan':    '⚡',
+    'ai-summary': '✨',
+    'ai-tasks':   '🎯',
+    'webhook':    '🔌',
+    'message':    '📧',
+    'system':     '🛠'
+  })[kind] || '✨';
+}
+
+function renderActivityFeed() {
+  var el = document.getElementById('home-activity-feed');
+  if (!el) return;
+  var log = getActivityLog().slice(0, 8);
+  if (!log.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--stone);padding:14px 0;text-align:center;font-style:italic">Automatic actions (Calendly bookings, AI briefs, transcript pulls) will appear here as they happen.</div>';
+    return;
+  }
+  el.innerHTML = log.map(function(a) {
+    var when = relativeTime(a.ts);
+    var nav = a.clientId ? 'onclick="openClient(\'' + a.clientId + '\')" style="cursor:pointer"' : '';
+    return '<div ' + nav + ' style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border-soft);font-size:13px">' +
+      '<div style="font-size:16px;line-height:1;flex-shrink:0;margin-top:1px">' + a.icon + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="color:var(--magenta);line-height:1.4">' + a.title + '</div>' +
+        (a.detail ? '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + a.detail + '</div>' : '') +
+      '</div>' +
+      '<span style="font-size:11px;color:var(--stone);white-space:nowrap;flex-shrink:0">' + when + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+function relativeTime(iso) {
+  if (!iso) return '';
+  var diff = Date.now() - new Date(iso).getTime();
+  var mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  var hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  var days = Math.floor(hrs / 24);
+  if (days < 7) return days + 'd ago';
+  return new Date(iso).toLocaleDateString('en-AU', { day:'numeric', month:'short' });
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// UNCATEGORISED ZOOMS — surfaces recordings that didn't auto-match a
+// client. Phoebe assigns each to "client X · program Y · session date Z"
+// and the transcript gets pulled and saved against that program.
+// ═════════════════════════════════════════════════════════════════════
+async function checkUnmatchedZooms() {
+  var slot = document.getElementById('home-unmatched-zoom');
+  if (!slot) return;
+  try {
+    var resp = await fetch('/api/zoom-list-recordings?days=30');
+    if (!resp.ok) return; // function not deployed or no Zoom config — silently skip
+    var data = await resp.json();
+    var recordings = data.meetings || [];
+    if (!recordings.length) return;
+    // Find recordings whose start_time is within ±1 day of any client program's sessionDate.
+    // Anything else is "unmatched".
+    var matched = new Set();
+    (clients||[]).forEach(function(c) {
+      (c.programs||[]).forEach(function(p) {
+        if (!p.sessionDate) return;
+        var sd = new Date(p.sessionDate).getTime();
+        recordings.forEach(function(r) {
+          if (!r.startTime) return;
+          var rd = new Date(r.startTime).getTime();
+          if (Math.abs(rd - sd) <= 86400000) matched.add(r.id || r.uuid);
+        });
+      });
+    });
+    var unmatched = recordings.filter(function(r){ return !matched.has(r.id || r.uuid) && r.hasRecording; });
+    if (!unmatched.length) { slot.style.display = 'none'; return; }
+    renderUnmatchedZooms(unmatched);
+  } catch(e) {
+    console.log('[UnmatchedZooms] skipped:', e.message);
+  }
+}
+
+function renderUnmatchedZooms(unmatched) {
+  var slot = document.getElementById('home-unmatched-zoom');
+  if (!slot) return;
+  var clientOpts = (clients||[]).map(function(c) {
+    return '<option value="' + c.id + '">' + c.name + (c.biz ? ' (' + c.biz + ')' : '') + '</option>';
+  }).join('');
+  slot.style.display = 'block';
+  slot.innerHTML = '<div style="background:linear-gradient(135deg,#FFFBE8,#FFF5E8);border:1.5px solid rgba(232,160,32,0.3);border-radius:14px;padding:18px;margin-bottom:14px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">' +
+      '<div style="font-family:var(--f-head);font-size:15px;color:#A07030;font-weight:700">📼 Uncategorised Zooms · ' + unmatched.length + '</div>' +
+      '<div style="font-size:11px;color:#ACA495">Recordings that didn\'t auto-match a client</div>' +
+    '</div>' +
+    unmatched.map(function(r) {
+      var dateStr = r.startTime ? new Date(r.startTime).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'}) : 'No date';
+      var hasT = r.hasTranscript ? '<span style="font-size:10px;background:var(--mist);color:var(--teal);padding:2px 7px;border-radius:99px;font-weight:600">Transcript ready</span>' : '<span style="font-size:10px;background:#FDEFF5;color:var(--magenta);padding:2px 7px;border-radius:99px;font-weight:600">Recording only</span>';
+      return '<div style="background:white;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px">' +
+        '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;flex-wrap:wrap">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;color:var(--magenta);font-weight:600">' + (r.topic || 'Untitled meeting') + '</div>' +
+            '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + dateStr + (r.duration ? ' · ' + r.duration + ' min' : '') + ' · ' + hasT + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+          '<select id="zoom-assign-client-' + (r.id || r.uuid) + '" style="flex:1;min-width:160px;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);outline:none">' +
+            '<option value="">Assign to client…</option>' + clientOpts +
+          '</select>' +
+          '<button class="btn-sm primary" onclick="assignZoomToClient(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'') + '\')" style="font-size:11px">Assign &amp; pull transcript</button>' +
+        '</div>' +
+      '</div>';
+    }).join('') +
+    '<div style="font-size:11px;color:var(--stone);margin-top:6px;font-style:italic">Recordings get matched automatically when their date is within ±1 day of a client\'s session date.</div>' +
+  '</div>';
+}
+
+async function assignZoomToClient(meetingId, startTime, topic) {
+  var sel = document.getElementById('zoom-assign-client-' + meetingId);
+  if (!sel || !sel.value) { branded.alert('Pick a client to assign this recording to.'); return; }
+  var clientId = sel.value;
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  // Pick the most recent program (or only program) for this client
+  var progs = (client.programs||[]).filter(function(p){ return p.workbook !== 'none' && p.workbook !== 'inquiry'; });
+  if (!progs.length) {
+    branded.alert(client.name + ' doesn\'t have an active program yet — open their detail page and create one first.');
+    return;
+  }
+  var prog = progs[progs.length - 1];
+  var sessionDate = startTime ? startTime.split('T')[0] : new Date().toISOString().split('T')[0];
+  // Pull transcript via existing endpoint
+  branded.toast('Pulling transcript…');
+  try {
+    var resp = await fetch('/api/zoom-transcript', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ clientId: clientId, sessionDate: sessionDate, meetingId: meetingId })
+    });
+    var data = await resp.json();
+    if (!resp.ok || !data.success) {
+      branded.error(data.error || 'Couldn\'t pull transcript');
+      return;
+    }
+    // Add a session note for this Zoom on the chosen program
+    prog.sessionNotes = prog.sessionNotes || [];
+    prog.sessionNotes.push({
+      id: 'sn-zoom-' + Date.now(),
+      date: sessionDate,
+      text: '[Zoom: ' + (topic || 'Session') + '] — transcript pulled (' + (data.characterCount||'?') + ' chars). See client.zoomTranscript.',
+      sharedWithClient: false,
+      createdAt: new Date().toISOString()
+    });
+    await persistClient(client);
+    logActivity('transcript', 'Transcript assigned to ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (topic||'Zoom session') + ' · ' + sessionDate });
+    branded.success('Transcript saved against ' + client.name + '\'s ' + ((PROGRAMS[prog.program]||{}).label || prog.program) + ' program.');
+    // Refresh
+    if (typeof checkUnmatchedZooms === 'function') checkUnmatchedZooms();
+    if (typeof renderHome === 'function') renderHome();
+  } catch(e) {
+    branded.error('Couldn\'t reach the Zoom transcript function. ' + (e && e.message ? e.message : ''));
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// DAILY CHECK-IN — Phase C ritual touch.
+// Renders a card on the Summary tab. Client picks a mood (5 emoji),
+// optionally types one line about today, hits "Save". Builds a streak.
+// Each entry stored on client.checkIns[] = [{ date, mood, note }].
+// ═════════════════════════════════════════════════════════════════════
+var CHECKIN_MOODS = [
+  { emoji:'😞', label:'Tough', score:1, color:'#C0392B' },
+  { emoji:'😐', label:'Meh',   score:2, color:'#A07030' },
+  { emoji:'🙂', label:'OK',    score:3, color:'#5FA3A8' },
+  { emoji:'😊', label:'Good',  score:4, color:'#EC2C8A' },
+  { emoji:'🤩', label:'Buzzing', score:5, color:'#A11E55' }
+];
+
+function calcCheckinStreak(client) {
+  var entries = (client.checkIns||[]).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  if (!entries.length) return { current: 0, longest: client.checkInLongestStreak || 0 };
+  var today = new Date(); today.setHours(0,0,0,0);
+  var lastDate = null;
+  var current = 0;
+  for (var i = 0; i < entries.length; i++) {
+    var d = new Date(entries[i].date); d.setHours(0,0,0,0);
+    if (i === 0) {
+      // Streak only counts if last entry was today or yesterday
+      var diff = Math.floor((today - d) / 86400000);
+      if (diff > 1) return { current: 0, longest: client.checkInLongestStreak || 0 };
+      current = 1; lastDate = d;
+    } else {
+      var gap = Math.floor((lastDate - d) / 86400000);
+      if (gap === 1) { current++; lastDate = d; } else break;
+    }
+  }
+  return { current: current, longest: Math.max(current, client.checkInLongestStreak || 0) };
+}
+
+function renderClientDailyCheckin(client) {
+  var today = new Date().toISOString().split('T')[0];
+  var todays = (client.checkIns||[]).find(function(c){ return c.date === today; });
+  var streak = calcCheckinStreak(client);
+
+  // If already checked in today, show a thanks card with streak
+  if (todays) {
+    var mood = CHECKIN_MOODS.find(function(m){ return m.score === todays.mood; }) || CHECKIN_MOODS[2];
+    return '<div class="client-section" style="background:linear-gradient(135deg,#FFFDFA,#E8F4F4);border-color:#B8DDD9;display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+      '<div style="font-size:32px">' + mood.emoji + '</div>' +
+      '<div style="flex:1;min-width:160px">' +
+        '<div style="font-family:var(--f-head);font-size:16px;color:var(--magenta);margin-bottom:2px">Checked in today — feeling ' + mood.label.toLowerCase() + '</div>' +
+        (todays.note ? '<div style="font-size:13px;color:var(--stone);font-style:italic">"' + todays.note.replace(/"/g,'&quot;') + '"</div>' : '<div style="font-size:12px;color:var(--stone)">See you tomorrow ✨</div>') +
+      '</div>' +
+      (streak.current > 1 ? '<div style="background:linear-gradient(135deg,#FFF5E8,#FFFBE8);border:1.5px solid #E8A020;border-radius:99px;padding:6px 14px;font-size:13px;font-weight:700;color:#A07030;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🔥</span><span>' + streak.current + '-day streak</span></div>' : '') +
+    '</div>';
+  }
+
+  // Otherwise: prompt for a check-in
+  var moodButtons = CHECKIN_MOODS.map(function(m) {
+    return '<button onclick="setCheckinMood(' + m.score + ')" data-mood="' + m.score + '" class="checkin-mood" title="' + m.label + '" style="font-size:30px;background:none;border:2px solid transparent;border-radius:50%;width:54px;height:54px;cursor:pointer;transition:all 0.15s;line-height:1;padding:0">' + m.emoji + '</button>';
+  }).join('');
+  return '<div class="client-section" style="background:linear-gradient(135deg,#FFFBE8,#FDEFF5);border-color:rgba(232,160,32,0.25)">' +
+    '<div style="font-family:var(--f-head);font-size:18px;color:var(--magenta);margin-bottom:4px">How\'s today, ' + (client.name||'').split(' ')[0] + '?</div>' +
+    '<div style="font-size:12px;color:var(--stone);margin-bottom:12px">A 10-second pulse — Phoebe sees the trend, not the words.' + (streak.current > 0 ? ' · 🔥 ' + streak.current + '-day streak — keep it going' : '') + '</div>' +
+    '<div style="display:flex;gap:8px;justify-content:space-between;margin-bottom:10px;max-width:380px">' + moodButtons + '</div>' +
+    '<input type="text" id="checkin-note-input" placeholder="One line on what\'s on your mind (optional)…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;margin-bottom:10px">' +
+    '<button id="checkin-save-btn" onclick="saveCheckin()" disabled style="background:#F0A3C7;color:white;border:none;border-radius:99px;padding:8px 18px;font-family:var(--f-body);font-size:13px;font-weight:600;cursor:not-allowed;opacity:0.6">Save check-in</button>' +
+  '</div>';
+}
+
+window._pendingCheckinMood = null;
+function setCheckinMood(score) {
+  window._pendingCheckinMood = score;
+  document.querySelectorAll('.checkin-mood').forEach(function(b) {
+    var active = parseInt(b.dataset.mood,10) === score;
+    b.style.borderColor = active ? 'var(--hot-pink)' : 'transparent';
+    b.style.background  = active ? 'var(--marshmallow)' : 'none';
+    b.style.transform   = active ? 'scale(1.1)' : 'scale(1)';
+  });
+  var btn = document.getElementById('checkin-save-btn');
+  if (btn) {
+    btn.disabled = false;
+    btn.style.background = 'var(--hot-pink)';
+    btn.style.cursor = 'pointer';
+    btn.style.opacity = '1';
+  }
+}
+
+async function saveCheckin() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  if (!window._pendingCheckinMood) { branded.alert('Pick a mood first'); return; }
+  var noteInput = document.getElementById('checkin-note-input');
+  var note = noteInput ? (noteInput.value || '').trim() : '';
+  var today = new Date().toISOString().split('T')[0];
+  client.checkIns = client.checkIns || [];
+  // Replace today's entry if exists
+  client.checkIns = client.checkIns.filter(function(c){ return c.date !== today; });
+  client.checkIns.unshift({ date: today, mood: window._pendingCheckinMood, note: note, createdAt: new Date().toISOString() });
+  // Update longest streak
+  var streak = calcCheckinStreak(client);
+  client.checkInLongestStreak = Math.max(client.checkInLongestStreak || 0, streak.current);
+  await persistClient(client);
+  window._pendingCheckinMood = null;
+  // Confetti for fun (3+ day streaks get extra)
+  fireConfetti(streak.current >= 3 ? 60 : 30);
+  branded.toast(streak.current > 1 ? '✓ ' + streak.current + '-day streak!' : '✓ Saved');
+  renderClientSummary(client);
+}
+
+// Tiny confetti — pure DOM, no library. Used by check-in + win logging.
+function fireConfetti(count) {
+  count = count || 30;
+  var colors = ['#EC2C8A','#FBF219','#5FA3A8','#F0A3C7','#FFB347','#A11E55'];
+  for (var i = 0; i < count; i++) {
+    var el = document.createElement('div');
+    var size = 6 + Math.random() * 6;
+    var left = 50 + (Math.random() - 0.5) * 80; // start near centre
+    var dur = 1.4 + Math.random() * 1.0;
+    var rot = Math.random() * 720;
+    var horiz = (Math.random() - 0.5) * 200;
+    el.style.cssText = 'position:fixed;top:30%;left:' + left + '%;width:' + size + 'px;height:' + size + 'px;background:' + colors[Math.floor(Math.random()*colors.length)] + ';z-index:9500;pointer-events:none;border-radius:' + (Math.random()>0.5?'50%':'2px') + ';transition:transform ' + dur + 's cubic-bezier(0.25,0.45,0.45,0.95),opacity ' + dur + 's linear;will-change:transform,opacity';
+    document.body.appendChild(el);
+    setTimeout(function(node, dur, rot, horiz) {
+      node.style.transform = 'translate(' + horiz + 'px,' + (window.innerHeight * 0.7) + 'px) rotate(' + rot + 'deg)';
+      node.style.opacity = '0';
+      setTimeout(function(){ if (node.parentNode) node.parentNode.removeChild(node); }, dur * 1000);
+    }.bind(null, el, dur, rot, horiz), 20);
+  }
+}
+
 function clientTaskRow(t, clientId, urgency) {
   var dueStr = t.dueDate ? new Date(t.dueDate).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) : '';
   var checkBg = t.done ? 'background:var(--hot-pink);border-color:var(--hot-pink)' : '';
@@ -3175,6 +3745,7 @@ async function clientToggleTaskDone(clientId, taskId) {
   if (t.done) {
     t.completedAt = new Date().toISOString();
     branded.toast('Nice work — task ticked off');
+    if (typeof fireConfetti === 'function') fireConfetti(20); // small celebration
   }
   await persistClient(client);
   renderClientSummary(client);
@@ -3363,6 +3934,49 @@ function toggleWorkbookDesignView() {
   } else {
     branded.toast('Design view off');
   }
+}
+
+// "My Why" pin — the client's reason-for-being card shown at the top of every
+// program. Pulls from (in order): client.why (free-form), MDC workbook vision
+// answer, MDC workbook businessSnapshot. If none, prompts the client to write
+// one inline. Tap-to-edit so it's never stale.
+function renderClientWhyPin(client, prog) {
+  var saved = client.why || '';
+  var fromMdc = '';
+  (client.programs||[]).forEach(function(p) {
+    if (p.workbook === 'mdc' && p.mdcWorkbook && p.mdcWorkbook.vision && !fromMdc) fromMdc = p.mdcWorkbook.vision;
+  });
+  var displayed = saved || fromMdc || '';
+  var hasContent = !!displayed.trim();
+  return '<div id="why-pin-' + prog.id + '" style="background:linear-gradient(135deg,#FDEFF5,#FFFBE8);border:1.5px solid rgba(236,44,138,0.18);border-radius:14px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:flex-start;gap:14px">' +
+    '<div style="font-size:24px;line-height:1;flex-shrink:0;margin-top:2px">💛</div>' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="font-size:11px;color:var(--hot-pink);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">My why</div>' +
+      (hasContent
+        ? '<div id="why-pin-content-' + prog.id + '" style="font-size:14px;color:var(--magenta);line-height:1.6;font-style:italic;cursor:pointer" onclick="editClientWhy(\'' + prog.id + '\')" title="Click to edit">' + displayed.replace(/</g,'&lt;') + '</div>'
+        : '<div style="font-size:13px;color:var(--stone);margin-bottom:6px">In a sentence — what are you actually doing all this for?</div>' +
+          '<input type="text" id="why-pin-input-' + prog.id + '" placeholder="e.g. So I can be home for school pickup and still hit $400k" onchange="saveClientWhy(this.value, \'' + prog.id + '\')" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none">') +
+    '</div>' +
+  '</div>';
+}
+
+function editClientWhy(progId) {
+  var el = document.getElementById('why-pin-content-' + progId);
+  if (!el) return;
+  var current = el.textContent;
+  el.outerHTML = '<input type="text" id="why-pin-input-' + progId + '" value="' + current.replace(/"/g,'&quot;') + '" onchange="saveClientWhy(this.value, \'' + progId + '\')" onblur="saveClientWhy(this.value, \'' + progId + '\')" style="width:100%;border:1.5px solid var(--hot-pink);border-radius:8px;padding:8px 12px;font-family:var(--f-body);font-size:14px;font-style:italic;color:var(--magenta);background:white;outline:none">';
+  document.getElementById('why-pin-input-' + progId).focus();
+}
+
+async function saveClientWhy(value, progId) {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  client.why = (value || '').trim();
+  await persistClient(client);
+  branded.toast('Saved');
+  // Re-render the program so the pin reflects new state
+  var prog = (client.programs||[]).find(function(p){ return p.id === progId; });
+  if (prog) renderClientProgram(client, prog);
 }
 
 // Per-program client notes — a free-form notepad attached to each program where
@@ -3819,6 +4433,7 @@ async function aiSummariseSession(clientId, progId, noteId) {
     note.suggestedActions = (parsed.actions || []).filter(function(a){ return typeof a === 'string' && a.trim(); });
     note.actionDone = {};
     await persistClient(client);
+    logActivity('ai-summary', 'AI session summary generated for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (note.suggestedActions||[]).length + ' suggested actions' });
     renderSessionNotes(client, prog);
   } catch(e) {
     branded.alert('AI summary failed: ' + e.message);
@@ -6243,10 +6858,24 @@ function renderHome() {
     html += '<div style="background:white;border:2px dashed #F5D5E3;border-radius:14px;padding:48px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">✨</div><div style="font-size:16px;color:#C9266B;margin-bottom:6px;font-weight:700">All caught up</div><div style="font-size:13px;color:#ACA495">No open tasks, check-ins, or upcoming sessions. Ready when you are.</div></div>';
   }
 
-  // (Quick actions row was previously here at the bottom — moved to the top
-  // of the page so Phoebe doesn't have to scroll past everything to use them.)
+  // Recent activity feed — automatic actions (Calendly, transcript, AI brief, etc.)
+  html += '<div style="background:white;border:1.5px solid #F5D5E3;border-radius:14px;padding:18px;margin-bottom:14px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+      '<div style="font-family:var(--f-head);font-size:15px;color:#C9266B;font-weight:700">⚡ Recent activity</div>' +
+      '<div style="font-size:11px;color:#ACA495">Calendly bookings · transcript pulls · AI briefs · session summaries</div>' +
+    '</div>' +
+    '<div id="home-activity-feed"></div>' +
+  '</div>';
+
+  // Uncategorised Zooms — recordings without a matching client (linked from
+  // the dropdown, but also surfaced here so they're never lost)
+  html += '<div id="home-unmatched-zoom" style="display:none"></div>';
 
   el.innerHTML = html;
+  // Render the activity feed into its slot now that the DOM is in place
+  if (typeof renderActivityFeed === 'function') renderActivityFeed();
+  // Check for unmatched Zooms in background — fills the slot if any are found
+  if (typeof checkUnmatchedZooms === 'function') checkUnmatchedZooms();
   console.log('[Home] rendered, html length:', html.length);
 }
 
