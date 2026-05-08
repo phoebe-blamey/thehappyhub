@@ -378,7 +378,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7710 loaded successfully
+✓ The Happy Hub — Build v7711 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -548,10 +548,38 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
           <!-- filled by JS based on program type -->
         </div>
 
-        <!-- INTAKE TAB -->
+        <!-- INTAKE TAB (now also holds Summary + Research brief) -->
         <div class="tab-pane" id="tab-intake">
-          <div class="vis-bar vis-co"><span>🔒 Coach only</span> — not visible to your client</div>
+          <div class="vis-bar vis-co"><span>🔒 Coach only</span> — intake answers, summary, and research brief in one place</div>
           <div id="intake-content"></div>
+
+          <!-- SUMMARY subsection -->
+          <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink)">📝 Summary — your snapshot of who this client is</label>
+              <button class="btn-sm" onclick="generateIntakeSummary()" id="auto-summary-btn">✦ AI summarise</button>
+            </div>
+            <textarea id="note-summary" onchange="markDirty()" style="width:100%;min-height:90px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"
+              placeholder="Two or three lines. Who they are, what they want, what to watch for. Type it yourself or click ✦ AI summarise to draft from the research brief below."></textarea>
+          </div>
+
+          <!-- RESEARCH BRIEF subsection (was the standalone Research brief tab) -->
+          <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+            <div class="research-banner" id="research-banner">
+              <div class="research-banner-title">✦ Calendly data ready — run AI research</div>
+              <div class="research-banner-body" id="research-banner-body"></div>
+              <button class="btn-sm primary" onclick="autoRunResearch()" id="auto-research-btn">✦ Generate AI research brief</button>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink)">🔬 Research brief — deep dive on the client and their business</label>
+              <div style="display:flex;gap:8px">
+                <button class="btn-sm primary" onclick="autoRunResearch()" id="auto-research-btn2">✦ AI generate</button>
+                <button class="btn-sm primary" onclick="saveResearchBrief()">💾 Save</button>
+              </div>
+            </div>
+            <textarea id="note-research" onchange="markDirty()" style="width:100%;min-height:280px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"
+              placeholder="Type your research notes here manually, or click ✦ AI generate above to auto-create from website + LinkedIn + intake data…"></textarea>
+          </div>
         </div>
 
         <!-- COACHING NOTES TAB -->
@@ -615,24 +643,8 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
           <div class="plan-grid" id="plan-grid"></div>
         </div>
 
-        <!-- RESEARCH TAB -->
-        <div class="tab-pane" id="tab-research-brief">
-          <div class="vis-bar vis-co"><span>🔒 Coach only</span> — pre-session research</div>
-          <div class="research-banner" id="research-banner">
-            <div class="research-banner-title">✦ Calendly data ready — run AI research</div>
-            <div class="research-banner-body" id="research-banner-body"></div>
-            <button class="btn-sm primary" onclick="autoRunResearch()" id="auto-research-btn">✦ Generate AI research brief</button>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink)">Research brief</label>
-            <div style="display:flex;gap:8px">
-              <button class="btn-sm primary" onclick="autoRunResearch()" id="auto-research-btn2">✦ AI generate</button>
-              <button class="btn-sm primary" onclick="saveResearchBrief()">💾 Save</button>
-            </div>
-          </div>
-          <textarea id="note-research" onchange="markDirty()" style="width:100%;min-height:280px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"
-            placeholder="Type your research notes here manually, or click AI Generate to auto-create from Calendly data…"></textarea>
-        </div>
+        <!-- RESEARCH TAB removed — content now lives inside the Intake tab -->
+
 
         <!-- MDC SPRINT TAB -->
         <div class="tab-pane" id="tab-mdc-sprint">
@@ -1414,9 +1426,9 @@ function openProgram(client, progId) {
   // Build tabs based on workbook type
   buildProgramTabs(client, prog);
 
-  // Populate coaching notes
+  // Populate coaching notes (incl. the new 'summary' field on the Intake tab)
   var n = prog.notes || {};
-  ['themes','leaks','opps','patterns','private','research'].forEach(function(k) {
+  ['themes','leaks','opps','patterns','private','research','summary'].forEach(function(k) {
     var el = document.getElementById('note-' + k);
     if (el) el.value = n[k] || '';
   });
@@ -1468,7 +1480,6 @@ function buildProgramTabs(client, prog) {
     tabDefs.push({ id:'session-notes', label:'Session notes', tag:'sh' });
     tabDefs.push({ id:'coaching', label:'Coaching notes', tag:'co' });
     tabDefs.push({ id:'plan', label:'90-day plan', tag:'cf' });
-    tabDefs.push({ id:'research-brief', label:'Research brief', tag:'co' });
   } else if (prog.workbook === 'mdc') {
     tabDefs.push({ id:'session-notes', label:'Session notes', tag:'sh' });
     tabDefs.push({ id:'mdc-sprint', label:'Sprint notes', tag:'co' });
@@ -1526,7 +1537,7 @@ async function saveNotes() {
   var prog = (client.programs||[]).find(function(p) { return p.id === currentProgramId; });
   if (!prog) return;
   prog.notes = prog.notes || {};
-  ['themes','leaks','opps','patterns','private','research'].forEach(function(k) {
+  ['themes','leaks','opps','patterns','private','research','summary'].forEach(function(k) {
     var el = document.getElementById('note-' + k);
     if (el) prog.notes[k] = el.value;
   });
@@ -3059,7 +3070,7 @@ function renderToolsPanel(client, prog) {
   var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px">';
 
   // AI Tools
-  html += toolCard('✦ Research brief',     'AI-analyse website, intake, social',       'var(--hot-pink)', 'switchTab("research-brief")');
+  html += toolCard('✦ Research brief',     'AI-analyse website, intake, social',       'var(--hot-pink)', 'switchTab("intake")');
   html += toolCard('✦ Build 90-day plan',  'Generate plan from session notes',          'var(--hot-pink)', 'switchTab("plan"); setTimeout(function(){if(!builderVisible)toggleBuilder();},200)');
   html += toolCard('✦ Impact statement',   'Generate a shareable win story',            'var(--hot-pink)', 'switchTab("wins")');
   html += toolCard('✦ Profitability check','AI analysis of time vs revenue',            'var(--hot-pink)', 'switchTab("profitability")');
@@ -3408,7 +3419,7 @@ function renderClientActions(client, prog) {
     '<button class="btn-sm" onclick="switchTab(\'tasks\')">✅ Tasks</button>' +
     '<button class="btn-sm" onclick="switchTab(\'wins\')">🏆 Log win</button>' +
     '<button class="btn-sm" onclick="switchTab(\'message\')">📧 Message</button>' +
-    '<button class="btn-sm" onclick="switchTab(\'research-brief\')">🔬 Research</button>' +
+    '<button class="btn-sm" onclick="switchTab(\'intake\')">📋 Intake</button>' +
     (prog.zoomJoin ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm primary">🎬 Zoom</a>' : '') +
     '<div style="margin-left:auto;display:flex;align-items:center;gap:8px">' +
     '<span style="font-size:11px;color:var(--stone)">Health:</span>' +
@@ -3534,8 +3545,8 @@ async function runDeepDive(clientId) {
   if (!client) return;
   var prog = (client.programs||[]).find(function(p){return p.id===currentProgramId;})||client.programs[0];
 
-  // Show in research brief tab
-  switchTab('research-brief');
+  // Show in intake tab (research brief is now a section inside Intake)
+  switchTab('intake');
   var outputEl = document.getElementById('note-research');
   if (!outputEl) return;
   outputEl.value = 'Running AI deep dive for '+client.name+'...\n';
@@ -3611,6 +3622,53 @@ async function saveResearchBrief() {
   var orig = btn.textContent;
   btn.textContent='✓ Saved!';
   setTimeout(function(){btn.textContent=orig;},2000);
+}
+
+// AI-summarise the research brief into a 2-3 line snapshot
+async function generateIntakeSummary() {
+  var client = clients.find(function(c){return c.id===currentClientId;});
+  var prog   = client?(client.programs||[]).find(function(p){return p.id===currentProgramId;}):null;
+  if (!client || !prog) return;
+  var researchEl = document.getElementById('note-research');
+  var summaryEl  = document.getElementById('note-summary');
+  var btn        = document.getElementById('auto-summary-btn');
+  if (!summaryEl) return;
+
+  var research = (researchEl && researchEl.value) || (prog.notes && prog.notes.research) || '';
+  var intake   = prog.intake || '';
+  if (!research && !intake) {
+    alert('Nothing to summarise yet — run the research brief first, or fill in the intake.');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '✦ Summarising…'; }
+
+  var prompt = 'You are Phoebe Blamey\'s coaching assistant. Write a sharp 2-3 line snapshot of this client for Phoebe\'s eyes only — what to remember about them at a glance.\n\n' +
+    'Client: ' + client.name + '\n' +
+    'Business: ' + (client.biz || 'Unknown') + '\n\n' +
+    'Intake:\n' + intake + '\n\n' +
+    'Full research brief:\n' + research + '\n\n' +
+    'Return only the snapshot. No headings, no bullet points. Plain prose, 2-3 sentences max. Australian English. Warm but direct tone — like one coach handing notes to another.';
+
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 300, messages: [{role:'user', content: prompt}] })
+    });
+    var data = await resp.json();
+    var text = (data.content && data.content[0] && data.content[0].text) || '';
+    if (text) {
+      summaryEl.value = text.trim();
+      prog.notes = prog.notes || {};
+      prog.notes.summary = summaryEl.value;
+      await persistClient(client);
+    }
+  } catch (e) {
+    alert('Summary generation failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✦ AI summarise'; }
+  }
 }
 
 // ============================================================
