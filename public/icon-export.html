@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<title>PeaBe icon exporter</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body {
+    font-family: 'Poppins', system-ui, -apple-system, Helvetica, Arial, sans-serif;
+    background: #FDEFF5;
+    color: #C9266B;
+    margin: 0;
+    padding: 40px 24px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 28px; margin: 0 0 8px; color: #A11E55; }
+  p { line-height: 1.55; color: #C9266B; opacity: 0.85; }
+  code { background: white; padding: 2px 8px; border-radius: 6px; font-size: 13px; }
+  .sizes { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 16px; margin-top: 28px; }
+  .card {
+    background: white; border-radius: 16px; padding: 18px;
+    box-shadow: 0 4px 16px rgba(201,38,107,0.08);
+    text-align: center;
+  }
+  .card canvas {
+    display: block; margin: 0 auto 12px;
+    background: transparent; border-radius: 12px;
+    image-rendering: -webkit-optimize-contrast;
+  }
+  .card .label { font-size: 13px; font-weight: 700; color: #A11E55; margin-bottom: 4px; }
+  .card .file  { font-size: 11px; font-family: monospace; color: #C9266B; opacity: 0.6; margin-bottom: 12px; }
+  button {
+    background: #EC2C8A; color: white; border: none; border-radius: 99px;
+    padding: 10px 20px; font-family: inherit; font-size: 13px; font-weight: 700;
+    cursor: pointer; min-height: 44px;
+  }
+  button:hover { background: #C9266B; }
+  .all { background: #A11E55; padding: 14px 28px; font-size: 14px; }
+  .footer {
+    margin-top: 32px; padding: 18px; background: white; border-radius: 14px;
+    font-size: 13px; line-height: 1.6;
+  }
+  .footer h3 { color: #A11E55; margin: 0 0 8px; font-size: 15px; }
+  .footer ol { margin: 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎨 PeaBe icon exporter</h1>
+  <p>This page renders <code>/icons/peabe.svg</code> at four sizes and lets you save each as PNG. Drop the files into <code>/public/icons/</code> and the iOS home-screen icon + Android PWA install will use them automatically.</p>
+
+  <div style="margin-top:18px">
+    <button class="all" onclick="downloadAll()">⬇ Download all four PNGs</button>
+  </div>
+
+  <div class="sizes" id="sizes"></div>
+
+  <div class="footer">
+    <h3>What to do with these files</h3>
+    <ol>
+      <li>Click each download button (or "Download all four").</li>
+      <li>Move the four PNGs into the project's <code>public/icons/</code> folder.</li>
+      <li>Commit + push: the manifest + apple-touch-icon already reference these filenames, so they'll activate on next deploy.</li>
+    </ol>
+    <p style="margin-top:12px;font-size:12px;color:#C9266B;opacity:0.7">
+      Tip: if the rendered preview looks blurry, your SVG fonts may not have loaded yet. Refresh the page once and re-download.
+    </p>
+  </div>
+</div>
+
+<script>
+var SIZES = [
+  { px: 180, file: 'peabe-180.png', label: 'Apple Touch Icon (iOS Home Screen)' },
+  { px: 192, file: 'peabe-192.png', label: 'PWA install (Android Chrome)' },
+  { px: 256, file: 'peabe-256.png', label: 'Generic large favicon' },
+  { px: 512, file: 'peabe-512.png', label: 'PWA install (large display)' },
+];
+
+function buildCard(size) {
+  var card = document.createElement('div');
+  card.className = 'card';
+  var canvas = document.createElement('canvas');
+  // Render at 2× for crisper pixels then downscale via CSS for the preview
+  var preview = Math.min(size.px, 200);
+  canvas.width = size.px; canvas.height = size.px;
+  canvas.style.width = preview + 'px';
+  canvas.style.height = preview + 'px';
+  card.appendChild(canvas);
+
+  var label = document.createElement('div');
+  label.className = 'label';
+  label.textContent = size.px + ' × ' + size.px;
+  card.appendChild(label);
+
+  var file = document.createElement('div');
+  file.className = 'file';
+  file.textContent = size.file;
+  card.appendChild(file);
+
+  var sub = document.createElement('div');
+  sub.style.cssText = 'font-size:11px;color:#A11E55;opacity:0.7;margin-bottom:10px';
+  sub.textContent = size.label;
+  card.appendChild(sub);
+
+  var btn = document.createElement('button');
+  btn.textContent = '⬇ Download';
+  btn.onclick = function() { downloadCanvas(canvas, size.file); };
+  card.appendChild(btn);
+
+  return { card: card, canvas: canvas, size: size };
+}
+
+var entries = SIZES.map(buildCard);
+var sizesEl = document.getElementById('sizes');
+entries.forEach(function(e){ sizesEl.appendChild(e.card); });
+
+// Load the SVG and rasterise it onto each canvas.
+async function rasterise() {
+  var svgResp = await fetch('/icons/peabe.svg');
+  var svgText = await svgResp.text();
+  // Convert to data URI so the browser can use it as an Image source
+  var svgUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+  await Promise.all(entries.map(function(entry) {
+    return new Promise(function(resolve, reject) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function() {
+        var ctx = entry.canvas.getContext('2d');
+        ctx.clearRect(0, 0, entry.canvas.width, entry.canvas.height);
+        ctx.drawImage(img, 0, 0, entry.canvas.width, entry.canvas.height);
+        resolve();
+      };
+      img.onerror = reject;
+      img.src = svgUri;
+    });
+  }));
+}
+
+function downloadCanvas(canvas, filename) {
+  canvas.toBlob(function(blob) {
+    if (!blob) return;
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  }, 'image/png');
+}
+
+function downloadAll() {
+  // Stagger by 200ms to give the browser time to handle each download
+  entries.forEach(function(entry, i) {
+    setTimeout(function(){ downloadCanvas(entry.canvas, entry.size.file); }, i * 250);
+  });
+}
+
+// Wait a tick for fonts to load before rendering
+window.addEventListener('load', function() {
+  // Try to load Poppins so the "pb" letters render correctly in the SVG
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('700 280px Poppins').then(rasterise).catch(rasterise);
+  } else {
+    setTimeout(rasterise, 200);
+  }
+});
+</script>
+</body>
+</html>

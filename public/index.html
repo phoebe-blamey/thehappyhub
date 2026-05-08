@@ -10,10 +10,13 @@
 <meta name="apple-mobile-web-app-title" content="PeaBe Hub">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
-<!-- Favicons — pink "pb" pebble. SVG works in all modern browsers and scales
-     cleanly down to 16×16. iOS still prefers a PNG for home-screen icons; the
-     SVG fallback shows a default until a 180×180 PNG is dropped at the same
-     path (see notes in CLAUDE.md). -->
+<!-- Favicons — pink "pb" pebble. We declare both PNG and SVG so iOS Safari
+     uses the PNG (which it prefers for home-screen icons) and everything
+     else falls through to the scalable SVG. The PNG files are generated
+     from /icon-export.html by Phoebe and dropped into /icons/. -->
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/peabe-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/peabe-192.png">
+<link rel="icon" type="image/png" sizes="256x256" href="/icons/peabe-256.png">
 <link rel="icon" type="image/svg+xml" href="/icons/peabe.svg">
 <link rel="apple-touch-icon" href="/icons/peabe.svg">
 <title>PeaBe Coaching Hub — Phoebe Blamey</title>
@@ -25,8 +28,16 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v10200 — mobile-first pass: bottom tab bar · 44px tap targets · bottom-sheet modals · pull-to-refresh · install prompt · shareable wins as PNG · entrance animations · decorative hero accent · better empty states">
+<meta name="hmh-build" content="v10300 — offline mode (service worker) · auto-update prompt · offline banner · loading skeletons · empty-state sweep · icon-export page · PNG manifest entries">
 <style>body{padding-top:0 !important}</style>
+
+<!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
+     Surfaces when the device drops offline OR when a SW update lands.
+     Pinned to the top so it's noticed but doesn't block content. -->
+<div id="net-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9990;padding:8px 16px;font-family:'Poppins',sans-serif;font-size:12px;font-weight:600;text-align:center;color:white;background:#A03030;line-height:1.4">
+  <span id="net-banner-msg">You're offline — changes will sync when you're back online.</span>
+  <button id="net-banner-action" onclick="hideNetBanner()" style="background:rgba(255,255,255,0.2);color:white;border:none;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:700;margin-left:8px;cursor:pointer">Dismiss</button>
+</div>
 
 <!-- ========== LANDING ========== -->
 <div id="landing">
@@ -173,7 +184,15 @@
           </button>
           <button class="btn-sm primary" onclick="openAddClient()">+ Add client</button>
         </div>
-        <div class="clients-grid" id="clients-grid"></div>
+        <div class="clients-grid" id="clients-grid">
+          <!-- Hydrating skeletons — replaced as soon as clients are loaded.
+               If loadClients is fast enough these flash briefly; otherwise
+               they keep the layout from collapsing on first sign-in. -->
+          <div class="hub-skeleton tall" style="border-radius:14px;height:118px;margin:0"></div>
+          <div class="hub-skeleton tall" style="border-radius:14px;height:118px;margin:0"></div>
+          <div class="hub-skeleton tall" style="border-radius:14px;height:118px;margin:0"></div>
+          <div class="hub-skeleton tall" style="border-radius:14px;height:118px;margin:0"></div>
+        </div>
       </div>
 
       <!-- CLIENT DETAIL -->
@@ -3170,7 +3189,10 @@ function renderCustomBadgeList() {
   if (!el) return;
   var customs = loadCustomBadges();
   if (!customs.length) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--stone);font-style:italic">None yet — fill in the form below to make your first.</div>';
+    el.innerHTML = '<div class="hub-empty"><span class="empty-emoji">🎖</span>' +
+      '<div class="empty-title">No custom badges yet</div>' +
+      '<div class="empty-sub">Make a badge for any moment worth celebrating — finishing a tough week, hitting first $1k, asking a brave question. Below.</div>' +
+      '</div>';
     return;
   }
   el.innerHTML = customs.map(function(b) {
@@ -5737,6 +5759,98 @@ function loadClientPortal(client) {
   // Topbar "next session" pill — also persistent across tabs
   if (typeof updateClientNextSessionPill === 'function') updateClientNextSessionPill(client);
 }
+
+// ════════════════════════════════════════════════════════════════════
+// SERVICE WORKER + OFFLINE STATUS
+// ════════════════════════════════════════════════════════════════════
+// Registers the SW for offline support. Watches navigator.onLine for
+// connection drops and shows a soft banner at the top of the screen.
+// When the SW finds a new version waiting, prompts the user to refresh.
+(function setupServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  // Skip on local dev (file://, no SW)
+  if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') return;
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').then(function(reg) {
+      // When a new SW is found, watch for it to install
+      reg.addEventListener('updatefound', function() {
+        var sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', function() {
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            // New version ready — surface a soft refresh prompt
+            showUpdateBanner();
+          }
+        });
+      });
+    }).catch(function(err) {
+      console.warn('[sw] register failed:', err && err.message);
+    });
+    // Reload once when a new SW takes over (after the user accepts)
+    var refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+  });
+})();
+
+function showUpdateBanner() {
+  var banner = document.getElementById('net-banner');
+  var msg = document.getElementById('net-banner-msg');
+  var btn = document.getElementById('net-banner-action');
+  if (!banner || !msg || !btn) return;
+  banner.style.background = '#A11E55';
+  msg.textContent = '✨ A fresh version of PeaBe Hub is ready.';
+  btn.textContent = 'Refresh';
+  btn.onclick = function() {
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      // Tell the waiting SW to take over; controllerchange handler reloads
+      navigator.serviceWorker.getRegistration().then(function(reg) {
+        if (reg && reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      });
+    } else {
+      window.location.reload();
+    }
+  };
+  banner.style.display = 'block';
+}
+
+function hideNetBanner() {
+  var banner = document.getElementById('net-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+// Online / offline detection. Show banner when offline; flush save queue
+// + hide banner when we come back.
+(function setupOfflineDetection() {
+  function updateNetState() {
+    var banner = document.getElementById('net-banner');
+    var msg = document.getElementById('net-banner-msg');
+    var btn = document.getElementById('net-banner-action');
+    if (!banner || !msg || !btn) return;
+    if (!navigator.onLine) {
+      banner.style.background = '#A03030';
+      msg.textContent = '📡 You\'re offline — changes will sync when you\'re back.';
+      btn.textContent = 'Dismiss';
+      btn.onclick = hideNetBanner;
+      banner.style.display = 'block';
+    } else {
+      // Coming back online — hide unless an update banner is showing
+      var isUpdate = msg.textContent.indexOf('fresh version') >= 0;
+      if (!isUpdate) banner.style.display = 'none';
+      // Flush any saves that queued while offline
+      if (typeof flushSaveQueue === 'function') flushSaveQueue();
+      // And refresh the live feed
+      if (typeof liveSyncTick === 'function') liveSyncTick();
+    }
+  }
+  window.addEventListener('online',  updateNetState);
+  window.addEventListener('offline', updateNetState);
+  // On boot, if we're already offline, surface the banner
+  if (!navigator.onLine) updateNetState();
+})();
 
 // ════════════════════════════════════════════════════════════════════
 // MOBILE + POLISH — pull-to-refresh, install prompt, shareable wins,
@@ -10266,7 +10380,12 @@ function renderTasksPanel(client, progId) {
     '</select></div>' +
 
     // Pending tasks
-    (pending.length === 0 ? '<div style="color:var(--stone);font-size:13px;padding:8px 0">No pending tasks.</div>' : '') +
+    (pending.length === 0
+      ? '<div class="hub-empty"><span class="empty-emoji">🌿</span>' +
+        '<div class="empty-title">All caught up</div>' +
+        '<div class="empty-sub">No pending tasks for ' + escapeHtml((client.name||'').split(' ')[0] || 'them') + ' right now. Add one with the button above when something needs to happen between sessions.</div>' +
+        '</div>'
+      : '') +
     pending.map(function(t) { return renderSingleTask(t, cid, today); }).join('') +
 
     // Done tasks
@@ -10925,6 +11044,33 @@ function offerDeepDiveAutoFill(client, found) {
   host.style.display = 'flex';
 }
 
+// Show / hide a shimmer skeleton below the deep-dive output while the AI
+// is still searching the web. Reassures Phoebe that the long wait is
+// expected, not a hung request.
+function showDeepDiveSkeleton(on) {
+  var existing = document.getElementById('deep-dive-skeleton');
+  var output = document.getElementById('note-research');
+  if (!output) return;
+  if (on) {
+    if (existing) return;
+    var sk = document.createElement('div');
+    sk.id = 'deep-dive-skeleton';
+    sk.style.cssText = 'margin-top:10px;padding:14px;background:#FFF8FB;border:1.5px solid rgba(236,44,138,0.18);border-radius:12px';
+    sk.innerHTML =
+      '<div style="font-size:12px;color:var(--magenta);margin-bottom:10px;display:flex;align-items:center;gap:8px">' +
+        '<span style="font-size:16px">🔬</span><span>AI is searching the web…</span>' +
+      '</div>' +
+      '<div class="hub-skeleton" style="height:14px;margin-bottom:6px"></div>' +
+      '<div class="hub-skeleton" style="height:14px;width:90%;margin-bottom:6px"></div>' +
+      '<div class="hub-skeleton" style="height:14px;width:70%;margin-bottom:14px"></div>' +
+      '<div class="hub-skeleton" style="height:14px;margin-bottom:6px"></div>' +
+      '<div class="hub-skeleton" style="height:14px;width:80%"></div>';
+    output.parentElement && output.parentElement.insertBefore(sk, output.nextSibling);
+  } else {
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+  }
+}
+
 // ============================================================
 // DEEP DIVE — AI full business research on client
 // ============================================================
@@ -10937,7 +11083,10 @@ async function runDeepDive(clientId) {
   switchTab('intake');
   var outputEl = document.getElementById('note-research');
   if (!outputEl) return;
-  outputEl.value = 'Running AI deep dive for '+client.name+'...\n';
+  outputEl.value = 'Running AI deep dive for '+client.name+'…\n\nThis can take 30-90 seconds — the AI is searching the web for actual sources rather than making things up. Hold tight.';
+  // Show a shimmer below the textarea so it's visually obvious something
+  // is happening, since the text-area sits idle during the search phase.
+  if (typeof showDeepDiveSkeleton === 'function') showDeepDiveSkeleton(true);
 
   var s = client.socials||{};
   var context = [
@@ -11025,6 +11174,8 @@ async function runDeepDive(clientId) {
       });
     }
     if (!text) text = 'Error generating deep dive.';
+    // Hide the shimmer once we have a result
+    if (typeof showDeepDiveSkeleton === 'function') showDeepDiveSkeleton(false);
 
     // ── Extract structured profile data from the trailing JSON block ───
     // The prompt asks the AI to append `​```json … ​```` at the end with any
@@ -11073,6 +11224,7 @@ async function runDeepDive(clientId) {
     await persistClient(client);
   } catch(e) {
     outputEl.value = 'Error: '+e.message+'\n\nNote: AI deep dive requires the Anthropic API key (works when deployed to Netlify).';
+    if (typeof showDeepDiveSkeleton === 'function') showDeepDiveSkeleton(false);
   }
 }
 
@@ -12065,7 +12217,11 @@ function renderCohortCard(co) {
 
   // Member list
   var memberList = members.length === 0
-    ? '<div style="color:var(--stone);font-size:13px;padding:12px;text-align:center;background:var(--marshmallow);border-radius:10px">No clients assigned yet</div>'
+    ? '<div class="hub-empty" style="background:var(--marshmallow);border-radius:10px;padding:24px 18px">' +
+        '<span class="empty-emoji">👥</span>' +
+        '<div class="empty-title">No members yet</div>' +
+        '<div class="empty-sub">Add the first MDC member with the button below — they\'ll get a fresh program record tied to this cohort.</div>' +
+      '</div>'
     : '<div style="display:flex;flex-direction:column;gap:6px">' + members.map(function(m) {
         var initials = m.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2);
         var prog = (m.programs||[]).find(function(p){ return p.cohort === co.id; }) || {};
