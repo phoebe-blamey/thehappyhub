@@ -643,6 +643,90 @@ body{padding-top:0}
   border-color: rgba(232,160,32,0.22);
 }
 
+/* ── Universal intake (v11000) — structured Q&A list on the client.
+   Same intake travels across every program. Click any question or
+   answer to edit; "+ Add a question" appends. ── */
+.intake-universal-block {
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.intake-q-card {
+  background: var(--paper);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.intake-q-card:hover { border-color: var(--hot-pink); background: white; }
+.intake-q-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.intake-q-question {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--f-body);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--hot-pink);
+  padding: 2px 0;
+  min-width: 0;
+}
+.intake-q-question::placeholder { color: var(--stone); opacity: 0.6; font-weight: 500; }
+.intake-q-builtin, .intake-q-custom {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 99px;
+  flex-shrink: 0;
+}
+.intake-q-builtin { background: var(--mist); color: var(--teal); }
+.intake-q-custom { background: rgba(232,160,32,0.18); color: #A07030; }
+.intake-q-delete {
+  background: transparent;
+  border: none;
+  color: var(--stone);
+  font-size: 16px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.intake-q-delete:hover { background: rgba(192,57,43,0.10); color: #C0392B; }
+.intake-q-answer {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: var(--f-body);
+  font-size: 13px;
+  color: var(--magenta);
+  background: transparent;
+  outline: none;
+  resize: vertical;
+  line-height: 1.6;
+  min-height: 56px;
+}
+.intake-q-answer:hover { border-color: var(--border); background: white; }
+.intake-q-answer:focus { border-color: var(--hot-pink); background: white; }
+.intake-q-answer::placeholder { color: var(--stone); opacity: 0.55; }
+
 /* ── "What's new since you were last here" pill — sits below the mood
    pill in the hero top-right corner. Pulses softly on first appearance.
    Click expands a list. v10900. ── */

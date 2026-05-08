@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v10900 — refactor phase 1: 'Add section' primitive (bidirectional, shareable) · Open-as-client primary CTA · wins+profitability folded into Tools · settings gear icon · 'what's new since you were last here' hero pill · medallions trimmed to 5">
+<meta name="hmh-build" content="v11000 — refactor phase 2: universal intake (one Q&A set per client, travels across programs) · custom program types (Phoebe-defined, no code changes) · 'Add program' dropdown surfaces custom types · client portal Settings shows 'My answers'">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -588,6 +588,17 @@
         <h1 class="page-title">Settings & Setup</h1>
         <p class="page-sub">Configure integrations and test your automations</p>
 
+        <!-- v11000: program types — Phoebe defines custom program shapes
+             without code changes. Each type appears in the "Add program"
+             dropdown alongside built-ins. Render path uses the customSections
+             primitive (any program with workbook:'custom'). -->
+        <div class="settings-card">
+          <h4>📚 My program types</h4>
+          <p>Built-in programs (90-Day, MDC, Audit, Happy Hour, etc.) plus your own custom types. Custom types appear in the "Add program" dropdown for every client. Each gets its own tab with a fillable sections panel.</p>
+          <div id="custom-program-types-list" style="margin-top:12px"></div>
+          <button class="btn-sm primary" style="margin-top:10px" onclick="addCustomProgramType()">+ Add a custom program type</button>
+        </div>
+
         <!-- Zoom templates — one-click "create the MDC template in Zoom" so
              every cohort meeting + per-client Zoom inherits the same branding,
              agenda, recording defaults and accessibility settings. Once
@@ -999,6 +1010,9 @@
           <div class="p-name">Happy Hour</div>
           <div class="p-desc">90-min strategy shot</div>
         </div>
+        <!-- v11000: custom program types from coach-settings appear here.
+             Populated by populateCustomProgramOptions() on modal open. -->
+        <div id="custom-prog-opts"></div>
       </div>
     </div>
     <div class="form-group">
@@ -2108,6 +2122,157 @@ async function loadCoachSettingsRemote() {
   if (migrated) flushCoachSettings();
   // Mirror the up-to-date settings to localStorage for offline render
   try { localStorage.setItem('hmh_coach_settings_cache', JSON.stringify(window._coachSettings)); } catch (e) {}
+  // v11000: fold custom program types into the global PROGRAMS map so
+  // every existing PROGRAMS[X] lookup just works for them too. Custom
+  // types render via the 'custom' workbook variant (uses the existing
+  // customSections primitive — no new render path needed).
+  if (typeof applyCustomProgramTypes === 'function') applyCustomProgramTypes();
+}
+
+// Pulls custom program types from coach-settings and merges them into
+// the PROGRAMS map. Idempotent — re-runnable after every settings edit.
+function applyCustomProgramTypes() {
+  var custom = (window._coachSettings && Array.isArray(window._coachSettings.customProgramTypes))
+    ? window._coachSettings.customProgramTypes
+    : [];
+  // First, scrub any previously-applied custom keys (so deletions take effect)
+  Object.keys(PROGRAMS).forEach(function(k) {
+    if (PROGRAMS[k] && PROGRAMS[k]._custom) delete PROGRAMS[k];
+  });
+  custom.forEach(function(t) {
+    if (!t || !t.id) return;
+    PROGRAMS[t.id] = {
+      label: t.label || 'Custom Program',
+      short: t.short || (t.label || 'Custom').slice(0, 12),
+      color: t.color || 'prog-stone',
+      workbook: 'custom',
+      icon: t.icon || '📌',
+      lengthDays: (t.lengthDays && Number(t.lengthDays)) || null,
+      _custom: true,
+      _defaultSections: Array.isArray(t.defaultSections) ? t.defaultSections : [],
+    };
+  });
+}
+
+// Settings UI — list / add / edit / delete custom program types.
+function renderCustomProgramTypesList() {
+  var el = document.getElementById('custom-program-types-list');
+  if (!el) return;
+  var built = Object.keys(PROGRAMS)
+    .filter(function(k){ return !PROGRAMS[k]._custom && PROGRAMS[k].workbook !== 'none' && PROGRAMS[k].workbook !== 'inquiry'; })
+    .sort()
+    .map(function(k) {
+      var p = PROGRAMS[k];
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--paper);border:1px solid var(--border-soft);border-radius:8px;margin-bottom:6px;font-size:12px">' +
+        '<span style="font-size:18px">' + (p.icon || '📌') + '</span>' +
+        '<span style="font-weight:600;color:var(--magenta);flex:1">' + escapeHtml(p.label || k) + '</span>' +
+        '<span style="font-size:10px;color:var(--stone);background:var(--marshmallow);padding:2px 8px;border-radius:99px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em">Built-in</span>' +
+      '</div>';
+    }).join('');
+  var custom = (window._coachSettings && Array.isArray(window._coachSettings.customProgramTypes))
+    ? window._coachSettings.customProgramTypes
+    : [];
+  var customHtml = custom.length
+    ? custom.map(function(t) {
+        var sections = (t.defaultSections || []).length;
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:white;border:1.5px solid var(--hot-pink);border-radius:10px;margin-bottom:6px;font-size:12px">' +
+          '<span style="font-size:18px">' + (t.icon || '📌') + '</span>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-weight:700;color:var(--magenta)">' + escapeHtml(t.label || 'Custom') + '</div>' +
+            '<div style="font-size:10px;color:var(--stone)">' + (t.lengthDays ? t.lengthDays + ' days · ' : '') + sections + ' default section' + (sections===1?'':'s') + '</div>' +
+          '</div>' +
+          '<button class="btn-sm" style="font-size:10px;padding:3px 8px" onclick="editCustomProgramType(\'' + t.id + '\')">✏️ Edit</button>' +
+          '<button class="btn-sm" style="font-size:10px;padding:3px 8px;background:transparent;color:#C0392B;border:1px solid rgba(192,57,43,0.3)" onclick="deleteCustomProgramType(\'' + t.id + '\')">Delete</button>' +
+        '</div>';
+      }).join('')
+    : '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:8px 0">No custom program types yet — add one to make a new program shape (e.g. "1:1 Mentoring", "Group VIP Day") available everywhere.</div>';
+  el.innerHTML =
+    '<div style="font-size:11px;font-weight:700;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Built-in</div>' +
+    built +
+    '<div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">My custom types</div>' +
+    customHtml;
+}
+
+async function addCustomProgramType() {
+  var label = await branded.prompt(
+    'What\'s this program type called? (e.g. "1:1 Mentoring", "Group VIP Day")',
+    '',
+    'Program label',
+    { title: 'New program type', okLabel: 'Next' }
+  );
+  if (!label || !label.trim()) return;
+  var icon = await branded.prompt(
+    'Pick a single emoji for this program type — shown on every tab and badge.',
+    '🌱',
+    'Single emoji',
+    { title: 'Icon', okLabel: 'Next' }
+  );
+  var lengthRaw = await branded.prompt(
+    'How long is this program in days? Leave blank for ongoing / no fixed length.',
+    '',
+    'e.g. 30, 60, 90',
+    { title: 'Length', okLabel: 'Save type' }
+  );
+  var lengthDays = (lengthRaw && Number(lengthRaw)) ? Number(lengthRaw) : null;
+  var newType = {
+    id: 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    label: label.trim(),
+    short: label.trim().split(' ').slice(0, 2).join(' ').slice(0, 16),
+    icon: (icon || '📌').trim(),
+    color: 'prog-stone',
+    lengthDays: lengthDays,
+    defaultSections: [], // Phoebe can configure later via the customSections primitive
+  };
+  window._coachSettings = window._coachSettings || {};
+  window._coachSettings.customProgramTypes = window._coachSettings.customProgramTypes || [];
+  window._coachSettings.customProgramTypes.push(newType);
+  flushCoachSettings();
+  applyCustomProgramTypes();
+  renderCustomProgramTypesList();
+  branded.success('Added "' + newType.label + '" — it now shows up in the Add Program dropdown for every client.');
+}
+
+async function editCustomProgramType(typeId) {
+  var custom = (window._coachSettings && Array.isArray(window._coachSettings.customProgramTypes))
+    ? window._coachSettings.customProgramTypes
+    : [];
+  var t = custom.find(function(x){ return x.id === typeId; });
+  if (!t) return;
+  var label = await branded.prompt('Edit the label:', t.label || '', '', { title: 'Edit type', okLabel: 'Next' });
+  if (label == null) return; // cancelled
+  if (label.trim()) t.label = label.trim();
+  var icon = await branded.prompt('Edit the icon (single emoji):', t.icon || '📌', '', { title: 'Edit type', okLabel: 'Next' });
+  if (icon == null) return;
+  if (icon.trim()) t.icon = icon.trim();
+  var lengthRaw = await branded.prompt('Length in days (blank = ongoing):', t.lengthDays != null ? String(t.lengthDays) : '', '', { title: 'Edit type', okLabel: 'Save' });
+  if (lengthRaw == null) return;
+  t.lengthDays = (lengthRaw && Number(lengthRaw)) ? Number(lengthRaw) : null;
+  flushCoachSettings();
+  applyCustomProgramTypes();
+  renderCustomProgramTypesList();
+  branded.toast('Saved');
+}
+
+async function deleteCustomProgramType(typeId) {
+  var custom = (window._coachSettings && Array.isArray(window._coachSettings.customProgramTypes))
+    ? window._coachSettings.customProgramTypes
+    : [];
+  var t = custom.find(function(x){ return x.id === typeId; });
+  if (!t) return;
+  // Count how many clients have a program of this type
+  var inUse = (clients||[]).filter(function(c) {
+    return (c.programs||[]).some(function(p){ return p.program === typeId; });
+  }).length;
+  var msg = inUse > 0
+    ? 'Delete "' + t.label + '"? ' + inUse + ' client' + (inUse===1?'':'s') + ' currently have a program of this type. Their existing programs WILL stay (with their saved data) but you won\'t be able to add new ones.'
+    : 'Delete "' + t.label + '"?';
+  var ok = await branded.confirm(msg, { title: 'Delete program type?', okLabel: 'Delete', danger: true });
+  if (!ok) return;
+  window._coachSettings.customProgramTypes = custom.filter(function(x){ return x.id !== typeId; });
+  flushCoachSettings();
+  applyCustomProgramTypes();
+  renderCustomProgramTypesList();
+  branded.toast('Deleted');
 }
 
 // Debounced server flush — sends ONLY the top-level keys that have changed
@@ -4148,6 +4313,7 @@ function showPage(id) {
       else if (id === 'settings')   {
         if (typeof renderCustomBadgeList==='function') renderCustomBadgeList();
         if (typeof renderZoomTemplatesList==='function') renderZoomTemplatesList();
+        if (typeof renderCustomProgramTypesList==='function') renderCustomProgramTypesList();
       }
       else if (id === 'tasks')      { if (typeof renderAllTasks==='function') renderAllTasks(); }
       else if (id === 'settings')   { if (typeof initNotificationsToggle==='function') initNotificationsToggle(); }
@@ -4804,20 +4970,14 @@ function openProgram(client, progId) {
     try { renderResearchAttentionPanel(n.research || ''); } catch (e) {}
   }
 
-  // Intake — editable inline. Click anywhere on the intake answer to expand
-  // into a textarea; saves on blur. Phoebe asked for this so she can clean
-  // up Calendly auto-imports without going through the Edit Client modal.
-  var intakeText = prog.intake || '';
-  var intakeBlock =
-    '<div class="intake-answer">' +
-      '<div class="intake-q" style="display:flex;align-items:center;gap:8px">Intake' +
-        '<button onclick="toggleIntakeEdit(\'' + client.id + '\',\'' + prog.id + '\')" class="btn-sm" id="intake-edit-btn-' + prog.id + '" style="font-size:10px;padding:3px 9px;margin-left:auto">' + (intakeText ? '✏️ Edit' : '+ Add') + '</button>' +
-      '</div>' +
-      '<div id="intake-display-' + prog.id + '" class="intake-a" style="cursor:pointer" onclick="toggleIntakeEdit(\'' + client.id + '\',\'' + prog.id + '\')">' + (intakeText ? escapeHtml(intakeText).replace(/\n/g,'<br>') : '<em style="color:var(--stone)">Click to add intake notes…</em>') + '</div>' +
-      '<textarea id="intake-edit-' + prog.id + '" style="display:none;width:100%;min-height:120px;border:1.5px solid var(--hot-pink);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;line-height:1.6" onblur="saveIntakeEdit(\'' + client.id + '\',\'' + prog.id + '\')">' + escapeHtml(intakeText) + '</textarea>' +
-    '</div>';
+  // v11000: UNIVERSAL INTAKE — replaces the old prog.intake text-blob with
+  // a structured Q&A model on the CLIENT (not per-program). Same intake
+  // travels with the client across every program. Per-program extra
+  // questions can be layered on via prog.intakeOverlay (rare).
+  // Legacy prog.intake is still readable; if client.intake is empty the
+  // universal renderer will offer to migrate it on first edit.
   document.getElementById('intake-content').innerHTML =
-    intakeBlock +
+    renderUniversalIntake(client, prog) +
     '<div class="intake-answer"><div class="intake-q">Email</div><div class="intake-a">' + (client.email||'—') + '</div></div>' +
     '<div class="intake-answer"><div class="intake-q">Access code</div><div class="intake-a" style="font-family:monospace;font-size:16px;color:var(--hot-pink);font-weight:700">' + client.clientAccess + '</div></div>' +
     (prog.websiteUrl ? '<div class="intake-answer"><div class="intake-q">Website</div><div class="intake-a"><a href="' + prog.websiteUrl + '" target="_blank" style="color:var(--hot-pink)">' + prog.websiteUrl + '</a></div></div>' : '') +
@@ -4875,6 +5035,13 @@ function buildProgramTabs(client, prog) {
     tabDefs.push({ id:'session-notes', label:'My notes', tag:'sh' });
   } else if (prog.workbook === 'session') {
     tabDefs.push({ id:'session-notes', label:'Session notes', tag:'sh' });
+    tabDefs.push({ id:'plan', label:'Action plan', tag:'cf' });
+  } else if (prog.workbook === 'custom') {
+    // v11000: custom-type programs from coach-settings. Lean tab set —
+    // the customSections primitive lives inside session-notes, so that's
+    // the main "workbook" surface. Plan tab stays so Phoebe can build a
+    // free-form action plan if she wants.
+    tabDefs.push({ id:'session-notes', label:'Notes & sections', tag:'sh' });
     tabDefs.push({ id:'plan', label:'Action plan', tag:'cf' });
   } else {
     tabDefs.push({ id:'session-notes', label:'Notes', tag:'sh' });
@@ -4967,6 +5134,8 @@ function openAddClient() {
   document.getElementById('add-modal-title').textContent = 'Add new client';
   var fields = document.getElementById('add-client-fields');
   if (fields) fields.style.display = '';
+  // v11000: refresh custom program type options from coach-settings
+  if (typeof populateCustomProgramOptions === 'function') populateCustomProgramOptions();
   // Clear inputs from any prior program-only run
   ['new-name','new-email','new-biz','new-intake'].forEach(function(f) {
     var el = document.getElementById(f); if (el) el.value = '';
@@ -4982,6 +5151,8 @@ function openAddProgram(clientId) {
   document.getElementById('add-modal-title').textContent = 'Add program for ' + client.name;
   var fields = document.getElementById('add-client-fields');
   if (fields) fields.style.display = 'none';
+  // v11000: refresh custom program type options from coach-settings
+  if (typeof populateCustomProgramOptions === 'function') populateCustomProgramOptions();
   // Reset program selection + date + intake
   document.querySelectorAll('.prog-opt').forEach(function(o, i) {
     o.classList.toggle('selected', i === 0);
@@ -4990,6 +5161,24 @@ function openAddProgram(clientId) {
   document.getElementById('new-date').value = '';
   document.getElementById('new-intake').value = '';
   document.getElementById('add-modal').classList.add('open');
+}
+
+// Drop the custom program types into the Add Program prog-opt grid.
+// Idempotent — clears + re-populates each time. Run on modal open.
+function populateCustomProgramOptions() {
+  var host = document.getElementById('custom-prog-opts');
+  if (!host) return;
+  var custom = (window._coachSettings && Array.isArray(window._coachSettings.customProgramTypes))
+    ? window._coachSettings.customProgramTypes
+    : [];
+  if (!custom.length) { host.innerHTML = ''; return; }
+  host.innerHTML = custom.map(function(t) {
+    var lengthDesc = t.lengthDays ? t.lengthDays + '-day program' : 'Custom · ongoing';
+    return '<div class="prog-opt" data-prog="' + escapeHtml(t.id) + '" onclick="selectProg(this)">' +
+      '<div class="p-name">' + (t.icon || '📌') + ' ' + escapeHtml(t.label || 'Custom') + '</div>' +
+      '<div class="p-desc">' + escapeHtml(lengthDesc) + '</div>' +
+    '</div>';
+  }).join('');
 }
 
 function closeModal() {
@@ -5693,7 +5882,8 @@ async function autoRunResearch() {
     '- Business: ' + (client.biz||'Not provided') + '\n' +
     '- Website: ' + (prog.websiteUrl||'Not provided') + '\n' +
     '- Social: ' + (prog.websiteSocial||'Not provided') + '\n' +
-    '- Intake: ' + (prog.intake||'Not provided') + '\n\n' +
+    '- Intake (universal — same answers across every program):\n' +
+    (buildIntakeContextForAI(client, prog) || 'Not provided') + '\n\n' +
     'Pre-session coaching brief — use these EXACT section headings in this order:\n\n' +
     '⚠️ FOR PHOEBE\'S ATTENTION — RED FLAGS\n' +
     'The 3-5 things Phoebe MUST probe in the first session because they will trip this client up if not surfaced. ' +
@@ -8106,8 +8296,10 @@ async function suggestClientWhy(targetClientId, opts) {
   if (client.name) ctx.push('Name: ' + client.name);
   if (client.biz)  ctx.push('Business: ' + client.biz);
   if (client.bio)  ctx.push('Bio: ' + client.bio);
+  // v11000: universal intake first; per-program intake stays as a fallback
+  var intakeCtx = (typeof buildIntakeContextForAI === 'function') ? buildIntakeContextForAI(client, (client.programs||[])[0]) : '';
+  if (intakeCtx) ctx.push('Intake answers:\n' + intakeCtx);
   (client.programs || []).forEach(function(p) {
-    if (p.intake) ctx.push('Intake: ' + p.intake);
     if (p.notes && p.notes.opps) ctx.push('Stated change: ' + p.notes.opps);
     if (p.mdcWorkbook && p.mdcWorkbook.businessSnapshot) ctx.push('Business snapshot: ' + p.mdcWorkbook.businessSnapshot);
     if (p.notes && p.notes.research) ctx.push('Research summary: ' + p.notes.research.slice(0, 1500));
@@ -8879,7 +9071,33 @@ function renderClientSettings(client) {
       clientSettingsField('Instagram', 'instagram', s.instagram, 'text', 'instagram.com/yourhandle') +
       clientSettingsField('Facebook', 'facebook', s.facebook, 'text', 'facebook.com/yourpage') +
       clientSettingsField('TikTok', 'tiktok', s.tiktok, 'text', 'tiktok.com/@yourhandle') +
+    '</div>' +
+
+    // v11000: client-side intake — they see Phoebe's questions and edit
+    // their answers directly. They cannot rephrase questions or add new
+    // ones — that's Phoebe's prerogative. Saves are visible to her.
+    renderClientIntakePanel(client);
+}
+
+// Read-write client view of the universal intake. Question text is
+// readonly; answer textareas are live.
+function renderClientIntakePanel(client) {
+  if (!client) return '';
+  // Make sure defaults exist
+  if (typeof _ensureClientIntakeFields === 'function') _ensureClientIntakeFields(client);
+  var fields = (client.intake && client.intake.fields) || [];
+  if (!fields.length) return '';
+  var rows = fields.map(function(f) {
+    return '<div style="margin-bottom:14px">' +
+      '<label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--hot-pink);margin-bottom:4px">' + escapeHtml(f.question || 'Question') + '</label>' +
+      '<textarea onchange="updateIntakeField(\'' + client.id + '\',\'' + f.id + '\',\'answer\',this.value)" placeholder="Your answer…" style="width:100%;min-height:60px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6">' + escapeHtml(f.answer || '') + '</textarea>' +
     '</div>';
+  }).join('');
+  return '<div class="client-section">' +
+    '<h3 style="font-size:14px;letter-spacing:0.04em">📋 My answers</h3>' +
+    '<p style="font-size:13px;color:var(--stone);margin-bottom:14px">Phoebe asked these to get to know you. Update them any time — your answers travel with you across every program. They save automatically.</p>' +
+    rows +
+  '</div>';
 }
 
 function clientSettingsField(label, key, value, type, placeholder) {
@@ -11727,6 +11945,196 @@ async function saveIntakeEdit(clientId, progId) {
   if (typeof switchTab === 'function') switchTab('intake');
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// UNIVERSAL INTAKE — v11000
+// One structured intake travels with the CLIENT (not per program).
+// Same answers across every program they're in. Per-program extras can
+// layer on via prog.intakeOverlay (rare). Backward-compatible: the
+// legacy prog.intake text blob still reads, and the renderer offers
+// a one-click migration if it's populated and client.intake is empty.
+//
+// Schema:
+//   client.intake = {
+//     fields: [
+//       { id, question, answer, builtIn?: true },
+//       ...
+//     ],
+//     updatedAt: ISO,
+//   }
+// ═════════════════════════════════════════════════════════════════════
+
+// Built-in question set Phoebe asks every client. Phoebe can edit the
+// wording, delete questions, or add new ones via "+ Add a question".
+// IDs are stable so AI prompts can reference specific answers.
+var UNIVERSAL_INTAKE_DEFAULTS = [
+  { id: 'about-you',          question: 'About you — what should I know about you, your story, what brought you here?' },
+  { id: 'business-snapshot',  question: 'Your business — what do you do, who do you help, where are you at?' },
+  { id: 'goals-12m',          question: 'Twelve-month goal — what does success look like a year from now?' },
+  { id: 'current-challenge',  question: 'The thing tripping you up right now — what\'s in the way?' },
+  { id: 'preferred-support',  question: 'How you like being coached — direct? gentle? structured? deadlines? (anything)' },
+];
+
+// Hydrate the client's intake from defaults if it's empty. Doesn't write
+// to disk yet — just returns the live array. Migration of legacy
+// prog.intake happens via offerIntakeMigration() below.
+function _ensureClientIntakeFields(client) {
+  client.intake = client.intake || {};
+  if (!Array.isArray(client.intake.fields) || !client.intake.fields.length) {
+    client.intake.fields = UNIVERSAL_INTAKE_DEFAULTS.map(function(q) {
+      return { id: q.id, question: q.question, answer: '', builtIn: true };
+    });
+  }
+  return client.intake.fields;
+}
+
+function renderUniversalIntake(client, prog) {
+  if (!client) return '';
+  var fields = _ensureClientIntakeFields(client);
+  var legacyBlob = (prog && prog.intake) ? prog.intake.trim() : '';
+  // Compute "any answers populated" for the migrate banner state
+  var anyAnswered = fields.some(function(f) { return f.answer && f.answer.trim(); });
+
+  var migrateBanner = '';
+  if (legacyBlob && !anyAnswered) {
+    migrateBanner =
+      '<div style="background:#FFF8E8;border:1.5px solid rgba(232,160,32,0.55);border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+        '<div style="font-size:18px">📦</div>' +
+        '<div style="flex:1;min-width:200px;font-size:13px;color:#5A4632">' +
+          '<strong>Legacy intake from Calendly:</strong>' +
+          '<div style="font-size:12px;font-style:italic;margin-top:4px;white-space:pre-wrap;color:#7A5A20;max-height:100px;overflow-y:auto">' + escapeHtml(legacyBlob) + '</div>' +
+        '</div>' +
+        '<button class="btn-sm primary" style="font-size:11px;flex-shrink:0" onclick="migrateLegacyIntake(\'' + client.id + '\',\'' + prog.id + '\')">📤 Move to universal</button>' +
+        '<button class="btn-sm" style="font-size:11px;flex-shrink:0" onclick="dismissLegacyIntakeBanner(\'' + client.id + '\',\'' + prog.id + '\')">Dismiss</button>' +
+      '</div>';
+  }
+
+  var fieldsHtml = fields.map(function(f, i) {
+    return '<div class="intake-q-card" data-field-id="' + f.id + '">' +
+      '<div class="intake-q-meta">' +
+        '<input class="intake-q-question" type="text" value="' + escapeHtml(f.question || '') + '" placeholder="Question…" onchange="updateIntakeField(\'' + client.id + '\',\'' + f.id + '\',\'question\',this.value)">' +
+        (f.builtIn
+          ? '<span class="intake-q-builtin" title="Built-in question — you can edit the wording or delete it">core</span>'
+          : '<span class="intake-q-custom" title="Custom question Phoebe added">custom</span>') +
+        '<button class="intake-q-delete" onclick="deleteIntakeField(\'' + client.id + '\',\'' + f.id + '\')" title="Remove this question">×</button>' +
+      '</div>' +
+      '<textarea class="intake-q-answer" placeholder="Answer…" onchange="updateIntakeField(\'' + client.id + '\',\'' + f.id + '\',\'answer\',this.value)">' + escapeHtml(f.answer || '') + '</textarea>' +
+    '</div>';
+  }).join('');
+
+  return '<div class="intake-universal-block">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">' +
+      '<div>' +
+        '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700">📋 Universal intake</div>' +
+        '<div style="font-size:11px;color:var(--stone);margin-top:2px">Same answers across every program. Click any question to rephrase or any answer to edit.</div>' +
+      '</div>' +
+      '<button class="btn-sm primary" style="font-size:11px" onclick="addIntakeField(\'' + client.id + '\')">+ Add a question</button>' +
+    '</div>' +
+    migrateBanner +
+    '<div id="intake-fields-list">' + fieldsHtml + '</div>' +
+  '</div>';
+}
+
+async function updateIntakeField(clientId, fieldId, prop, value) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  _ensureClientIntakeFields(client);
+  var f = (client.intake.fields || []).find(function(x){ return x.id === fieldId; });
+  if (!f) return;
+  f[prop] = value;
+  client.intake.updatedAt = new Date().toISOString();
+  await persistClient(client);
+}
+
+async function addIntakeField(clientId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var question = await branded.prompt(
+    'New question to add to your universal intake — what do you want to ask every client?',
+    '',
+    'e.g. What does your ideal week look like?',
+    { title:'Add intake question', okLabel:'Add' }
+  );
+  if (!question || !question.trim()) return;
+  _ensureClientIntakeFields(client);
+  client.intake.fields.push({
+    id: 'q-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    question: question.trim(),
+    answer: '',
+    builtIn: false,
+  });
+  client.intake.updatedAt = new Date().toISOString();
+  await persistClient(client);
+  // Re-render via switchTab — keeps the existing render path in charge
+  if (typeof switchTab === 'function') switchTab('intake');
+}
+
+async function deleteIntakeField(clientId, fieldId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var f = (client.intake && client.intake.fields || []).find(function(x){ return x.id === fieldId; });
+  if (!f) return;
+  var hadAnswer = f.answer && f.answer.trim();
+  if (hadAnswer) {
+    var ok = await branded.confirm(
+      'Delete this question? The answer will be lost too.\n\nQuestion: ' + (f.question || 'Untitled'),
+      { title:'Delete question?', okLabel:'Delete', danger:true }
+    );
+    if (!ok) return;
+  }
+  client.intake.fields = client.intake.fields.filter(function(x){ return x.id !== fieldId; });
+  client.intake.updatedAt = new Date().toISOString();
+  await persistClient(client);
+  if (typeof switchTab === 'function') switchTab('intake');
+}
+
+// One-click migration: take the legacy prog.intake text blob and drop it
+// into the FIRST built-in field (about-you). Phoebe can move it to a
+// different field after if needed. Clears prog.intake on success so the
+// banner doesn't reappear.
+async function migrateLegacyIntake(clientId, progId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!client || !prog || !prog.intake) return;
+  _ensureClientIntakeFields(client);
+  var target = client.intake.fields[0];
+  if (!target) return;
+  target.answer = (target.answer ? target.answer + '\n\n' : '') + prog.intake.trim();
+  prog.intake = ''; // clear legacy
+  client.intake.updatedAt = new Date().toISOString();
+  await persistClient(client);
+  branded.success('Moved into universal intake — edit and split it across questions as needed.');
+  if (typeof switchTab === 'function') switchTab('intake');
+}
+
+async function dismissLegacyIntakeBanner(clientId, progId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!prog) return;
+  // Move the blob to a hidden archive on the program so we don't lose it
+  prog.intakeArchived = prog.intake;
+  prog.intake = '';
+  await persistClient(client);
+  branded.toast('Dismissed — original kept on program for reference');
+  if (typeof switchTab === 'function') switchTab('intake');
+}
+
+// Helper for AI prompts: returns the universal intake as a single text
+// block, plus any legacy prog.intake content as a fallback.
+function buildIntakeContextForAI(client, prog) {
+  var bits = [];
+  if (client && client.intake && Array.isArray(client.intake.fields)) {
+    client.intake.fields.forEach(function(f) {
+      if (f && f.answer && f.answer.trim()) {
+        bits.push((f.question || 'Question') + '\n' + f.answer.trim());
+      }
+    });
+  }
+  if (prog && prog.intake && prog.intake.trim()) {
+    bits.push('Legacy intake notes:\n' + prog.intake.trim());
+  }
+  return bits.join('\n\n');
+}
+
 // ============================================================
 // DEEP DIVE AUTO-FILL — show the structured profile bits the
 // AI dug up and let Phoebe apply them with one tap. Only fields
@@ -11883,7 +12291,7 @@ async function runDeepDive(clientId) {
     'Website: '+(s.website||'Not provided'),
     'LinkedIn: '+(s.linkedin||'Not provided'),
     'Instagram: '+(s.instagram||'Not provided'),
-    'Intake: '+((prog&&prog.intake)||''),
+    'Intake (universal — same answers across every program):\n' + (buildIntakeContextForAI(client, prog) || 'Not provided'),
     'Program: '+((prog&&prog.label)||''),
   ].join('\n');
 
@@ -12363,7 +12771,8 @@ async function generateIntakeSummary() {
   // session notes, open tasks, completed tasks, wins, MDC sprint focus,
   // coaching themes. The summary should reflect the WHOLE current picture.
   var research = (researchEl && researchEl.value) || (prog.notes && prog.notes.research) || '';
-  var intake   = prog.intake || '';
+  // v11000: universal intake first; legacy prog.intake folded in via the helper
+  var intake   = (typeof buildIntakeContextForAI === 'function') ? buildIntakeContextForAI(client, prog) : (prog.intake || '');
   var n        = prog.notes || {};
   var recentNotes = (prog.sessionNotes||[]).slice(-3).map(function(sn) {
     return '[' + (sn.date||'') + '] ' + (sn.text||'').slice(0, 400);
