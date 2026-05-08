@@ -79,7 +79,6 @@ Set on the `the-happy-hub` Netlify site:
 | `GOOGLE_CLIENT_SECRET` | ✅ live | OAuth Client Secret. Same exposure note as above. |
 | `GOOGLE_REFRESH_TOKEN` | ✅ live | OAuth refresh token tied to phoebe@phoebeblamey.com.au with `gmail.send` scope only. Same exposure note. |
 | `GOOGLE_SENDER_EMAIL` | ✅ live | The "From" address: `phoebe@phoebeblamey.com.au`. Not secret. |
-| `RESEND_API_KEY` | 🗑 unused | Was set during a Resend false-start — not used by current code, can be deleted. |
 | `TWILIO_*` | ⏳ optional | Outbound SMS |
 
 **Never commit secrets to the repo. Never echo them in code or logs.**
