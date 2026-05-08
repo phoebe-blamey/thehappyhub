@@ -45,7 +45,9 @@ export default async (req: Request, _context: Context) => {
 
   // Sensible defaults
   const model = body.model || "claude-haiku-4-5-20251001";
-  const max_tokens = Math.min(body.max_tokens || 1024, 4096);
+  // Tool-using calls can be longer (web search results etc) — allow up to 8192
+  const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+  const max_tokens = Math.min(body.max_tokens || 1024, hasTools ? 8192 : 4096);
   const messages = body.messages || [];
   const system = body.system; // optional
 
@@ -59,6 +61,10 @@ export default async (req: Request, _context: Context) => {
   try {
     const payload: any = { model, max_tokens, messages };
     if (system) payload.system = system;
+    // Forward tools (e.g. web_search) and tool_choice if the caller provided them.
+    // Anthropic handles server-side tools like web_search internally.
+    if (hasTools) payload.tools = body.tools;
+    if (body.tool_choice) payload.tool_choice = body.tool_choice;
 
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",

@@ -393,7 +393,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7718 loaded successfully
+✓ The Happy Hub — Build v7719 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -2189,14 +2189,39 @@ async function autoRunResearch() {
   var output = document.getElementById('note-research');
   btn.disabled = true; btn.textContent = '⏳ Running…';
   output.value = 'Generating research brief…\n';
-  var prompt = 'You are Phoebe Blamey\'s research assistant.\n\nNew client:\n- Name: '+client.name+'\n- Business: '+(client.biz||'Not provided')+'\n- Website: '+(prog.websiteUrl||'Not provided')+'\n- Social: '+(prog.websiteSocial||'Not provided')+'\n- Intake: '+(prog.intake||'Not provided')+'\n\nPre-session coaching brief:\n1. DIGITAL PRESENCE AUDIT — messaging clarity, CTA strength, score /10\n2. REVENUE LEAK SPOTS\n3. OPPORTUNITIES — networks, referrals, quick wins\n4. COACHING FOCUS AREAS — what Phoebe should probe\n5. QUICK WINS — 3-5 first-30-day actions\n\nSharp and practical.';
+  var prompt = 'You are Phoebe Blamey\'s research assistant.\n\n' +
+    '**Use the web_search tool** to actually look this person and their business up. Visit their website, check their LinkedIn, find recent activity. Don\'t make things up — base every assertion on what you can see or reasonably infer.\n\n' +
+    'New client:\n' +
+    '- Name: ' + client.name + '\n' +
+    '- Business: ' + (client.biz||'Not provided') + '\n' +
+    '- Website: ' + (prog.websiteUrl||'Not provided') + '\n' +
+    '- Social: ' + (prog.websiteSocial||'Not provided') + '\n' +
+    '- Intake: ' + (prog.intake||'Not provided') + '\n\n' +
+    'Pre-session coaching brief:\n' +
+    '1. DIGITAL PRESENCE AUDIT — messaging clarity, CTA strength, score /10. Cite specific things you saw on their site.\n' +
+    '2. REVENUE LEAK SPOTS — based on their actual setup, not generic advice\n' +
+    '3. OPPORTUNITIES — networks, referrals, quick wins\n' +
+    '4. COACHING FOCUS AREAS — what Phoebe should probe in session\n' +
+    '5. QUICK WINS — 3-5 specific first-30-day actions\n\n' +
+    'Sharp, practical, Australian English. For a highly experienced business coach.';
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
-      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:1000, messages:[{role:'user',content:prompt}] })
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 3000,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+        messages: [{ role:'user', content: prompt }]
+      })
     });
     var data = await resp.json();
-    var text = (data.content&&data.content[0]&&data.content[0].text)||'';
+    // Tool-using responses can have multiple content blocks — concat all 'text' blocks
+    var text = '';
+    if (Array.isArray(data.content)) {
+      data.content.forEach(function(block) {
+        if (block && block.type === 'text' && block.text) text += block.text;
+      });
+    }
     output.value = text;
     prog.notes = prog.notes||{};
     // Archive the previous brief into history before overwriting
@@ -3878,35 +3903,55 @@ async function runDeepDive(clientId) {
     'Program: '+((prog&&prog.label)||''),
   ].join('\n');
 
-  var prompt = 'You are Phoebe Blamey\'s expert research assistant. Do a full business deep dive for this coaching client.\n\n'+context+'\n\n'+
-    'Provide a comprehensive coaching research brief:\n\n'+
-    '## DIGITAL PRESENCE AUDIT\n'+
-    'Analyse their website, LinkedIn, Instagram. Score each /10. What messaging are they leading with? Is it clear who they help and how? What is missing?\n\n'+
-    '## INDUSTRY ANALYSIS\n'+
-    'What industry are they in? What are current trends, challenges, and opportunities in that space right now? Who are the key competitors?\n\n'+
-    '## WHERE THEY ARE THRIVING\n'+
-    'Based on their digital presence and intake, what is working well for them?\n\n'+
-    '## WHERE THEY NEED HELP\n'+
-    'What are the obvious gaps, revenue leaks, or missed opportunities?\n\n'+
-    '## COMPETITOR LANDSCAPE\n'+
-    'Name 3-5 likely competitors. How do they compare?\n\n'+
-    '## COACHING FOCUS AREAS\n'+
-    'What should Phoebe focus on with this client specifically?\n\n'+
-    '## QUICK WINS\n'+
-    '3-5 specific actions this client could take in the next 30 days that would make a visible difference.\n\n'+
-    '## CLIENT RATING\n'+
-    'Rate this client on: Revenue potential (1-10), Engagement likelihood (1-10), Coaching complexity (1-10). Explain each rating briefly.\n\n'+
-    'Be specific, practical, and direct. This is for a highly experienced business coach.';
+  var prompt = 'You are Phoebe Blamey\'s expert research assistant. Do a full business deep dive for this coaching client.\n\n' +
+    '**Use the web_search tool** to actually look this person and their business up before writing. Search for:\n' +
+    '- Their business name + their full name to find recent activity\n' +
+    '- Their website (visit it if a URL is provided)\n' +
+    '- Their LinkedIn profile (if provided)\n' +
+    '- Their industry + current trends (so the analysis is current, not generic)\n' +
+    '- Likely competitors in their space\n\n' +
+    'Don\'t make things up — only assert what you can verify or reasonably infer from real sources.\n\n' +
+    context + '\n\n' +
+    'Then provide a coaching research brief in this exact structure:\n\n' +
+    '## DIGITAL PRESENCE AUDIT\n' +
+    'Based on their actual website, LinkedIn, Instagram (whatever you find). Score each /10. What messaging are they leading with? Is it clear who they help and how? What is missing? Cite specific things you saw.\n\n' +
+    '## INDUSTRY ANALYSIS\n' +
+    'What industry are they in? Based on current sources, what are the trends, challenges, and opportunities right now (this year)? Who are the key competitors?\n\n' +
+    '## WHERE THEY ARE THRIVING\n' +
+    'Based on their digital presence + intake, what is working well for them?\n\n' +
+    '## WHERE THEY NEED HELP\n' +
+    'What are the obvious gaps, revenue leaks, or missed opportunities? Be specific.\n\n' +
+    '## COMPETITOR LANDSCAPE\n' +
+    'Name 3-5 actual competitors you found. How do they compare on positioning, pricing, audience?\n\n' +
+    '## COACHING FOCUS AREAS\n' +
+    'What should Phoebe focus on with this client specifically?\n\n' +
+    '## QUICK WINS\n' +
+    '3-5 specific actions this client could take in the next 30 days that would make a visible difference.\n\n' +
+    '## CLIENT RATING\n' +
+    'Rate this client on: Revenue potential (1-10), Engagement likelihood (1-10), Coaching complexity (1-10). Explain each rating briefly.\n\n' +
+    'Be specific, practical, direct. This is for a highly experienced business coach. Australian English.';
 
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
       headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
-      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:2000,
-        messages:[{role:'user',content:prompt}] })
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }],
+        messages: [{ role:'user', content: prompt }],
+      })
     });
     var data = await resp.json();
-    var text = (data.content&&data.content[0]&&data.content[0].text)||'Error generating deep dive.';
+    // Extract text from the final assistant message — when tools are used,
+    // the response may contain multiple content blocks (tool_use, tool_result, text).
+    var text = '';
+    if (Array.isArray(data.content)) {
+      data.content.forEach(function(block) {
+        if (block && block.type === 'text' && block.text) text += block.text;
+      });
+    }
+    if (!text) text = 'Error generating deep dive.';
     outputEl.value = text;
     // Save to client profile (archive previous brief into history first)
     if (prog) {
