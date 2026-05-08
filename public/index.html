@@ -25,7 +25,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v9800 — Zoom-side templates created in account from hub · webhook signature verify + auto AI summary · saved template_id used by every Zoom create flow · PeaBe logo PWA icon">
+<meta name="hmh-build" content="v9900 — editable intake · deep dive auto-fills profile · nurture status filter · special-notes popup · note jump-to · research copy + expand · pretty locked banner · compact check-in">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -72,7 +72,7 @@
   <div class="topbar">
     <div class="topbar-logo">PeaBe <span>Coaching Hub</span></div>
     <span class="topbar-badge badge-coach">Coach View</span>
-    <span class="topbar-date" id="coach-topbar-date" style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:500;letter-spacing:0.02em;margin-left:6px" title="Today"></span>
+    <span class="topbar-date" id="coach-topbar-date" style="font-size:11px;color:rgba(255,255,255,0.75);font-weight:500;letter-spacing:0.01em;margin-left:4px" title="Today"></span>
     <button id="coach-search-trigger" onclick="openCoachSearch()" title="Search clients, tasks, settings (⌘K / Ctrl+K)" style="margin-left:auto;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.95);border:1px solid rgba(255,255,255,0.25);font-size:12px;padding:5px 12px 5px 10px;border-radius:99px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--f-body)">
       🔎 <span class="search-trigger-label">Search</span> <span style="opacity:0.7;font-size:10px;border:1px solid rgba(255,255,255,0.3);padding:1px 5px;border-radius:4px;margin-left:2px" class="search-trigger-shortcut">⌘K</span>
     </button>
@@ -163,6 +163,7 @@
             <button class="filter-tab" onclick="filterClients('mdc',this)">MDC</button>
             <button class="filter-tab" onclick="filterClients('audit',this)">Audit</button>
             <button class="filter-tab" onclick="filterClients('happyhour',this)">Happy Hour</button>
+            <button class="filter-tab" onclick="filterClients('nurture',this)" title="Inactive clients you're keeping warm">🌱 Nurture</button>
           </div>
           <button id="show-archived-toggle" class="btn-sm" style="display:none;margin-left:auto;align-items:center;gap:6px;font-size:12px" onclick="toggleShowArchived()" title="Toggle archived clients">
             📦 <span class="toggle-state">Show archived</span> · <span class="toggle-count" style="font-weight:700">0</span>
@@ -206,11 +207,15 @@
           <div class="prog-tabs-row" id="detail-prog-tabs"></div>
         </div>
         <div class="detail-content-wrap">
-          <!-- Lock overlay for completed programs -->
-          <div id="lock-overlay">
-            <h3>🔒 Program Complete</h3>
-            <p>This program has been marked as complete. The content is preserved for reference.</p>
-            <button class="btn-sm primary" onclick="toggleLock(currentClientId, currentProgramId)" style="margin-top:8px">Unlock to edit</button>
+          <!-- Lock overlay for completed programs — on-brand pink gradient
+               with a soft locked feel rather than a flat grey banner. -->
+          <div id="lock-overlay" style="display:none;background:linear-gradient(135deg,#FDEFF5 0%,#FFFBE8 60%,#FDEFF5 100%);border:1.5px solid rgba(236,44,138,0.22);border-radius:16px;padding:18px 22px;margin-bottom:14px;align-items:center;gap:18px;box-shadow:0 4px 16px rgba(201,38,107,0.06)">
+            <div style="font-size:36px;line-height:1;flex-shrink:0">🌷</div>
+            <div style="flex:1;min-width:0">
+              <h3 style="font-family:var(--f-head);font-size:17px;color:var(--magenta);font-weight:700;margin:0 0 4px">Program complete</h3>
+              <p style="font-size:13px;color:var(--magenta);opacity:0.85;line-height:1.5;margin:0">All wrapped — preserved here so you can come back and look at it any time.</p>
+            </div>
+            <button class="btn-sm primary" onclick="toggleLock(currentClientId, currentProgramId)" style="flex-shrink:0">Unlock to edit</button>
           </div>
 
         <div class="tabs" id="detail-tabs">
@@ -256,6 +261,8 @@
               <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink)">🔬 Research brief — deep dive on the client and their business</label>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button class="btn-sm primary" onclick="autoRunResearch()" id="auto-research-btn2">✦ AI generate</button>
+                <button class="btn-sm" onclick="copyResearchBrief()" title="Copy the brief to your clipboard">📋 Copy</button>
+                <button class="btn-sm" onclick="expandResearchBrief()" title="Open in a full-screen editor for easier editing">⛶ Expand</button>
                 <button class="btn-sm" onclick="logResearchImprovement()" title="Log a change since the last brief — for returning clients">📈 Log improvement</button>
                 <button class="btn-sm primary" onclick="saveResearchBrief()">💾 Save</button>
               </div>
@@ -748,7 +755,7 @@
   <div class="topbar">
     <div class="topbar-logo">PeaBe <span>Coaching Hub</span></div>
     <span class="topbar-badge badge-client" id="client-topbar-prog">My Hub</span>
-    <span class="topbar-date" id="client-topbar-date" style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:500;letter-spacing:0.02em;margin-left:6px" title="Today"></span>
+    <span class="topbar-date" id="client-topbar-date" style="font-size:11px;color:rgba(255,255,255,0.75);font-weight:500;letter-spacing:0.01em;margin-left:4px" title="Today"></span>
     <!-- Next-session pill — populated live by updateClientNextSessionPill().
          Hidden when no upcoming session is scheduled. Click opens Zoom join. -->
     <a id="client-next-session-pill" href="#" target="_blank" rel="noopener" style="display:none;align-items:center;gap:6px;font-size:11px;padding:5px 12px 5px 10px;border-radius:99px;font-weight:600;background:rgba(251,242,25,0.92);color:#5A4632;text-decoration:none;margin-left:auto" title="Your next session with Phoebe — click to join Zoom">
@@ -4336,9 +4343,20 @@ function openProgram(client, progId) {
   // Brief history (returning-client improvement log)
   if (typeof renderResearchHistory === 'function') renderResearchHistory(prog);
 
-  // Intake
+  // Intake — editable inline. Click anywhere on the intake answer to expand
+  // into a textarea; saves on blur. Phoebe asked for this so she can clean
+  // up Calendly auto-imports without going through the Edit Client modal.
+  var intakeText = prog.intake || '';
+  var intakeBlock =
+    '<div class="intake-answer">' +
+      '<div class="intake-q" style="display:flex;align-items:center;gap:8px">Intake' +
+        '<button onclick="toggleIntakeEdit(\'' + client.id + '\',\'' + prog.id + '\')" class="btn-sm" id="intake-edit-btn-' + prog.id + '" style="font-size:10px;padding:3px 9px;margin-left:auto">' + (intakeText ? '✏️ Edit' : '+ Add') + '</button>' +
+      '</div>' +
+      '<div id="intake-display-' + prog.id + '" class="intake-a" style="cursor:pointer" onclick="toggleIntakeEdit(\'' + client.id + '\',\'' + prog.id + '\')">' + (intakeText ? escapeHtml(intakeText).replace(/\n/g,'<br>') : '<em style="color:var(--stone)">Click to add intake notes…</em>') + '</div>' +
+      '<textarea id="intake-edit-' + prog.id + '" style="display:none;width:100%;min-height:120px;border:1.5px solid var(--hot-pink);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;line-height:1.6" onblur="saveIntakeEdit(\'' + client.id + '\',\'' + prog.id + '\')">' + escapeHtml(intakeText) + '</textarea>' +
+    '</div>';
   document.getElementById('intake-content').innerHTML =
-    '<div class="intake-answer"><div class="intake-q">Intake</div><div class="intake-a">' + (prog.intake || 'None').replace(/\n/g,'<br>') + '</div></div>' +
+    intakeBlock +
     '<div class="intake-answer"><div class="intake-q">Email</div><div class="intake-a">' + (client.email||'—') + '</div></div>' +
     '<div class="intake-answer"><div class="intake-q">Access code</div><div class="intake-a" style="font-family:monospace;font-size:16px;color:var(--hot-pink);font-weight:700">' + client.clientAccess + '</div></div>' +
     (prog.websiteUrl ? '<div class="intake-answer"><div class="intake-q">Website</div><div class="intake-a"><a href="' + prog.websiteUrl + '" target="_blank" style="color:var(--hot-pink)">' + prog.websiteUrl + '</a></div></div>' : '') +
@@ -5656,7 +5674,7 @@ function renderClientSharedNotes(prog) {
       : '';
     var bodyText = n.text ? '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--magenta);margin-top:6px">'+n.text+'</div>' : '';
     // `open` attribute — notes from Phoebe are expanded by default per Phoebe's UX request.
-    return '<details open style="background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:10px"><summary style="cursor:pointer;font-weight:600;color:var(--magenta);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:13px">📒 '+dateStr+'</span>'+zoomLink+'</summary>' + bodyText + summary + actions + '</details>';
+    return '<details open data-shared-note-id="' + n.id + '" style="background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:10px"><summary style="cursor:pointer;font-weight:600;color:var(--magenta);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:13px">📒 '+dateStr+'</span>'+zoomLink+'</summary>' + bodyText + summary + actions + '</details>';
   }).join('');
 }
 
@@ -6667,15 +6685,23 @@ function renderClientDailyCheckin(client) {
   }
 
   // Otherwise: prompt for a check-in
+  // Compact one-row check-in — sits inside the client summary header zone
+  // rather than taking a whole vertical card. Mood pickers are smaller and
+  // inline; the optional one-line note expands underneath only after a
+  // mood is picked.
   var moodButtons = CHECKIN_MOODS.map(function(m) {
-    return '<button onclick="setCheckinMood(' + m.score + ')" data-mood="' + m.score + '" class="checkin-mood" title="' + m.label + '" style="font-size:30px;background:none;border:2px solid transparent;border-radius:50%;width:54px;height:54px;cursor:pointer;transition:all 0.15s;line-height:1;padding:0">' + m.emoji + '</button>';
+    return '<button onclick="setCheckinMood(' + m.score + ')" data-mood="' + m.score + '" class="checkin-mood" title="' + m.label + '" style="font-size:22px;background:none;border:2px solid transparent;border-radius:50%;width:36px;height:36px;cursor:pointer;transition:all 0.12s;line-height:1;padding:0;flex-shrink:0">' + m.emoji + '</button>';
   }).join('');
-  return '<div class="client-section" style="background:linear-gradient(135deg,#FFFBE8,#FDEFF5);border-color:rgba(232,160,32,0.25)">' +
-    '<div style="font-family:var(--f-head);font-size:18px;color:var(--magenta);margin-bottom:4px">How\'s today, ' + (client.name||'').split(' ')[0] + '?</div>' +
-    '<div style="font-size:12px;color:var(--stone);margin-bottom:12px">A 10-second pulse — Phoebe sees the trend, not the words.' + (streak.current > 0 ? ' · 🔥 ' + streak.current + '-day streak — keep it going' : '') + '</div>' +
-    '<div style="display:flex;gap:8px;justify-content:space-between;margin-bottom:10px;max-width:380px">' + moodButtons + '</div>' +
-    '<input type="text" id="checkin-note-input" placeholder="One line on what\'s on your mind (optional)…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;margin-bottom:10px">' +
-    '<button id="checkin-save-btn" onclick="saveCheckin()" disabled style="background:#F0A3C7;color:white;border:none;border-radius:99px;padding:8px 18px;font-family:var(--f-body);font-size:13px;font-weight:600;cursor:not-allowed;opacity:0.6">Save check-in</button>' +
+  return '<div style="background:linear-gradient(135deg,#FFFBE8,#FDEFF5);border:1px solid rgba(232,160,32,0.22);border-radius:12px;padding:10px 14px;margin-bottom:12px">' +
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span style="font-family:var(--f-head);font-size:13px;color:var(--magenta);font-weight:700;flex-shrink:0">How\'s today?</span>' +
+      '<div style="display:flex;gap:4px">' + moodButtons + '</div>' +
+      (streak.current > 0 ? '<span style="font-size:11px;color:var(--hot-pink);font-weight:600;margin-left:auto">🔥 ' + streak.current + '-day streak</span>' : '') +
+    '</div>' +
+    '<div id="checkin-note-row" style="display:none;margin-top:8px">' +
+      '<input type="text" id="checkin-note-input" placeholder="One line on what\'s on your mind (optional)…" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:white;outline:none;margin-bottom:6px">' +
+      '<button id="checkin-save-btn" onclick="saveCheckin()" style="background:var(--hot-pink);color:white;border:none;border-radius:99px;padding:5px 14px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">Save</button>' +
+    '</div>' +
   '</div>';
 }
 
@@ -6688,13 +6714,9 @@ function setCheckinMood(score) {
     b.style.background  = active ? 'var(--marshmallow)' : 'none';
     b.style.transform   = active ? 'scale(1.1)' : 'scale(1)';
   });
-  var btn = document.getElementById('checkin-save-btn');
-  if (btn) {
-    btn.disabled = false;
-    btn.style.background = 'var(--hot-pink)';
-    btn.style.cursor = 'pointer';
-    btn.style.opacity = '1';
-  }
+  // Reveal the note input + save button now that they've picked a mood
+  var row = document.getElementById('checkin-note-row');
+  if (row) row.style.display = 'block';
 }
 
 async function saveCheckin() {
@@ -7378,7 +7400,26 @@ function refreshNewNoteBanner(client) {
   var msg = document.getElementById('client-new-note-msg');
   var actionBtn = document.getElementById('client-new-note-action');
   msg.textContent = '✨ New note from Phoebe — ' + fresh._progLabel;
-  actionBtn.onclick = function() { openClientProgramFromSummary(fresh._progId); markNotesRead(); };
+  actionBtn.onclick = function() {
+    openClientProgramFromSummary(fresh._progId);
+    // Wait a beat for the program render, then scroll to + highlight the note
+    setTimeout(function() {
+      var noteEl = document.querySelector('[data-shared-note-id="' + fresh.id + '"]');
+      if (noteEl) {
+        noteEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Pulse highlight so the note is visually obvious when arrived
+        noteEl.style.transition = 'box-shadow 0.4s ease, background 0.4s ease';
+        noteEl.style.boxShadow = '0 0 0 3px rgba(236,44,138,0.35)';
+        var origBg = noteEl.style.background;
+        noteEl.style.background = '#FFFBE8';
+        setTimeout(function() {
+          noteEl.style.boxShadow = '';
+          noteEl.style.background = origBg;
+        }, 1800);
+      }
+    }, 250);
+    markNotesRead();
+  };
   banner.style.display = 'flex';
 }
 
@@ -8437,7 +8478,11 @@ openProgram = function(client, progId) {
   if (!prog) return;
   // 3. Render all panels — deferred slightly to ensure DOM is ready
   setTimeout(function() {
-    // Special notes banner — accessibility / quirks Phoebe must remember
+    // Special notes banner — accessibility / quirks Phoebe must remember.
+    // Stays visible the whole time the client is open. Plus a one-shot
+    // popup the FIRST time per browser session so she never opens a
+    // client cold and misses the "deaf — captions on" / "don't call
+    // before 9am" / etc.
     var snEl = document.getElementById('detail-special-notes');
     if (snEl) {
       if (client.specialNotes && client.specialNotes.trim()) {
@@ -8448,6 +8493,22 @@ openProgram = function(client, progId) {
           '<div style="font-size:13px;color:#A07030;line-height:1.5;white-space:pre-wrap">' + escapeHtml(client.specialNotes) + '</div></div>' +
           '<button onclick="openEditClient(\'' + client.id + '\')" class="btn-sm" style="font-size:11px;background:white;color:#A07030;flex-shrink:0">✏️</button>' +
           '</div>';
+        // First-time-per-session popup so it's impossible to miss
+        try {
+          var seenKey = '_specialNotesSeen';
+          window[seenKey] = window[seenKey] || {};
+          if (!window[seenKey][client.id]) {
+            window[seenKey][client.id] = true;
+            setTimeout(function() {
+              if (typeof branded !== 'undefined' && branded.alert) {
+                branded.alert(client.specialNotes, {
+                  title: '⚠️ Special notes for ' + client.name,
+                  okLabel: 'Got it',
+                });
+              }
+            }, 350);
+          }
+        } catch (e) {}
       } else {
         snEl.style.display = 'none';
         snEl.innerHTML = '';
@@ -9402,12 +9463,28 @@ function renderClientActions(client, prog) {
     (prog.zoomJoin
       ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm primary">🎬 Zoom</a>'
       : '<button class="btn-sm" onclick="openCreateClientZoom(\''+cid+'\',\''+pid+'\')" title="Create a Zoom meeting from a Phoebe-branded template">🎬 + Zoom</button>') +
-    '<div style="margin-left:auto;display:flex;align-items:center;gap:8px">' +
+    '<div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+    '<span style="font-size:11px;color:var(--stone)">Status:</span>' +
+    '<select onchange="setClientStatus(\''+cid+'\',this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:4px 10px;font-family:var(--f-body);font-size:12px;cursor:pointer;background:var(--paper)">' +
+    ['active','nurture','complete'].map(function(s) {
+      var lbl = { active:'💛 Active', nurture:'🌱 Nurture', complete:'✓ Complete' }[s];
+      return '<option value="'+s+'"'+((client.status||'active')===s?' selected':'')+'>'+lbl+'</option>';
+    }).join('') + '</select>' +
     '<span style="font-size:11px;color:var(--stone)">Health:</span>' +
     '<select onchange="setClientHealth(\''+cid+'\',this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:4px 10px;font-family:var(--f-body);font-size:12px;cursor:pointer;background:var(--paper)">' +
     ['green','amber','red'].map(function(h) {
       return '<option value="'+h+'"'+(client.health===h?' selected':'')+'>'+{green:'🟢 On track',amber:'🟡 Check in',red:'🔴 Needs attention'}[h]+'</option>';
     }).join('') + '</select></div></div>';
+}
+
+async function setClientStatus(clientId, status) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  client.status = status;
+  client.statusChangedAt = new Date().toISOString();
+  await persistClient(client);
+  branded.toast(status === 'nurture' ? 'Moved to Nurture — Phoebe-only watch list' : 'Status: ' + status);
+  if (typeof renderClients === 'function') renderClients();
 }
 
 // ============================================================
@@ -9564,6 +9641,142 @@ async function saveEditClient(clientId) {
   if (typeof openClient === 'function') openClient(clientId);
 }
 
+// Toggle the inline intake editor — flips display + textarea visibility.
+function toggleIntakeEdit(clientId, progId) {
+  var disp = document.getElementById('intake-display-' + progId);
+  var ta   = document.getElementById('intake-edit-' + progId);
+  var btn  = document.getElementById('intake-edit-btn-' + progId);
+  if (!disp || !ta) return;
+  if (ta.style.display === 'none' || !ta.style.display) {
+    disp.style.display = 'none';
+    ta.style.display = 'block';
+    ta.focus();
+    if (btn) btn.textContent = '✓ Save';
+  } else {
+    saveIntakeEdit(clientId, progId);
+  }
+}
+async function saveIntakeEdit(clientId, progId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var prog = (client.programs || []).find(function(p){ return p.id === progId; });
+  if (!prog) return;
+  var ta = document.getElementById('intake-edit-' + progId);
+  if (!ta) return;
+  var newVal = (ta.value || '').trim();
+  if (newVal !== (prog.intake || '')) {
+    prog.intake = newVal;
+    await persistClient(client);
+    branded.toast('Intake saved');
+  }
+  // Re-render the panel via switchTab refresh
+  if (typeof switchTab === 'function') switchTab('intake');
+}
+
+// ============================================================
+// DEEP DIVE AUTO-FILL — show the structured profile bits the
+// AI dug up and let Phoebe apply them with one tap. Only fields
+// CURRENTLY EMPTY on the client are auto-fillable; anything she's
+// already typed is left alone (we don't trust the AI more than her).
+// ============================================================
+function offerDeepDiveAutoFill(client, found) {
+  if (!client || !found) return;
+  // Build the candidate diff — { field, label, currentValue, newValue, applies }
+  var current = {
+    biz:       client.biz || '',
+    bio:       client.bio || '',
+    industry:  client.industry || '',
+    phone:     client.phone || '',
+    email:     client.email || '',
+  };
+  var currentSocials = client.socials || {};
+  var candidates = [];
+  function pushCandidate(field, label, newVal, currentVal) {
+    if (!newVal) return;
+    var clean = String(newVal).trim();
+    if (!clean) return;
+    if (clean === (currentVal || '').trim()) return; // no-op, identical
+    candidates.push({
+      field: field,
+      label: label,
+      newVal: clean,
+      currentVal: currentVal || '',
+      hasCurrent: !!(currentVal && currentVal.trim()),
+    });
+  }
+  pushCandidate('biz',      '🏢 Business',   found.biz,      current.biz);
+  pushCandidate('bio',      '👤 Bio',        found.bio,      current.bio);
+  pushCandidate('industry', '🎯 Industry',   found.industry, current.industry);
+  pushCandidate('phone',    '📱 Phone',      found.phone,    current.phone);
+  pushCandidate('email',    '📧 Email',      found.email,    current.email);
+  if (found.socials && typeof found.socials === 'object') {
+    pushCandidate('socials.website',   '🌐 Website',   found.socials.website,   currentSocials.website);
+    pushCandidate('socials.linkedin',  '🔗 LinkedIn',  found.socials.linkedin,  currentSocials.linkedin);
+    pushCandidate('socials.instagram', '📷 Instagram', found.socials.instagram, currentSocials.instagram);
+    pushCandidate('socials.facebook',  '📘 Facebook',  found.socials.facebook,  currentSocials.facebook);
+    pushCandidate('socials.tiktok',    '🎵 TikTok',    found.socials.tiktok,    currentSocials.tiktok);
+  }
+  if (!candidates.length) return; // nothing to offer
+
+  var host = document.getElementById('branded-modal-host');
+  document.getElementById('branded-modal-icon').textContent = '✦';
+  document.getElementById('branded-modal-title').textContent = 'Deep dive found these';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="font-size:13px;color:var(--stone);margin-bottom:12px;line-height:1.5">' +
+      'The research turned up these profile bits. Tick the ones to apply — fields you\'ve already filled are pre-skipped (yours wins).' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px">' +
+      candidates.map(function(c, i) {
+        var defaultChecked = !c.hasCurrent;
+        return '<label style="display:flex;align-items:flex-start;gap:10px;padding:10px;background:white;border:1.5px solid var(--border);border-radius:10px;cursor:pointer">' +
+          '<input type="checkbox" id="ddx-' + i + '" ' + (defaultChecked ? 'checked' : '') + ' style="margin-top:3px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">' + c.label + '</div>' +
+            (c.hasCurrent
+              ? '<div style="font-size:11px;color:var(--stone);text-decoration:line-through;margin-bottom:2px">Current: ' + escapeHtml(c.currentVal) + '</div>'
+              : '') +
+            '<div style="font-size:13px;color:var(--magenta);word-break:break-word">' + escapeHtml(c.newVal) + '</div>' +
+          '</div>' +
+        '</label>';
+      }).join('') +
+    '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var skip = document.createElement('button'); skip.className = 'btn-sm'; skip.textContent = 'Skip';
+  skip.onclick = function() { host.style.display = 'none'; };
+  var apply = document.createElement('button'); apply.className = 'btn-sm primary'; apply.textContent = '✓ Apply selected';
+  apply.onclick = async function() {
+    var changed = 0;
+    candidates.forEach(function(c, i) {
+      var box = document.getElementById('ddx-' + i);
+      if (!box || !box.checked) return;
+      if (c.field.indexOf('socials.') === 0) {
+        client.socials = client.socials || {};
+        client.socials[c.field.split('.')[1]] = c.newVal;
+      } else {
+        client[c.field] = c.newVal;
+      }
+      changed++;
+    });
+    if (changed) {
+      client.updatedAt = new Date().toISOString();
+      try { await persistClient(client); } catch (e) {}
+      branded.success('Updated ' + changed + ' field' + (changed === 1 ? '' : 's') + ' on ' + client.name + '.');
+      if (typeof openClient === 'function') openClient(client.id);
+      if (typeof logActivity === 'function') {
+        logActivity('ai-brief', 'Deep dive auto-filled ' + changed + ' field' + (changed === 1 ? '' : 's') + ' for ' + client.name,
+          { clientId: client.id, clientName: client.name });
+      }
+    }
+    host.style.display = 'none';
+  };
+  actions.appendChild(skip);
+  actions.appendChild(apply);
+  host.style.display = 'flex';
+}
+
 // ============================================================
 // DEEP DIVE — AI full business research on client
 // ============================================================
@@ -9617,7 +9830,30 @@ async function runDeepDive(clientId) {
     '3-5 specific actions this client could take in the next 30 days that would make a visible difference.\n\n' +
     '## CLIENT RATING\n' +
     'Rate this client on: Revenue potential (1-10), Engagement likelihood (1-10), Coaching complexity (1-10). Explain each rating briefly.\n\n' +
-    'Be specific, practical, direct. This is for a highly experienced business coach.'
+    'Be specific, practical, direct. This is for a highly experienced business coach.\n\n' +
+    '──────────────────────────────────\n\n' +
+    'After the brief, append a fenced JSON block (```json … ```) with any\n' +
+    'profile fields you confidently identified from your research. ONLY\n' +
+    'include fields where your source is strong — leave anything uncertain\n' +
+    'OUT entirely. The hub will use this to auto-fill the client record so\n' +
+    'Phoebe doesn\'t have to chase down details by hand.\n\n' +
+    'Schema (every field optional):\n' +
+    '{\n' +
+    '  "biz":         "Short business descriptor — e.g. \\"Health coach, Melbourne\\"",\n' +
+    '  "bio":         "1-2 sentence profile of the person + business",\n' +
+    '  "industry":    "e.g. \\"wellness / nutrition coaching\\"",\n' +
+    '  "phone":       "AU-formatted phone if found on website/LinkedIn",\n' +
+    '  "email":       "ONLY if you found a different/better email than already on file",\n' +
+    '  "socials": {\n' +
+    '    "website":   "https://...",\n' +
+    '    "linkedin":  "https://linkedin.com/in/...",\n' +
+    '    "instagram": "https://instagram.com/...",\n' +
+    '    "facebook":  "https://facebook.com/...",\n' +
+    '    "tiktok":    "https://tiktok.com/@..."\n' +
+    '  }\n' +
+    '}\n\n' +
+    'Return ONLY URLs/values you actually saw or strongly inferred. Empty fields\n' +
+    'are fine — accuracy beats coverage.'
   );
 
   try {
@@ -9641,7 +9877,29 @@ async function runDeepDive(clientId) {
       });
     }
     if (!text) text = 'Error generating deep dive.';
-    outputEl.value = text;
+
+    // ── Extract structured profile data from the trailing JSON block ───
+    // The prompt asks the AI to append `​```json … ​```` at the end with any
+    // confident profile fields. We strip that out of the user-facing text
+    // (Phoebe doesn't want to read raw JSON) and offer it as a "We found
+    // these — apply?" diff modal instead.
+    var extractedProfile = null;
+    var visibleText = text;
+    try {
+      var match = text.match(/```json\s*([\s\S]+?)\s*```/i);
+      if (match) {
+        extractedProfile = JSON.parse(match[1]);
+        visibleText = text.replace(match[0], '').trim();
+      }
+    } catch (e) { console.warn('[deep-dive] structured JSON parse failed:', e); }
+    outputEl.value = visibleText;
+
+    // If the AI surfaced profile bits, offer to apply them. Auto-merge only
+    // fields that are currently EMPTY on the client — never overwrite
+    // something Phoebe already typed by hand.
+    if (extractedProfile && typeof extractedProfile === 'object') {
+      try { offerDeepDiveAutoFill(client, extractedProfile); } catch (err) { console.warn('[deep-dive] autofill error:', err); }
+    }
 
     // ── Empty-results fallback ─────────────────────────────────────────
     // When Phoebe's deep dive turns up nothing useful (no website, generic
@@ -9709,6 +9967,85 @@ function renderDeepDiveSuggestionPanel(client, prog, isThin) {
   // Insert just below the output textarea
   var parent = noteResearch.parentElement;
   if (parent) parent.insertBefore(panel, noteResearch.nextSibling);
+}
+
+// Copy the current research brief to the clipboard
+function copyResearchBrief() {
+  var el = document.getElementById('note-research');
+  if (!el) return;
+  var text = (el.value || '').trim();
+  if (!text) { branded.alert('Nothing to copy yet — generate or type a brief first.'); return; }
+  if (typeof copyToClipboard === 'function') copyToClipboard(text);
+  else {
+    try { navigator.clipboard.writeText(text); branded.toast('Copied'); }
+    catch (e) { branded.alert('Could not copy — select and copy manually.'); }
+  }
+}
+
+// Open the research brief in a full-screen overlay for easier editing.
+// Unlimited text, big readable font, autosave-on-close back into the
+// underlying textarea. Phoebe asked for this because briefs can run long
+// and the inline 280px-min textarea is cramped.
+function expandResearchBrief() {
+  var src = document.getElementById('note-research');
+  if (!src) return;
+  var existing = document.getElementById('research-expand-overlay');
+  if (existing) { existing.remove(); }
+  var overlay = document.createElement('div');
+  overlay.id = 'research-expand-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(40,15,40,0.55);backdrop-filter:blur(2px);z-index:9800;display:flex;align-items:center;justify-content:center;padding:24px;font-family:var(--f-body)';
+  overlay.innerHTML =
+    '<div style="background:white;border-radius:16px;width:min(960px,100%);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(201,38,107,0.32);overflow:hidden">' +
+      '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<div style="font-family:var(--f-head);font-size:18px;color:var(--magenta);font-weight:700;flex:1">🔬 Research brief — full edit</div>' +
+        '<button class="btn-sm" onclick="copyResearchBriefFromExpand()">📋 Copy</button>' +
+        '<button class="btn-sm primary" onclick="closeResearchExpand(true)">✓ Save & close</button>' +
+        '<button class="btn-sm" onclick="closeResearchExpand(false)">Cancel</button>' +
+      '</div>' +
+      '<textarea id="research-expand-ta" style="flex:1;border:none;outline:none;padding:20px 24px;font-family:var(--f-body);font-size:14px;line-height:1.7;color:var(--magenta);background:var(--paper);resize:none;min-height:60vh"></textarea>' +
+      '<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:11px;color:var(--stone);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
+        '<span id="research-expand-count">0 words</span>' +
+        '<span style="color:var(--stone)">Esc to cancel · ⌘S / Ctrl+S to save</span>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  var ta = document.getElementById('research-expand-ta');
+  ta.value = src.value || '';
+  ta.focus();
+  function updateCount() {
+    var w = (ta.value.trim().match(/\S+/g) || []).length;
+    document.getElementById('research-expand-count').textContent = w + ' word' + (w === 1 ? '' : 's');
+  }
+  updateCount();
+  ta.addEventListener('input', updateCount);
+  ta.addEventListener('keydown', function(e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      closeResearchExpand(true);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeResearchExpand(false);
+    }
+  });
+}
+function copyResearchBriefFromExpand() {
+  var ta = document.getElementById('research-expand-ta');
+  if (!ta) return;
+  var text = (ta.value || '').trim();
+  if (!text) { branded.alert('Nothing to copy.'); return; }
+  if (typeof copyToClipboard === 'function') copyToClipboard(text);
+  else { try { navigator.clipboard.writeText(text); branded.toast('Copied'); } catch (e) {} }
+}
+function closeResearchExpand(save) {
+  var overlay = document.getElementById('research-expand-overlay');
+  var ta = document.getElementById('research-expand-ta');
+  var src = document.getElementById('note-research');
+  if (save && ta && src) {
+    src.value = ta.value;
+    if (typeof markDirty === 'function') markDirty();
+    if (typeof saveResearchBrief === 'function') saveResearchBrief();
+  }
+  if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
 }
 
 // Manual save research brief
@@ -10270,12 +10607,19 @@ function renderClients() {
   // sessions so Phoebe doesn't lose her place.
   var showArchived = localStorage.getItem('hmh_show_archived') === '1';
   if (!showArchived) list = list.filter(function(c){ return !c.archived; });
-  if (activeFilter !== 'all') {
+  if (activeFilter === 'nurture') {
+    // Nurture filter — show only clients explicitly marked as status:nurture
+    list = list.filter(function(c) { return c.status === 'nurture'; });
+  } else if (activeFilter !== 'all') {
     list = list.filter(function(c) {
       return (c.programs||[]).some(function(p) {
         return p.program === activeFilter || p.workbook === activeFilter;
       });
     });
+  }
+  // Hide nurture clients from the default "All" view too — they're warm, not active
+  if (activeFilter === 'all') {
+    list = list.filter(function(c) { return c.status !== 'nurture'; });
   }
   // Update the "Show archived" toggle UI count
   var toggleEl = document.getElementById('show-archived-toggle');
