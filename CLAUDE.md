@@ -60,7 +60,7 @@ package.json               # function dependencies only
   - `claude-sonnet-4-6` — heavy analysis (research brief, plan builder, win impact, profitability insights)
 - **Calendar:** Calendly API + webhook
 - **Video:** Zoom Server-to-Server OAuth (recording + transcript scopes)
-- **Email:** Resend (pending — env var not yet set)
+- **Email:** Gmail API (sends as `phoebe@phoebeblamey.com.au`; sent emails appear in her Gmail Sent folder automatically). OAuth refresh-token flow, scope `gmail.send` only.
 - **SMS:** Twilio (optional — env vars not yet set)
 
 ## Environment variables (Netlify)
@@ -75,7 +75,11 @@ Set on the `the-happy-hub` Netlify site:
 | `ZOOM_CLIENT_ID` | ✅ live | Zoom Server-to-Server OAuth |
 | `ZOOM_CLIENT_SECRET` | ✅ live | Zoom Server-to-Server OAuth |
 | `ZOOM_VERIFICATION_TOKEN` | ✅ live | Zoom webhook verification |
-| `RESEND_API_KEY` | ✅ live | Outbound email. **Note: was exposed in chat history during setup — rotate before relying on it.** Domain `phoebeblamey.com.au` must be verified in Resend before sends succeed. |
+| `GOOGLE_CLIENT_ID` | ✅ live | OAuth Client ID for Gmail API. **Was exposed in chat history during setup — rotate after first end-to-end test passes.** |
+| `GOOGLE_CLIENT_SECRET` | ✅ live | OAuth Client Secret. Same exposure note as above. |
+| `GOOGLE_REFRESH_TOKEN` | ✅ live | OAuth refresh token tied to phoebe@phoebeblamey.com.au with `gmail.send` scope only. Same exposure note. |
+| `GOOGLE_SENDER_EMAIL` | ✅ live | The "From" address: `phoebe@phoebeblamey.com.au`. Not secret. |
+| `RESEND_API_KEY` | 🗑 unused | Was set during a Resend false-start — not used by current code, can be deleted. |
 | `TWILIO_*` | ⏳ optional | Outbound SMS |
 
 **Never commit secrets to the repo. Never echo them in code or logs.**
@@ -107,7 +111,7 @@ Louise Syphers, Yvette Polley, Frances Pratt, Kari Marsden, Christine Lukich, Ju
 In rough priority order:
 
 1. **Rotate the Anthropic API key.** It was visible in chat history during the build. Generate a new one at console.anthropic.com → update Netlify env var → done.
-2. **Verify `phoebeblamey.com.au` in Resend** at resend.com/domains so emails actually send (key is live but domain verification is the missing step). Also rotate the current `RESEND_API_KEY` since it was pasted into chat during setup.
+2. **Rotate the Google OAuth Client Secret + refresh token** after the first successful Gmail send — they were pasted into chat during setup. To rotate: console.cloud.google.com → APIs & Services → Credentials → reset secret on the Happy Hub Mailer client; then redo the OAuth Playground step to get a new refresh token; update both env vars in Netlify.
 3. **AI flagging in Research Brief** — add a "⚠️ For Phoebe's attention" section that surfaces red flags / things she should probe.
 4. **Zoom auto-trigger webhook** — currently the "Pull from Zoom" button works manually. Webhook would auto-trigger after a session ends.
 5. **Twilio SMS** — optional. Email covers most needs.

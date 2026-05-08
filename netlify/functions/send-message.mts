@@ -2,6 +2,10 @@ import type { Config } from "@netlify/functions";
 
 // POST /api/send-message
 // Body: { type: 'email'|'sms', to, subject, message, clientName }
+//
+// Email: sends via the Gmail API as the configured GOOGLE_SENDER_EMAIL.
+//        Sent emails appear in that mailbox's Sent folder automatically.
+// SMS:   sends via Twilio.
 export default async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
@@ -11,45 +15,117 @@ export default async (req: Request) => {
   const { type, to, subject, message, clientName } = body;
   if (!type || !to || !message) return new Response("type, to, message required", { status: 400 });
 
-  // ── EMAIL via Resend ──────────────────────────────────────────────────────
+  // ── EMAIL via Gmail API ──────────────────────────────────────────────────
   if (type === "email") {
-    const resendKey = Netlify.env.get("RESEND_API_KEY");
-    if (!resendKey) {
+    const clientId     = Netlify.env.get("GOOGLE_CLIENT_ID");
+    const clientSecret = Netlify.env.get("GOOGLE_CLIENT_SECRET");
+    const refreshToken = Netlify.env.get("GOOGLE_REFRESH_TOKEN");
+    const senderEmail  = Netlify.env.get("GOOGLE_SENDER_EMAIL");
+
+    if (!clientId || !clientSecret || !refreshToken || !senderEmail) {
       return new Response(JSON.stringify({
-        error: "Email not configured",
-        setup: "Add RESEND_API_KEY to Netlify environment variables. Get a free key at resend.com"
-      }), { status: 503 });
+        error: "Gmail API not configured",
+        setup: "Need GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, GOOGLE_SENDER_EMAIL in Netlify env vars."
+      }), { status: 503, headers: { "Content-Type": "application/json" } });
     }
+
+    // 1. Mint a fresh access token from the refresh token
+    let accessToken: string;
     try {
-      const resp = await fetch("https://api.resend.com/emails", {
+      const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
-        headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: "Phoebe Blamey <phoebe@phoebeblamey.com.au>",
-          to: [to],
-          subject: subject || `A note from Phoebe`,
-          html: `
-            <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px">
-              <div style="background:#C9266B;padding:16px 24px;border-radius:12px 12px 0 0">
-                <h1 style="color:white;font-size:20px;margin:0">Happy Money Hub</h1>
-                <p style="color:rgba(255,255,255,0.8);font-size:12px;margin:4px 0 0">Phoebe Blamey · phoebeblamey.com.au</p>
-              </div>
-              <div style="background:#FFFDFA;border:1px solid #F0A3C7;border-top:none;border-radius:0 0 12px 12px;padding:24px">
-                ${clientName ? `<p style="color:#ACA495;font-size:13px;margin:0 0 16px">Hi ${clientName},</p>` : ''}
-                <div style="color:#C9266B;font-size:15px;line-height:1.7;white-space:pre-wrap">${message.replace(/\n/g,'<br>')}</div>
-                <hr style="border:none;border-top:1px solid #FDEFF5;margin:20px 0">
-                <p style="color:#ACA495;font-size:12px;margin:0">Phoebe Blamey · Business Coach & Money Strategist<br>
-                <a href="https://phoebeblamey.com.au" style="color:#EC2C8A">phoebeblamey.com.au</a></p>
-              </div>
-            </div>`,
-          text: message,
-        }),
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id:     clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+          grant_type:    "refresh_token",
+        }).toString(),
       });
-      const data = await resp.json();
-      if (!resp.ok) return new Response(JSON.stringify({ error: data.message || "Send failed" }), { status: 500 });
-      return new Response(JSON.stringify({ success: true, id: data.id }), { status: 200 });
+      const tokenData = await tokenResp.json();
+      if (!tokenResp.ok || !tokenData.access_token) {
+        return new Response(JSON.stringify({
+          error: "Failed to refresh Google access token",
+          status: tokenResp.status,
+          details: tokenData,
+        }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+      accessToken = tokenData.access_token;
     } catch (err) {
-      return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
+      return new Response(JSON.stringify({ error: "Token refresh failed: " + String(err) }), { status: 500 });
+    }
+
+    // 2. Build the MIME message — multipart/alternative (text + HTML)
+    const safeSubject = (subject || "A note from Phoebe").replace(/[\r\n]/g, " ").slice(0, 988);
+    const encodedSubject = /[^\x20-\x7e]/.test(safeSubject)
+      ? "=?UTF-8?B?" + base64Utf8(safeSubject) + "?="
+      : safeSubject;
+
+    const html =
+      '<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:24px">' +
+        '<div style="background:#C9266B;padding:16px 24px;border-radius:12px 12px 0 0">' +
+          '<h1 style="color:white;font-size:20px;margin:0">Happy Money Hub</h1>' +
+          '<p style="color:rgba(255,255,255,0.8);font-size:12px;margin:4px 0 0">Phoebe Blamey · phoebeblamey.com.au</p>' +
+        '</div>' +
+        '<div style="background:#FFFDFA;border:1px solid #F0A3C7;border-top:none;border-radius:0 0 12px 12px;padding:24px">' +
+          (clientName ? `<p style="color:#ACA495;font-size:13px;margin:0 0 16px">Hi ${escapeHtml(clientName)},</p>` : '') +
+          `<div style="color:#C9266B;font-size:15px;line-height:1.7;white-space:pre-wrap">${escapeHtml(message).replace(/\n/g,'<br>')}</div>` +
+          '<hr style="border:none;border-top:1px solid #FDEFF5;margin:20px 0">' +
+          '<p style="color:#ACA495;font-size:12px;margin:0">Phoebe Blamey · Business Coach & Money Strategist<br>' +
+          '<a href="https://phoebeblamey.com.au" style="color:#EC2C8A">phoebeblamey.com.au</a></p>' +
+        '</div>' +
+      '</div>';
+
+    const boundary = "hh_" + Math.random().toString(36).slice(2);
+    const mime = [
+      `From: Phoebe Blamey <${senderEmail}>`,
+      `To: ${to}`,
+      `Subject: ${encodedSubject}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      ``,
+      `--${boundary}`,
+      `Content-Type: text/plain; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      ``,
+      message,
+      ``,
+      `--${boundary}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      ``,
+      html,
+      ``,
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const raw = base64UrlUtf8(mime);
+
+    // 3. Send via Gmail API
+    try {
+      const sendResp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type":  "application/json",
+        },
+        body: JSON.stringify({ raw }),
+      });
+      const sendData = await sendResp.json();
+      if (!sendResp.ok) {
+        return new Response(JSON.stringify({
+          error: sendData.error?.message || "Gmail send failed",
+          status: sendResp.status,
+          details: sendData,
+        }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        id: sendData.id,
+        threadId: sendData.threadId,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: "Gmail send error: " + String(err) }), { status: 500 });
     }
   }
 
@@ -90,5 +166,29 @@ export default async (req: Request) => {
 
   return new Response("Unknown type", { status: 400 });
 };
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+}
+
+function base64Utf8(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64UrlUtf8(str: string): string {
+  return base64Utf8(str)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
 
 export const config: Config = { path: "/api/send-message" };
