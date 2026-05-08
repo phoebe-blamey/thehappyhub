@@ -243,6 +243,36 @@ export default async (req: Request) => {
   matchedProg.sessionNotes = matchedProg.sessionNotes || [];
   const noteId = `sn-zoom-${Date.now()}`;
   const sessionDate = startTime ? startTime.split("T")[0] : new Date().toISOString().split("T")[0];
+
+  // ── MDC auto-tag: compute sprint+week from cohort.start vs session date.
+  // Phoebe asked for this — the manual "tag this Zoom to Sprint X / Week Y"
+  // step shouldn't be needed when the system can work it out itself.
+  // 24-week MDC = 4 sprints × 6 weeks. Week-of-cohort = floor(daysSinceStart / 7) + 1.
+  let autoSprint: number | undefined;
+  let autoWeek: number | undefined;
+  try {
+    if (matchedProg.workbook === "mdc" && matchedProg.cohort && startTime) {
+      const cohortsStore = getStore("cohorts");
+      const cohortsRaw = await cohortsStore.get("cohorts");
+      if (cohortsRaw) {
+        const cohortsArr = JSON.parse(cohortsRaw) || [];
+        const co = (Array.isArray(cohortsArr) ? cohortsArr : []).find((c: any) => c && c.id === matchedProg.cohort);
+        if (co && co.start) {
+          const startDay = new Date(co.start).getTime();
+          const sessionDay = new Date(startTime).getTime();
+          const daysSince = Math.floor((sessionDay - startDay) / 86400000);
+          if (daysSince >= 0 && daysSince < 24 * 7) {
+            const weekOfCohort = Math.floor(daysSince / 7) + 1; // 1..24
+            autoSprint = Math.ceil(weekOfCohort / 6);           // 1..4
+            autoWeek   = ((weekOfCohort - 1) % 6) + 1;          // 1..6
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn("[zoom-webhook] auto-sprint compute failed:", err?.message || err);
+  }
+
   const newNote: any = {
     id: noteId,
     date: sessionDate,
@@ -259,8 +289,23 @@ export default async (req: Request) => {
     aiSummaryStatus: transcriptText ? "queued" : "no-transcript",
     autoSource: "zoom-webhook",
     createdAt: new Date().toISOString(),
+    ...(autoSprint && autoWeek ? { sprint: autoSprint, week: autoWeek, autoTagged: true } : {}),
   };
   matchedProg.sessionNotes.push(newNote);
+
+  // ── MDC sprint/week auto-advance — bump program's mdcSprint/mdcWeek to
+  // match the latest auto-tagged session, mirroring the client-side
+  // autoAdvanceMdcProgress() logic. So the moment a Zoom is webhooked,
+  // the client sees the new week's pane on next portal load.
+  if (autoSprint && autoWeek && matchedProg.workbook === "mdc") {
+    const curSprint = matchedProg.mdcSprint || 1;
+    const curWeek   = matchedProg.mdcWeek || 1;
+    if (autoSprint > curSprint || (autoSprint === curSprint && autoWeek > curWeek)) {
+      matchedProg.mdcSprint = autoSprint;
+      matchedProg.mdcWeek   = autoWeek;
+    }
+  }
+
   matchedClient.updatedAt = new Date().toISOString();
   matchedClient.lastTouched = new Date().toISOString();
 

@@ -602,17 +602,21 @@ body{padding-top:0}
    "place" not a form.
    ===================================================================== */
 
-/* Background — only inside the client portal so the coach hub stays clean */
+/* Background — only inside the client portal so the coach hub stays clean.
+   v10700: bumped alphas + added a fourth wash so the page actually feels
+   "alive" rather than near-white. Phoebe asked for vibrant-but-simple. */
 #client-hub.active {
   background:
-    radial-gradient(circle at 20% 0%, rgba(240,163,199,0.18) 0%, transparent 40%),
-    radial-gradient(circle at 80% 30%, rgba(251,242,25,0.10) 0%, transparent 35%),
-    radial-gradient(circle at 50% 100%, rgba(216,228,232,0.20) 0%, transparent 50%),
-    linear-gradient(180deg, #FFFDFA 0%, #FDEFF5 100%);
+    radial-gradient(circle at 18% -2%, rgba(240,163,199,0.32) 0%, transparent 42%),
+    radial-gradient(circle at 82% 22%, rgba(251,242,25,0.18) 0%, transparent 38%),
+    radial-gradient(circle at 95% 92%, rgba(95,163,168,0.18) 0%, transparent 42%),
+    radial-gradient(circle at 8% 100%, rgba(236,44,138,0.10) 0%, transparent 50%),
+    linear-gradient(180deg, #FFFCF8 0%, #FDEFF5 60%, #FCE6EE 100%);
   background-attachment: fixed;
 }
 
-/* Soft dotted overlay — barely visible but adds texture */
+/* Soft dotted overlay — slightly more visible (was 0.06 → 0.10) so the
+   texture reads on hi-DPI screens but doesn't look like noise on low-DPI */
 #client-hub.active .client-content {
   position: relative;
 }
@@ -620,13 +624,23 @@ body{padding-top:0}
   content: "";
   position: fixed;
   inset: 0;
-  background-image: radial-gradient(rgba(236,44,138,0.06) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(236,44,138,0.10) 1px, transparent 1px);
   background-size: 24px 24px;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.5;
+  opacity: 0.55;
 }
 #client-hub.active .client-content > * { position: relative; z-index: 1; }
+
+/* Workbook section — Phoebe specifically called out the white workbook
+   page as boring. Give it a paper-warm wash with subtle gradient so it
+   feels like a real workbook page, not a blank form. */
+#client-hub .client-section.workbook-print-area {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(251,242,25,0.10) 0%, transparent 35%),
+    linear-gradient(155deg, #FFFEFA 0%, #FFF8F0 100%);
+  border-color: rgba(232,160,32,0.22);
+}
 
 /* Greeting strip — replaces the old separate greeting card. Inline w/ Phoebe says. */
 .client-greeting-strip {

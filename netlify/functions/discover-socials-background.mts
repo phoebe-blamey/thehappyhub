@@ -24,16 +24,19 @@ Known details:
 
 Based on these details, provide a quick pre-session intelligence brief:
 
-1. SOCIAL MEDIA TO CHECK
+## ⚠️ FOR PHOEBE'S ATTENTION
+Anything Phoebe should know BEFORE the call — red flags, sensitive context, contradictions, things to handle with care. Be honest but kind. If you genuinely found nothing concerning, say "Nothing flagged — all clear from public sources." Don't fabricate concerns.
+
+## SOCIAL MEDIA TO CHECK
 List the social profiles Phoebe should review before the session (Instagram, Facebook, LinkedIn, TikTok). Include likely handles or URLs based on their business name and website domain.
 
-2. BUSINESS SNAPSHOT
+## BUSINESS SNAPSHOT
 What type of business is this likely to be? What industry? Who do they likely serve?
 
-3. DIGITAL PRESENCE GUESS
+## DIGITAL PRESENCE GUESS
 Based on the URL/domain structure alone — what does their online presence likely look like? (e.g. appears to be a service business with a personal brand, or a corporate firm, etc.)
 
-4. QUESTIONS TO PREPARE
+## QUESTIONS TO PREPARE
 2-3 specific questions Phoebe should have ready for this client based on what can be inferred.
 
 Keep it brief and practical. Note clearly what is inferred vs confirmed.`;

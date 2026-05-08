@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v10600 — MDC: current-cohort selector + sessions list w/ per-session Zoom · resource broadcast · recording-ready emails · expanded fillable workbook + PDF download">
+<meta name="hmh-build" content="v10700 — polish batch: mood picker → header · Phoebe Says (34 quotes, day-of-year) · richer portal background · achievements confetti · phone-in-help nudge · deep-dive panel on errors · skeleton sweep · ⚠️ For Phoebe's attention red-flags · MDC auto-advance sprint from Zoom">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -378,7 +378,14 @@
               <button class="btn-sm" onclick="saveCurrentPlanAsTemplate()" title="Save the current plan structure as a reusable template for other clients">💾 Save as template</button>
             </div>
           </div>
-          <div class="plan-grid" id="plan-grid"></div>
+          <div class="plan-grid" id="plan-grid">
+            <!-- Transient skeleton — replaced by renderPlanGrid as soon as a
+                 client is opened. Stops the slot looking like an empty void
+                 before data arrives. -->
+            <div class="hub-skeleton tall" style="border-radius:14px;height:120px"></div>
+            <div class="hub-skeleton tall" style="border-radius:14px;height:120px"></div>
+            <div class="hub-skeleton tall" style="border-radius:14px;height:120px"></div>
+          </div>
           <!-- Templates strip — shows saved plan templates Phoebe can apply
                to this client's plan with one click. localStorage-backed. -->
           <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border-soft)">
@@ -844,6 +851,10 @@
             <div id="client-hero-why-text" style="font-size:13px;line-height:1.4;font-style:italic;cursor:pointer;opacity:0.95" onclick="editClientWhyFromHero()" title="Click to edit">+ Add my why</div>
           </div>
         </div>
+        <!-- Daily mood picker — moved from the Summary body into the hero so
+             "How's today?" is the first thing every client sees, every visit.
+             Renders inline with smaller emoji buttons styled for dark hero. -->
+        <div id="client-hero-mood-wrap" style="margin-top:10px"></div>
       </div>
     </div>
     <!-- New-note notification banner — shows when Phoebe has shared something
@@ -1064,6 +1075,17 @@
         <div id="help-phone-display" style="font-size:11px;color:var(--stone);margin-top:1px"></div>
       </div>
       <div style="color:var(--stone);font-size:14px">→</div>
+    </a>
+    <!-- Coach-only nudge — shown to Phoebe when she opens the help drawer and
+         hasn't set her phone yet, so clients are missing the call-or-text card.
+         Hidden in the client portal (which already shows the link or nothing). -->
+    <a id="help-phone-coach-nudge" href="javascript:void(0)" onclick="toggleHelpPanel();showPage('settings')" class="help-card" style="display:none;align-items:center;gap:12px;padding:12px 14px;border:1.5px dashed rgba(232,160,32,0.6);border-radius:10px;text-decoration:none;color:#A07030;background:#FFFBE8;margin-bottom:8px">
+      <div style="font-size:24px;line-height:1">📱</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px">Add your phone for clients</div>
+        <div style="font-size:11px;margin-top:1px">Settings → "My phone number" — adds a "Call or text Phoebe" link to every client's help drawer.</div>
+      </div>
+      <div style="font-size:14px">→</div>
     </a>
     <!-- Install as app — handles Chrome/Android beforeinstallprompt + iOS instructions -->
     <a href="javascript:void(0)" onclick="showInstallPrompt()" class="help-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
@@ -3656,12 +3678,18 @@ function toggleHelpPanel() {
       var phone = (getCoachPhone() || '').trim();
       var phoneLink = document.getElementById('help-phone-link');
       var phoneDisplay = document.getElementById('help-phone-display');
+      var coachNudge = document.getElementById('help-phone-coach-nudge');
+      var inCoachView = document.getElementById('main-hub') && document.getElementById('main-hub').classList.contains('active');
       if (phone && phoneLink) {
         phoneLink.href = 'tel:' + phone.replace(/[^+\d]/g, '');
         phoneLink.style.display = 'flex';
         if (phoneDisplay) phoneDisplay.textContent = phone;
-      } else if (phoneLink) {
-        phoneLink.style.display = 'none';
+        if (coachNudge) coachNudge.style.display = 'none';
+      } else {
+        if (phoneLink) phoneLink.style.display = 'none';
+        // Show the "add your phone" prompt to Phoebe (coach view only).
+        // Clients see nothing — the absence of a phone is a non-event for them.
+        if (coachNudge) coachNudge.style.display = inCoachView ? 'flex' : 'none';
       }
       // Phoebe's Knowledge Bank — only show for signed-in clients (the AI
       // grounds answers in their own profile, so it doesn't make sense
@@ -4745,6 +4773,11 @@ function openProgram(client, progId) {
   });
   // Brief history (returning-client improvement log)
   if (typeof renderResearchHistory === 'function') renderResearchHistory(prog);
+  // Surface the "⚠️ For Phoebe's attention" highlight card if the brief
+  // already has one (briefs generated before v10700 won't, but new ones will).
+  if (typeof renderResearchAttentionPanel === 'function') {
+    try { renderResearchAttentionPanel(n.research || ''); } catch (e) {}
+  }
 
   // Intake — editable inline. Click anywhere on the intake answer to expand
   // into a textarea; saves on blur. Phoebe asked for this so she can clean
@@ -5809,6 +5842,9 @@ function loadClientPortal(client) {
 
   // Hero "my why" line — always visible across tabs
   if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
+  // Hero mood picker — promoted from the Summary body so "How's today?" is
+  // the first thing every client sees, every visit.
+  if (typeof updateClientHeroMood === 'function') updateClientHeroMood(client);
   // Topbar "next session" pill — also persistent across tabs
   if (typeof updateClientNextSessionPill === 'function') updateClientNextSessionPill(client);
 }
@@ -6460,6 +6496,21 @@ function renderClientProgram(client, prog) {
   if (ribbonEl) ribbonEl.innerHTML = (typeof renderEarnedBadgeRibbon === 'function') ? renderEarnedBadgeRibbon(client) : '';
   if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
   if (typeof updateClientHeroLinks === 'function') updateClientHeroLinks(client, prog);
+  // Wire confetti to badges in the achievements accordion. Idempotent —
+  // each badge gets a one-time data-confettiBound flag. Hero badges are
+  // explicitly skipped inside attachBadgeConfetti.
+  if (typeof attachBadgeConfetti === 'function') attachBadgeConfetti();
+  // The accordion lazy-renders on toggle (it's a <details> element), so
+  // also wire confetti when it opens for the first time.
+  document.querySelectorAll('details.client-section summary').forEach(function(s) {
+    if (s.dataset.confettiHookBound) return;
+    s.dataset.confettiHookBound = '1';
+    s.addEventListener('click', function() {
+      setTimeout(function() {
+        if (typeof attachBadgeConfetti === 'function') attachBadgeConfetti();
+      }, 50);
+    });
+  });
 }
 
 // Update the quick-links rail in the client portal hero. Surfaces:
@@ -6674,8 +6725,8 @@ function renderClientSummary(client) {
 
   html += '</div>'; // end .three-card-story
 
-  // ── Daily check-in (compact, optional) ───────────────────────────────
-  html += renderClientDailyCheckin(client);
+  // (Daily check-in moved to the hero — see updateClientHeroMood. Body
+  // summary stays focused on what's next, not how the client feels.)
 
   // ── KEY ACTIONS strip ──────────────────────────────────────────────────
   // Summary = key actions only. The full to-do list lives on its own tab so
@@ -6904,10 +6955,19 @@ function renderClientJourneyStrip(client) {
 
 // Compact, inline version of "Phoebe says…" — fits inside the greeting strip
 // instead of a full card. Same daily-rotating quote logic.
+// Pick a quote that's stable for the whole calendar day but rotates daily
+// across the full pool. Using day-of-year means we cycle through 34 quotes
+// before any repeats, instead of resetting on the 1st of each month.
+function _phoebeWisdomTodayIdx() {
+  var d = new Date();
+  var start = new Date(d.getFullYear(), 0, 0);
+  var diff = (d - start) + ((start.getTimezoneOffset() - d.getTimezoneOffset()) * 60 * 1000);
+  var dayOfYear = Math.floor(diff / 86400000);
+  return dayOfYear % PHOEBE_WISDOM.length;
+}
 function renderInlineWisdom() {
   if (typeof PHOEBE_WISDOM === 'undefined' || !PHOEBE_WISDOM.length) return '';
-  var idx = new Date().getDate() % PHOEBE_WISDOM.length;
-  var w = PHOEBE_WISDOM[idx];
+  var w = PHOEBE_WISDOM[_phoebeWisdomTodayIdx()];
   return '<span class="phoebe-says-prefix">💡 Phoebe says</span> <span class="phoebe-says-quote">"' + escapeHtml(w.quote) + '"</span>';
 }
 
@@ -7118,12 +7178,30 @@ var PHOEBE_WISDOM = [
   { quote: "You don't need more leads. You need to follow up the ones you've already got.", tag: 'Growth' },
   { quote: "Profit isn't selfish. Profit is what lets you keep helping people.", tag: 'Money' },
   { quote: "The version of you who started this isn't the version of you who'll grow it. That's normal.", tag: 'Mindset' },
+  { quote: "Your pricing is a story you're telling yourself. Tell a better one.", tag: 'Pricing' },
+  { quote: "If you can't say it in one sentence, you don't know what you're selling yet.", tag: 'Positioning' },
+  { quote: "The work that actually moves the needle is rarely the work that feels productive.", tag: 'Action' },
+  { quote: "Money loves clarity. Vagueness about your numbers keeps you stuck.", tag: 'Money' },
+  { quote: "You're allowed to charge more. You're allowed to take Fridays off. You're allowed to want both.", tag: 'Boundaries' },
+  { quote: "The 'no' that doesn't come is usually the one costing you the most.", tag: 'Sales' },
+  { quote: "A boring spreadsheet has never bankrupted anyone. Avoiding one has.", tag: 'Money' },
+  { quote: "Your magic isn't the work. It's why your specific person needs YOU doing it.", tag: 'Positioning' },
+  { quote: "If you don't tell people you're open for business, they'll assume you're not.", tag: 'Growth' },
+  { quote: "Cash flow > revenue. Always.", tag: 'Money' },
+  { quote: "Your gut knows. Your spreadsheet confirms. Both are right.", tag: 'Strategy' },
+  { quote: "Most 'I'll get to it later' = 'I never will'. Be honest with yourself, then choose.", tag: 'Action' },
+  { quote: "Test small. Fail cheap. Move fast. Repeat.", tag: 'Strategy' },
+  { quote: "You don't need permission to raise your prices. You just need to do it.", tag: 'Pricing' },
+  { quote: "If your business runs on you, you don't have a business — you have a job with extra paperwork.", tag: 'Mindset' },
+  { quote: "The work you avoid is usually the work that pays the most.", tag: 'Action' },
+  { quote: "Wins compound. Doubts compound too. Pick which one you feed.", tag: 'Mindset' },
+  { quote: "Your favourite client = your real product. Find five more like them.", tag: 'Growth' },
 ];
 
 function renderWisdomCard() {
-  // Day-of-month index → same quote all day, different tomorrow
-  var idx = new Date().getDate() % PHOEBE_WISDOM.length;
-  var w = PHOEBE_WISDOM[idx];
+  // Day-of-year index → same quote all day, different tomorrow, cycles
+  // through the full pool before any repeats.
+  var w = PHOEBE_WISDOM[_phoebeWisdomTodayIdx()];
   return '<div class="client-section" style="background:linear-gradient(135deg,#FFFBE8 0%,#FDEFF5 100%);border-color:rgba(232,160,32,0.25);position:relative;overflow:hidden">' +
     '<div style="position:absolute;top:14px;right:18px;font-size:11px;color:#A07030;font-weight:700;text-transform:uppercase;letter-spacing:0.08em">' + w.tag + '</div>' +
     '<div style="display:flex;align-items:flex-start;gap:14px">' +
@@ -7746,41 +7824,52 @@ function calcCheckinStreak(client) {
   return { current: current, longest: Math.max(current, client.checkInLongestStreak || 0) };
 }
 
+// Daily check-in is rendered into the HERO (not the Summary body) so
+// "How's today?" is the very first thing the client sees every time
+// they open the hub. Styled for the dark magenta hero — semi-transparent
+// pill, white text, hot-pink active state on the picked emoji.
 function renderClientDailyCheckin(client) {
+  // Kept as a no-op stub for backward compat with anything that still
+  // calls it inline. The real work happens in updateClientHeroMood().
+  return '';
+}
+
+function updateClientHeroMood(client) {
+  var wrap = document.getElementById('client-hero-mood-wrap');
+  if (!wrap || !client) return;
   var today = new Date().toISOString().split('T')[0];
   var todays = (client.checkIns||[]).find(function(c){ return c.date === today; });
   var streak = calcCheckinStreak(client);
 
-  // If already checked in today, show a thanks card with streak
   if (todays) {
     var mood = CHECKIN_MOODS.find(function(m){ return m.score === todays.mood; }) || CHECKIN_MOODS[2];
-    return '<div class="client-section" style="background:linear-gradient(135deg,#FFFDFA,#E8F4F4);border-color:#B8DDD9;display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
-      '<div style="font-size:32px">' + mood.emoji + '</div>' +
-      '<div style="flex:1;min-width:160px">' +
-        '<div style="font-family:var(--f-head);font-size:16px;color:var(--magenta);margin-bottom:2px">Checked in today — feeling ' + mood.label.toLowerCase() + '</div>' +
-        (todays.note ? '<div style="font-size:13px;color:var(--stone);font-style:italic">"' + todays.note.replace(/"/g,'&quot;') + '"</div>' : '<div style="font-size:12px;color:var(--stone)">See you tomorrow ✨</div>') +
+    wrap.innerHTML = '<div style="background:rgba(255,255,255,0.13);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span style="font-size:22px;line-height:1;flex-shrink:0">' + mood.emoji + '</span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:600;color:white;line-height:1.3">Checked in today — feeling ' + mood.label.toLowerCase() + '</div>' +
+        (todays.note
+          ? '<div style="font-size:12px;color:rgba(255,255,255,0.85);font-style:italic;line-height:1.3;margin-top:1px">"' + todays.note.replace(/"/g,'&quot;') + '"</div>'
+          : '<div style="font-size:11px;color:rgba(255,255,255,0.75);line-height:1.3">See you tomorrow ✨</div>') +
       '</div>' +
-      (streak.current > 1 ? '<div style="background:linear-gradient(135deg,#FFF5E8,#FFFBE8);border:1.5px solid #E8A020;border-radius:99px;padding:6px 14px;font-size:13px;font-weight:700;color:#A07030;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🔥</span><span>' + streak.current + '-day streak</span></div>' : '') +
+      (streak.current > 1 ? '<span style="background:rgba(251,242,25,0.92);color:#A11E55;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;flex-shrink:0">🔥 ' + streak.current + '</span>' : '') +
     '</div>';
+    return;
   }
 
-  // Otherwise: prompt for a check-in
-  // Compact one-row check-in — sits inside the client summary header zone
-  // rather than taking a whole vertical card. Mood pickers are smaller and
-  // inline; the optional one-line note expands underneath only after a
-  // mood is picked.
+  // Prompt — inline mood picker, white-on-dark, semi-transparent buttons
   var moodButtons = CHECKIN_MOODS.map(function(m) {
-    return '<button onclick="setCheckinMood(' + m.score + ')" data-mood="' + m.score + '" class="checkin-mood" title="' + m.label + '" style="font-size:22px;background:none;border:2px solid transparent;border-radius:50%;width:36px;height:36px;cursor:pointer;transition:all 0.12s;line-height:1;padding:0;flex-shrink:0">' + m.emoji + '</button>';
+    return '<button onclick="setCheckinMood(' + m.score + ')" data-mood="' + m.score + '" class="checkin-mood" title="' + m.label + '" style="font-size:20px;background:rgba(255,255,255,0.12);border:2px solid transparent;border-radius:50%;width:34px;height:34px;cursor:pointer;transition:all 0.12s;line-height:1;padding:0;flex-shrink:0">' + m.emoji + '</button>';
   }).join('');
-  return '<div style="background:linear-gradient(135deg,#FFFBE8,#FDEFF5);border:1px solid rgba(232,160,32,0.22);border-radius:12px;padding:10px 14px;margin-bottom:12px">' +
+  wrap.innerHTML = '<div style="background:rgba(255,255,255,0.13);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:9px 14px">' +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font-family:var(--f-head);font-size:13px;color:var(--magenta);font-weight:700;flex-shrink:0">How\'s today?</span>' +
+      '<span style="font-size:13px;color:white;font-weight:600;flex-shrink:0">How\'s today?</span>' +
       '<div style="display:flex;gap:4px">' + moodButtons + '</div>' +
-      (streak.current > 0 ? '<span style="font-size:11px;color:var(--hot-pink);font-weight:600;margin-left:auto">🔥 ' + streak.current + '-day streak</span>' : '') +
+      (streak.current > 0 ? '<span style="font-size:11px;color:rgba(255,255,255,0.9);font-weight:600;margin-left:auto;flex-shrink:0">🔥 ' + streak.current + '-day streak</span>' : '') +
     '</div>' +
     '<div id="checkin-note-row" style="display:none;margin-top:8px">' +
-      '<input type="text" id="checkin-note-input" placeholder="One line on what\'s on your mind (optional)…" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:white;outline:none;margin-bottom:6px">' +
-      '<button id="checkin-save-btn" onclick="saveCheckin()" style="background:var(--hot-pink);color:white;border:none;border-radius:99px;padding:5px 14px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">Save</button>' +
+      '<input type="text" id="checkin-note-input" placeholder="One line on what\'s on your mind (optional)…" style="width:100%;border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:white;background:rgba(255,255,255,0.08);outline:none;margin-bottom:6px"' +
+        ' onfocus="this.style.background=\'rgba(255,255,255,0.18)\'" onblur="this.style.background=\'rgba(255,255,255,0.08)\'">' +
+      '<button id="checkin-save-btn" onclick="saveCheckin()" style="background:var(--sunshine);color:var(--magenta);border:none;border-radius:99px;padding:5px 16px;font-family:var(--f-body);font-size:12px;font-weight:700;cursor:pointer">Save</button>' +
     '</div>' +
   '</div>';
 }
@@ -7790,9 +7879,10 @@ function setCheckinMood(score) {
   window._pendingCheckinMood = score;
   document.querySelectorAll('.checkin-mood').forEach(function(b) {
     var active = parseInt(b.dataset.mood,10) === score;
-    b.style.borderColor = active ? 'var(--hot-pink)' : 'transparent';
-    b.style.background  = active ? 'var(--marshmallow)' : 'none';
-    b.style.transform   = active ? 'scale(1.1)' : 'scale(1)';
+    // Active state on dark hero — hot pink ring + sunshine background
+    b.style.borderColor = active ? 'var(--sunshine)' : 'transparent';
+    b.style.background  = active ? 'rgba(251,242,25,0.25)' : 'rgba(255,255,255,0.12)';
+    b.style.transform   = active ? 'scale(1.12)' : 'scale(1)';
   });
   // Reveal the note input + save button now that they've picked a mood
   var row = document.getElementById('checkin-note-row');
@@ -7818,7 +7908,8 @@ async function saveCheckin() {
   // Confetti for fun (3+ day streaks get extra)
   fireConfetti(streak.current >= 3 ? 60 : 30);
   branded.toast(streak.current > 1 ? '✓ ' + streak.current + '-day streak!' : '✓ Saved');
-  renderClientSummary(client);
+  // Refresh just the hero mood block — no need to re-render the whole Summary
+  updateClientHeroMood(client);
 }
 
 // Tiny confetti — pure DOM, no library. Used by check-in + win logging.
@@ -11350,6 +11441,8 @@ async function runDeepDive(clientId) {
     'Don\'t make things up — only assert what you can verify or reasonably infer from real sources.\n\n' +
     context + '\n\n' +
     'Then provide a coaching research brief in this exact structure:\n\n' +
+    '## ⚠️ FOR PHOEBE\'S ATTENTION\n' +
+    'Red flags, sensitive topics, things to handle with care, or genuinely worrying signals from your research. Examples: legal trouble in news, public business disputes, recent personal hardship visible online, contradictions between what they said in intake and what their website says, signs of burnout in their socials, controversial associations, etc. Be direct but kind — Phoebe needs to know BEFORE the call, not during. Use a bulleted list, each item one or two lines max. If you genuinely found nothing concerning, say so plainly: "Nothing flagged — all clear from public sources." Don\'t fabricate concerns to fill space.\n\n' +
     '## DIGITAL PRESENCE AUDIT\n' +
     'Based on their actual website, LinkedIn, Instagram (whatever you find). Score each /10. What messaging are they leading with? Is it clear who they help and how? What is missing? Cite specific things you saw.\n\n' +
     '## INDUSTRY ANALYSIS\n' +
@@ -11432,6 +11525,13 @@ async function runDeepDive(clientId) {
     } catch (e) { console.warn('[deep-dive] structured JSON parse failed:', e); }
     outputEl.value = visibleText;
 
+    // ── Pull out the "⚠️ For Phoebe's attention" section and surface it
+    // above the brief as a highlighted card. Phoebe asked for this — red
+    // flags should not be buried mid-document where she might skim past.
+    if (typeof renderResearchAttentionPanel === 'function') {
+      try { renderResearchAttentionPanel(visibleText); } catch (err) { console.warn('[deep-dive] attention panel error:', err); }
+    }
+
     // If the AI surfaced profile bits, offer to apply them. Auto-merge only
     // fields that are currently EMPTY on the client — never overwrite
     // something Phoebe already typed by hand.
@@ -11464,7 +11564,76 @@ async function runDeepDive(clientId) {
   } catch(e) {
     outputEl.value = 'Error: '+e.message+'\n\nNote: AI deep dive requires the Anthropic API key (works when deployed to Netlify).';
     if (typeof showDeepDiveSkeleton === 'function') showDeepDiveSkeleton(false);
+    // Even on error, surface the manual-research panel so Phoebe still has
+    // somewhere to go. She can click straight through to Google / LinkedIn
+    // / ABN lookup rather than being stuck staring at an error message.
+    if (typeof renderDeepDiveSuggestionPanel === 'function') {
+      try { renderDeepDiveSuggestionPanel(client, prog, true); } catch (e2) {}
+    }
   }
+}
+
+// Pulls the "⚠️ FOR PHOEBE'S ATTENTION" section out of the brief and
+// renders it as a highlighted warning card right above the brief textarea.
+// Done as a parse-then-render rather than a structural rewrite of the
+// brief because Phoebe still wants the section in the full brief itself
+// (so it shows up when she copies/exports). The card is purely visual
+// emphasis — clicking "View in brief" scrolls the textarea to the section.
+function renderResearchAttentionPanel(briefText) {
+  var hostId = 'research-attention-panel';
+  var existing = document.getElementById(hostId);
+  if (existing) existing.remove();
+  if (!briefText || typeof briefText !== 'string') return;
+  var noteResearch = document.getElementById('note-research');
+  if (!noteResearch) return;
+
+  // Match the section from "## …FOR PHOEBE'S ATTENTION" up to the next
+  // "## " heading (or end of doc). Tolerant to emoji + capitalisation
+  // variants ("FOR PHOEBE'S ATTENTION" vs "For Phoebe's attention").
+  var re = /^##[ \t]*[^\n]*?(?:for[\s_-]*phoebe(?:'s)?[\s_-]*attention)[^\n]*\n([\s\S]*?)(?=^##[ \t]|\Z)/im;
+  var m = briefText.match(re);
+  if (!m) return;
+  var body = (m[1] || '').trim();
+  if (!body) return;
+
+  // If the body is just the "all clear" line, render a green check card
+  // instead of a warning. Less alarming, still informative.
+  var allClear = /nothing\s+(flagged|to\s+flag|concerning|of\s+concern)|all\s+clear|no\s+(red\s+)?flags/i.test(body);
+
+  // Render the body as basic HTML — bullet points (- or *) become a list,
+  // everything else stays inline. Keep it light, no full markdown.
+  var bodyHtml = body.split(/\n+/).map(function(line) {
+    var t = line.trim();
+    if (!t) return '';
+    if (/^[-*•]\s+/.test(t)) return '<li>' + escapeHtml(t.replace(/^[-*•]\s+/, '')) + '</li>';
+    return '<p style="margin:0 0 6px">' + escapeHtml(t) + '</p>';
+  }).join('');
+  // Wrap any sequence of <li> in a <ul>
+  bodyHtml = bodyHtml.replace(/(<li>[\s\S]+?<\/li>)(?!<li>)/g, '<ul style="margin:0;padding-left:20px;line-height:1.6">$1</ul>');
+
+  var panel = document.createElement('div');
+  panel.id = hostId;
+  if (allClear) {
+    panel.style.cssText = 'background:linear-gradient(135deg,#F0F9F0,#E8F4E8);border:1.5px solid #6FA56F;border-radius:12px;padding:14px 16px;margin-bottom:12px';
+    panel.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">' +
+        '<div style="font-size:18px">✅</div>' +
+        '<div style="font-family:var(--f-head);font-size:13px;color:#3F6B3F;font-weight:700">For Phoebe\'s attention — all clear</div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#3F6B3F;line-height:1.5">' + bodyHtml + '</div>';
+  } else {
+    panel.style.cssText = 'background:linear-gradient(135deg,#FFF8F0,#FFEFE0);border:1.5px solid #E08020;border-radius:12px;padding:14px 16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(224,128,32,0.15)';
+    panel.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+        '<div style="font-size:22px">⚠️</div>' +
+        '<div style="font-family:var(--f-head);font-size:14px;color:#A05010;font-weight:700">For Phoebe\'s attention</div>' +
+        '<span style="font-size:11px;color:#A05010;background:rgba(224,128,32,0.18);padding:2px 8px;border-radius:99px;font-weight:600;margin-left:auto">Read before the call</span>' +
+      '</div>' +
+      '<div style="font-size:13px;color:#5A2D08;line-height:1.55">' + bodyHtml + '</div>';
+  }
+  // Insert above the textarea
+  var parent = noteResearch.parentElement;
+  if (parent) parent.insertBefore(panel, noteResearch);
 }
 
 // Renders a "looks like we need more to work with" panel under the deep dive
@@ -14062,7 +14231,13 @@ function renderHome() {
       '<div style="font-family:var(--f-head);font-size:15px;color:#C9266B;font-weight:700">⚡ Recent activity</div>' +
       '<div style="font-size:11px;color:#ACA495">Calendly bookings · transcript pulls · AI briefs · session summaries</div>' +
     '</div>' +
-    '<div id="home-activity-feed"></div>' +
+    '<div id="home-activity-feed">' +
+      // Initial skeleton — replaced by renderActivityFeed() once data is in.
+      // Only shows briefly on first load before the in-memory log hydrates.
+      '<div class="hub-skeleton" style="height:18px;width:65%;margin:8px 0"></div>' +
+      '<div class="hub-skeleton" style="height:18px;width:80%;margin:8px 0"></div>' +
+      '<div class="hub-skeleton" style="height:18px;width:55%;margin:8px 0"></div>' +
+    '</div>' +
   '</div>';
 
   // Uncategorised Zooms — recordings without a matching client (linked from
