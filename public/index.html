@@ -13,7 +13,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v8700 — PeaBe rebrand, save-conflict fix, full-screen client portal, cohort notes, Zoom ±7d search, removable resources, less toast noise">
+<meta name="hmh-build" content="v8800 — PIN reset URL, get-clients prefix bug fix, Coaching program, Uncategorised Zooms attached-not-coincident, rich Calendly+Zoom data extraction, editable transcripts, backup download">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -512,6 +512,15 @@
           <div id="zoom-recordings-list"></div>
         </div>
 
+        <div class="settings-card" style="background:linear-gradient(135deg,#FFFDFA,#FDEFF5);border:1.5px solid rgba(236,44,138,0.18)">
+          <h4>💾 Backup all data — download a full snapshot</h4>
+          <p style="margin-bottom:12px">Belt-and-braces insurance. Downloads a single JSON file with EVERYTHING: every client, every program, every session note, plan, win, task, check-in, badge, plus your cohorts, plan templates, and activity log. Re-import isn't built yet, but if anything ever goes sideways with the server, this file is enough to rebuild from. Recommend running before each major sync or change.</p>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn-sm primary" onclick="downloadFullBackup()" id="backup-btn">💾 Download backup now</button>
+            <span id="backup-status" style="font-size:12px;color:var(--teal);font-weight:500"></span>
+          </div>
+        </div>
+
         <div class="settings-card" style="background:linear-gradient(135deg,#FFF8FB,#FDEFF5);border-color:rgba(236,44,138,0.2)">
           <h4>🔄 Run full sync — Calendly + Zoom + dedupe</h4>
           <p style="margin-bottom:8px">One-click: pulls every Calendly booking from the past year, every Zoom recording from the past year, creates client records for any that don't exist yet, attaches recordings to existing clients where it can, then merges any duplicates by email.</p>
@@ -763,6 +772,10 @@
         <div class="prog-opt selected" data-prog="90day" onclick="selectProg(this)">
           <div class="p-name">90-Day Business Builder</div>
           <div class="p-desc">1:1 coaching + 90-day plan</div>
+        </div>
+        <div class="prog-opt" data-prog="coaching" onclick="selectProg(this)">
+          <div class="p-name">💛 Coaching</div>
+          <div class="p-desc">General coaching · custom plan</div>
         </div>
         <div class="prog-opt" data-prog="mdc" onclick="selectProg(this)">
           <div class="p-name">Million Dollar Conspiracy</div>
@@ -1146,6 +1159,7 @@ var branded = (function() {
 // so the day count is mainly meaningful for the 90-day-style programs.
 var PROGRAMS = {
   '90day':      { label:'90-Day Business Builder',       short:'90-Day',       color:'prog-90day',   workbook:'90day',     icon:'📅', lengthDays: 90  },
+  'coaching':   { label:'Coaching',                      short:'Coaching',     color:'prog-90day',   workbook:'90day',     icon:'💛', lengthDays: null },
   'accelerator':{ label:'Business Growth Accelerator',   short:'Accelerator',  color:'prog-90day',   workbook:'90day',     icon:'🚀', lengthDays: 90  },
   'broker':     { label:'Broker Business Breakthrough',  short:'Broker',       color:'prog-90day',   workbook:'90day',     icon:'🏦', lengthDays: 90  },
   'happyhour':  { label:'Happy Hour',                    short:'Happy Hour',   color:'prog-happyhour',workbook:'happyhour', icon:'☀️', lengthDays: null }, // single 90-min session
@@ -1493,6 +1507,80 @@ async function runFullSync(dryRun) {
   } finally {
     if (btn)      { btn.disabled = false; btn.textContent = dryRun ? '👀 Dry run (preview)' : '🔄 Run full sync'; }
     if (otherBtn) { otherBtn.disabled = false; }
+  }
+}
+
+// =====================================================================
+// FULL BACKUP — downloads a single JSON file containing every piece of
+// platform state (server-side clients + device-local cohorts/templates/etc).
+// Phoebe runs this before any major change as a fallback. The file is
+// human-readable JSON, so even without a re-import path it's a forensic
+// archive she can hand to a developer if anything ever goes sideways.
+// =====================================================================
+async function downloadFullBackup() {
+  var btn    = document.getElementById('backup-btn');
+  var status = document.getElementById('backup-status');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Building backup…'; }
+  if (status) status.textContent = '';
+  try {
+    // 1. Pull the freshest server-side clients
+    var serverClients = [];
+    try {
+      var resp = await fetch('/api/get-clients');
+      if (resp.ok) {
+        var data = await resp.json();
+        serverClients = data.clients || [];
+      }
+    } catch(e) { console.warn('[backup] server fetch failed, using local only'); }
+    // 2. Local-storage state (cohorts, templates, activity, settings)
+    function getLS(key, fallback) {
+      try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+      catch(e) { return fallback; }
+    }
+    var dump = {
+      _format: 'peabe-coaching-hub-backup',
+      _version: 1,
+      _generatedAt: new Date().toISOString(),
+      _generatedBy: 'PeaBe Coaching Hub backup tool',
+      _hostname: window.location.host,
+      _build: (document.querySelector('meta[name="hmh-build"]') || {}).content || 'unknown',
+      // Server-side records (truth)
+      clients: serverClients,
+      clientsCountFromServer: serverClients.length,
+      // Local-cached client copy (would survive offline)
+      clientsLocalCache: getLS('hmh_clients_v2', []),
+      // Cohorts (currently localStorage-only — see migration plan)
+      cohorts: getLS('mdc_cohorts', []),
+      // Plan templates (localStorage-only)
+      planTemplates: getLS('hmh_plan_templates', []),
+      // Activity feed
+      activityLog: getLS('hmh_activity_log', []),
+      // Settings (excluding the PIN — that's not data, it's a credential)
+      coachPhone: localStorage.getItem('hmh_coach_phone') || '',
+      hubResources: getLS('hmh_hub_resources', []),
+      hubResourcesRemoved: getLS('hmh_resources_removed', []),
+      // Save queue (anything pending)
+      saveQueue: getLS('hmh_save_queue', []),
+      // Testing review notes (just to be thorough)
+      reviewNotes: getLS('hmh_review_notes', []),
+    };
+    var blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.href = url;
+    a.download = 'peabe-coaching-hub-backup-' + stamp + '.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(function() {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1500);
+    if (status) status.textContent = '✓ Downloaded · ' + serverClients.length + ' clients · ' + dump.cohorts.length + ' cohorts · ' + dump.planTemplates.length + ' templates · ' + Math.round(JSON.stringify(dump).length/1024) + ' KB';
+    if (typeof logActivity === 'function') logActivity('system', 'Full backup downloaded', { detail: serverClients.length + ' clients · ' + Math.round(JSON.stringify(dump).length/1024) + ' KB' });
+  } catch(e) {
+    if (status) { status.textContent = '⚠ Backup failed: ' + (e && e.message ? e.message : e); status.style.color = '#C0392B'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Download backup now'; }
   }
 }
 
@@ -1962,6 +2050,27 @@ async function enterClient() {
 
 window.addEventListener('load', async function() {
   var params = new URLSearchParams(window.location.search);
+  // ── PIN recovery: hub.phoebeblamey.com.au/?reset_pin=PB2025 (or any new PIN)
+  // resets the coach PIN to the value provided. Use this when you've changed
+  // your PIN and forgotten it. After running, the URL clears itself.
+  if (params.has('reset_pin')) {
+    var newPin = (params.get('reset_pin') || 'PB2025').toUpperCase().trim();
+    if (newPin.length >= 4 && newPin.length <= 20) {
+      localStorage.setItem('hmh_coach_pin', newPin);
+      // Strip the param from the address bar so it's not bookmarked / cached
+      var url = new URL(window.location.href);
+      url.searchParams.delete('reset_pin');
+      window.history.replaceState({}, document.title, url.toString());
+      // Visible confirmation — slightly delayed so the page renders first
+      setTimeout(function() {
+        if (typeof branded !== 'undefined') {
+          branded.success('Your coach PIN is now: ' + newPin + '\n\nUse it to sign in. You can change it again in Settings once you\'re back in.', { title:'PIN reset' });
+        } else {
+          alert('Coach PIN reset to: ' + newPin);
+        }
+      }, 200);
+    }
+  }
   var code = params.get('client');
   // Hide the coach portal card if the visitor came via the client login flow.
   // Triggers if any of these are true:
@@ -3699,11 +3808,12 @@ function renderClientProgram(client, prog) {
   // Program-aware "plan" heading. 90-day → "My 90-Day Roadmap", Audit →
   // "My Audit Action Plan", Builder 6M → "My 6-Month Roadmap", etc.
   var planHeading = 'My Plan';
-  if (prog.workbook === '90day') planHeading = 'My 90-Day Roadmap';
-  else if (prog.workbook === 'audit') planHeading = 'My Audit Action Plan';
-  else if (prog.program === 'builder-6m') planHeading = 'My 6-Month Roadmap';
+  if (prog.program === 'coaching')         planHeading = 'My Coaching Plan';
+  else if (prog.workbook === '90day')      planHeading = 'My 90-Day Roadmap';
+  else if (prog.workbook === 'audit')      planHeading = 'My Audit Action Plan';
+  else if (prog.program === 'builder-6m')  planHeading = 'My 6-Month Roadmap';
   else if (prog.program === 'accelerator') planHeading = 'My Growth Plan';
-  else if (prog.program === 'broker') planHeading = 'My Broker Roadmap';
+  else if (prog.program === 'broker')      planHeading = 'My Broker Roadmap';
 
   var firstName = (client.name||'').split(' ')[0] || 'My';
   var content = '';
@@ -4218,26 +4328,32 @@ async function checkUnmatchedZooms() {
   var slot = document.getElementById('home-unmatched-zoom');
   if (!slot) return;
   try {
-    var resp = await fetch('/api/zoom-list-recordings?days=30');
+    // Default 90-day window, configurable up to 180 by user override.
+    // The previous 30-day window missed older recordings that needed manual
+    // assignment — Phoebe has been doing sessions for months.
+    var windowDays = parseInt(localStorage.getItem('hmh_unmatched_zoom_days') || '90', 10);
+    var resp = await fetch('/api/zoom-list-recordings?days=' + windowDays);
     if (!resp.ok) return; // function not deployed or no Zoom config — silently skip
     var data = await resp.json();
     var recordings = data.meetings || [];
     if (!recordings.length) return;
-    // Find recordings whose start_time is within ±1 day of any client program's sessionDate.
-    // Anything else is "unmatched".
-    var matched = new Set();
+    // A recording is "matched" only if it's been EXPLICITLY attached to a
+    // client's session note via zoomMeetingId. Date-coincident-but-not-attached
+    // recordings stay in the unmatched list so Phoebe can choose where they go.
+    // (Previously a date match was enough to remove it from this list, which
+    // hid recordings that had never actually been linked to a client.)
+    var attached = new Set();
     (clients||[]).forEach(function(c) {
       (c.programs||[]).forEach(function(p) {
-        if (!p.sessionDate) return;
-        var sd = new Date(p.sessionDate).getTime();
-        recordings.forEach(function(r) {
-          if (!r.startTime) return;
-          var rd = new Date(r.startTime).getTime();
-          if (Math.abs(rd - sd) <= 86400000) matched.add(r.id || r.uuid);
+        (p.sessionNotes||[]).forEach(function(n) {
+          if (n.zoomMeetingId) attached.add(String(n.zoomMeetingId));
         });
       });
     });
-    var unmatched = recordings.filter(function(r){ return !matched.has(r.id || r.uuid) && r.hasRecording; });
+    var unmatched = recordings.filter(function(r){
+      var key = String(r.id || r.uuid || '');
+      return key && !attached.has(key) && r.hasRecording;
+    });
     if (!unmatched.length) { slot.style.display = 'none'; return; }
     renderUnmatchedZooms(unmatched);
   } catch(e) {
@@ -4306,18 +4422,23 @@ async function assignZoomToClient(meetingId, startTime, topic) {
       branded.error(data.error || 'Couldn\'t pull transcript');
       return;
     }
-    // Add a session note for this Zoom on the chosen program
+    // Add a session note for this Zoom on the chosen program. zoomMeetingId
+    // is critical — it's how the "Uncategorised Zooms" widget knows this
+    // recording is now attached and stops surfacing it as unmatched.
     prog.sessionNotes = prog.sessionNotes || [];
     prog.sessionNotes.push({
       id: 'sn-zoom-' + Date.now(),
       date: sessionDate,
-      text: '[Zoom: ' + (topic || 'Session') + '] — transcript pulled (' + (data.characterCount||'?') + ' chars). See client.zoomTranscript.',
+      text: '[Zoom: ' + (topic || 'Session') + '] — transcript pulled (' + (data.characterCount||'?') + ' chars).',
+      zoomMeetingId: String(meetingId),
+      zoomTopic: topic || '',
+      zoomTranscript: data.transcript || '',
       sharedWithClient: false,
       createdAt: new Date().toISOString()
     });
     await persistClient(client);
     logActivity('transcript', 'Transcript assigned to ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (topic||'Zoom session') + ' · ' + sessionDate });
-    branded.success('Transcript saved against ' + client.name + '\'s ' + ((PROGRAMS[prog.program]||{}).label || prog.program) + ' program.');
+    branded.success('Transcript saved against ' + client.name + '\'s ' + ((PROGRAMS[prog.program]||{}).label || prog.program) + ' program. Editable on the Session notes tab.');
     // Refresh
     if (typeof checkUnmatchedZooms === 'function') checkUnmatchedZooms();
     if (typeof renderHome === 'function') renderHome();
@@ -5170,14 +5291,60 @@ function renderSessionNotes(client, prog) {
               '<input type="url" value="'+(n.zoomUrl||'').replace(/"/g,'&quot;')+'" onchange="updateSessionMeta(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\',\'zoomUrl\',this.value)" placeholder="https://us02web.zoom.us/rec/share/…" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:var(--f-body);color:var(--magenta);background:var(--paper);outline:none;margin-top:3px"></div>' +
             '<div style="display:flex;align-items:flex-end;gap:6px"><button class="btn-sm" onclick="aiSummariseSession(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\')" title="Use Claude to summarise the session text and extract suggested actions">✦ AI summarise + suggest actions</button></div>' +
           '</div>' +
-          '<label style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em">AI session summary (client-visible)</label>' +
-          '<textarea onchange="updateSessionMeta(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\',\'aiSummary\',this.value)" placeholder="Plain-language summary the client will see — generate with the AI button or write your own…" style="width:100%;min-height:60px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--f-body);color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6;margin-top:3px;margin-bottom:8px">' + (n.aiSummary||'') + '</textarea>' +
-          '<label style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em">Suggested actions for client</label>' +
+          // Editable raw transcript — anything Phoebe pulled from Zoom or pasted
+          // manually. Edit it freely before generating an AI summary or
+          // suggested actions; client never sees the raw transcript.
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">' +
+            '<label style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em">📜 Session transcript (your edits land here)</label>' +
+            '<button class="btn-sm" onclick="pullTranscriptForNote(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\')" style="font-size:11px;padding:3px 9px" title="Pull the Zoom transcript for this session date and save it here for editing">🎬 Pull from Zoom</button>' +
+          '</div>' +
+          '<textarea onchange="updateSessionMeta(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\',\'zoomTranscript\',this.value)" placeholder="Pull from Zoom or paste a transcript here. Edit freely before AI summarise — the client only ever sees the summary, not this raw text." style="width:100%;min-height:80px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--f-body);color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6;margin-bottom:8px">' + (n.zoomTranscript||'') + '</textarea>' +
+          '<label style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em">Session summary (client-visible) <span style="font-weight:500;color:var(--stone);text-transform:none;letter-spacing:0">— edit before sharing</span></label>' +
+          '<textarea onchange="updateSessionMeta(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\',\'aiSummary\',this.value)" placeholder="Plain-language summary the client will see. Generate with the AI button above or write your own. Always editable — change anything before clicking Share with client." style="width:100%;min-height:60px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--f-body);color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6;margin-top:3px;margin-bottom:8px">' + (n.aiSummary||'') + '</textarea>' +
+          '<label style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em">Suggested actions for client <span style="font-weight:500;color:var(--stone);text-transform:none;letter-spacing:0">— edit each before sharing</span></label>' +
           '<div style="margin-top:6px">' + actionsList + '</div>' +
           '<button class="btn-sm" onclick="addSessionAction(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\')" style="margin-top:4px;font-size:11px">+ Add action</button>' +
         '</div>' +
         '</div>';
     }).join('');
+}
+
+// Pull a Zoom transcript directly into a specific session note. Uses the
+// note's `date` (or program's sessionDate as fallback) to find the right
+// recording within a ±7-day window. Editable as soon as it lands.
+async function pullTranscriptForNote(clientId, progId, noteId) {
+  var client = clients.find(function(c){return c.id===clientId;});
+  var prog   = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  var note   = prog?(prog.sessionNotes||[]).find(function(n){return n.id===noteId;}):null;
+  if (!note) return;
+  var btn = event && event.target;
+  var prevText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling…'; }
+  try {
+    var dateForSearch = note.date || prog.sessionDate || new Date().toISOString().split('T')[0];
+    var resp = await fetch('/api/zoom-transcript', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ clientId: client.id, sessionDate: dateForSearch, meetingId: note.zoomMeetingId || undefined })
+    });
+    var data = await resp.json();
+    if (!resp.ok || !data.success) {
+      branded.error(data.error || 'Could not pull transcript', { title:'Transcript not found' });
+      return;
+    }
+    note.zoomTranscript = data.transcript || '';
+    note.zoomMeetingTopic = data.meetingTopic || note.zoomMeetingTopic;
+    note.zoomMeetingDate = data.meetingDate || note.zoomMeetingDate;
+    note.zoomTranscriptFetchedAt = new Date().toISOString();
+    await persistClient(client);
+    if (typeof logActivity === 'function') logActivity('transcript', 'Transcript pulled for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (data.meetingTopic||'') + ' · ' + (data.characterCount||'?') + ' chars' });
+    branded.success('Transcript pulled (' + (data.characterCount||'?') + ' chars). Edit it freely above before generating a summary.', { title:'Got it' });
+    renderSessionNotes(client, prog);
+  } catch (e) {
+    branded.error('Could not reach the transcript function. ' + (e && e.message ? e.message : ''));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = prevText; }
+  }
 }
 
 // Per-session metadata (Zoom URL, AI summary). Generic key/value writer.
@@ -5241,8 +5408,11 @@ async function aiSummariseSession(clientId, progId, noteId) {
   if(!prog) return;
   var note = (prog.sessionNotes||[]).find(function(n){return n.id===noteId;});
   if(!note) return;
-  if (!note.text || note.text.trim().length < 30) {
-    branded.alert('Add some session notes first — there\'s nothing to summarise yet.');
+  // Source-of-truth priority: Phoebe's edited transcript (most accurate),
+  // then the Zoom transcript field, then the raw notes textarea.
+  var sourceText = (note.zoomTranscript && note.zoomTranscript.trim()) || (note.text && note.text.trim()) || '';
+  if (sourceText.length < 30) {
+    branded.alert('Add some session notes or pull a Zoom transcript first — there\'s nothing to summarise yet.');
     return;
   }
   var btn = event && event.target;
@@ -5251,10 +5421,13 @@ async function aiSummariseSession(clientId, progId, noteId) {
     var resp = await fetch('/api/ai-call', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        system: 'You are Phoebe Blamey\'s coaching assistant. Australian English. Warm, direct, no jargon. The client is a real human business owner. Return ONLY a JSON object with two keys: "summary" (2 short paragraphs the client can read after the session — no headings, no preamble) and "actions" (an array of 3-5 short imperative action sentences they can do this week).',
-        messages: [{ role:'user', content: 'Coach session notes for ' + (client.name||'a client') + ' (' + (PROGRAMS[prog.program]?PROGRAMS[prog.program].label:prog.program) + '):\n\n' + note.text }]
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        system: 'You are Phoebe Blamey\'s coaching assistant. Australian English. Warm, direct, no jargon. The client is a real human business owner reading this after their session. ' +
+          'You\'re working from a Zoom auto-transcript or session notes — these can have transcription errors (wrong names, garbled words, "the" instead of "she" etc). Use context to figure out what was actually said; ignore obvious transcription glitches. ' +
+          'Return ONLY a JSON object with two keys: "summary" (2-3 short paragraphs the client can read after the session — no headings, no preamble, captures the key insights and what they committed to) and "actions" (an array of 3-5 short imperative action sentences they can do this week — specific, named, doable). ' +
+          'Phoebe will REVIEW and edit before sending to the client, so accuracy matters more than polish.',
+        messages: [{ role:'user', content: 'Session source for ' + (client.name||'a client') + ' (' + (PROGRAMS[prog.program]?PROGRAMS[prog.program].label:prog.program) + '):\n\n' + sourceText }]
       })
     });
     var data = await resp.json();

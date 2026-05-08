@@ -138,6 +138,19 @@ export default async (req: Request) => {
         });
       });
 
+      // Extract richer recording metadata once — used by both match + create paths
+      const recDuration: number = rec.duration || 0;
+      const recHostEmail: string = rec.host_email || "";
+      const recPlayUrl: string = rec.share_url || "";
+      const recPasscode: string = rec.recording_play_passcode || "";
+      // Pull file URLs for the playable formats so Phoebe can link out from a
+      // session note without leaving the platform.
+      const playFiles = (rec.recording_files || []).filter((f: any) =>
+        f.file_type === "MP4" || f.file_type === "M4A" || f.file_type === "TRANSCRIPT" || f.file_type === "CC");
+      const recVideoFile = playFiles.find((f: any) => f.file_type === "MP4");
+      const recVideoUrl: string = recVideoFile?.play_url || recVideoFile?.download_url || "";
+      const recHasTranscript: boolean = playFiles.some((f: any) => f.file_type === "TRANSCRIPT" || f.recording_type === "audio_transcript");
+
       if (candidate) {
         stats.matched++;
         const targetProg = (candidate.programs || []).find((p: any) => {
@@ -155,12 +168,19 @@ export default async (req: Request) => {
             targetProg.sessionNotes.push({
               id: `sn-zoomsync-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,
               date: sessionDate,
-              text: `[Zoom: ${topic}] — ${rec.duration ? rec.duration + ' min · ' : ''}auto-attached by sync`,
+              text: `[Zoom: ${topic}] — ${recDuration ? recDuration + ' min · ' : ''}auto-attached by sync`,
               sharedWithClient: false,
               zoomMeetingId: recId,
               zoomTopic: topic,
+              zoomUrl: recPlayUrl,
+              zoomVideoUrl: recVideoUrl,
+              zoomPasscode: recPasscode,
+              zoomDuration: recDuration,
+              hasTranscript: recHasTranscript,
               createdAt: new Date().toISOString(),
             });
+            // Also pin the Zoom join URL on the program if not yet set
+            if (!targetProg.zoomJoin && recPlayUrl) targetProg.zoomJoin = recPlayUrl;
             candidate.updatedAt = new Date().toISOString();
             if (!dryRun) await store.set(candidate.id, JSON.stringify(candidate));
             sample.push({ kind: "matched-attached", topic, date: sessionDate, clientName: candidate.name });
@@ -189,22 +209,28 @@ export default async (req: Request) => {
           socials: { website:"", linkedin:"", instagram:"", whatsapp:"" },
           programs: [{
             id: `prog-zoom-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,
-            program: "adhoc",
-            label: "Ad Hoc Coaching",
-            workbook: "session",
+            program: "coaching",
+            label: "Coaching",
+            workbook: "90day",
             sessionDate,
             status: "active",
             locked: false,
-            intake: `Auto-created from Zoom recording · ${topic}`,
+            intake: `Auto-created from Zoom recording · ${topic}\nDuration: ${recDuration} minutes\nHost: ${recHostEmail}`,
+            zoomJoin: recPlayUrl,
             notes: { themes:"", leaks:"", opps:"", patterns:"", private:"Created from Zoom — no email or contact details captured. Phoebe to enrich.", research:"" },
             plan: [], taskDone: {}, wins: [],
             sessionNotes: [{
               id: `sn-zoom-${Date.now()}`,
               date: sessionDate,
-              text: `[Zoom: ${topic}] — ${rec.duration ? rec.duration + ' min · ' : ''}auto-imported by sync`,
+              text: `[Zoom: ${topic}] — ${recDuration ? recDuration + ' min · ' : ''}auto-imported by sync`,
               sharedWithClient: false,
               zoomMeetingId: recId,
               zoomTopic: topic,
+              zoomUrl: recPlayUrl,
+              zoomVideoUrl: recVideoUrl,
+              zoomPasscode: recPasscode,
+              zoomDuration: recDuration,
+              hasTranscript: recHasTranscript,
               createdAt: new Date().toISOString(),
             }],
             createdAt: new Date().toISOString(),

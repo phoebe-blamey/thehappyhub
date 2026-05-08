@@ -24,8 +24,9 @@ const PROGRAM_FROM_EVENT_NAME = (name: string): { program: string; label: string
   if (n.includes("podcast")) return { program: "podcast", label: "Podcast Recording", workbook: "none" };
   if (n.includes("partner")) return { program: "partner", label: "Partner Meeting", workbook: "none" };
   if (n.includes("research")) return { program: "research", label: "Research Chat", workbook: "none" };
-  // Default: an ad-hoc coaching session
-  return { program: "adhoc", label: "Ad Hoc Coaching", workbook: "session" };
+  if (n.includes("coaching") || n.includes("session")) return { program: "coaching", label: "Coaching", workbook: "90day" };
+  // Default: general coaching catch-all (was "Ad Hoc" — renamed for client-friendly tone)
+  return { program: "coaching", label: "Coaching", workbook: "90day" };
 };
 
 function generateAccessCode(name: string): string {
@@ -90,14 +91,59 @@ export default async (req: Request) => {
       if (!inviteesResp.ok) { stats.errors++; continue; }
       const inviteesJ = await inviteesResp.json();
       const invitees: any[] = inviteesJ.collection || [];
+      // Pull rich event metadata once per event (used for both create + update paths)
+      const evName: string = ev.name || "";
+      const startTime: string = ev.start_time || "";
+      const endTime: string = ev.end_time || "";
+      const sessionDate = startTime ? startTime.split("T")[0] : new Date().toISOString().split("T")[0];
+      const eventStatus: string = ev.status || ""; // active / canceled
+      const cancellation = ev.cancellation || null;
+      // Zoom join URL — Calendly stores it on the event as `location.join_url`
+      // when the event type is configured to use Zoom integration. Falls back
+      // to `location.location` for free-form locations.
+      const loc: any = ev.location || {};
+      const zoomJoinUrl: string = loc.join_url || (typeof loc.location === "string" && loc.location.includes("zoom.us") ? loc.location : "");
+      const locationDisplay: string = loc.location || loc.join_url || (loc.type ? `[${loc.type}]` : "");
+      const meta = PROGRAM_FROM_EVENT_NAME(evName);
+
+      // Build a structured intake string + Q&A map from the invitee answers.
+      // Captures EVERYTHING the booking form asked, not just business/phone.
+      function buildIntake(inv: any) {
+        const qas: any[] = inv.questions_and_answers || [];
+        const lines: string[] = [];
+        const fields: Record<string, string> = {};
+        if (evName) lines.push(`Booked: ${evName}`);
+        if (startTime) lines.push(`Session: ${new Date(startTime).toLocaleString("en-AU")}`);
+        if (locationDisplay) lines.push(`Location: ${locationDisplay}`);
+        if (inv.timezone) lines.push(`Client timezone: ${inv.timezone}`);
+        if (inv.payment && inv.payment.amount) lines.push(`Payment: ${inv.payment.currency || ""}${inv.payment.amount} (${inv.payment.successful ? "paid" : inv.payment.status || "pending"})`);
+        for (const q of qas) {
+          const question = (q.question || "").trim();
+          const answer = (q.answer || "").trim();
+          if (!question || !answer) continue;
+          lines.push(`${question}: ${answer}`);
+          // Best-guess field extraction
+          const ql = question.toLowerCase();
+          if (ql.includes("business name")) fields.businessName = answer;
+          else if (ql.includes("business") && (ql.includes("nature") || ql.includes("about") || ql.includes("describe"))) fields.businessNature = answer;
+          else if (ql.includes("phone") || ql.includes("mobile") || ql.includes("contact number")) fields.phone = answer;
+          else if (ql.includes("website")) fields.website = answer;
+          else if (ql.includes("linkedin")) fields.linkedin = answer;
+          else if (ql.includes("instagram")) fields.instagram = answer;
+          else if (ql.includes("facebook")) fields.facebook = answer;
+          else if (ql.includes("change") && ql.includes("want")) fields.wantToChange = answer;
+          else if (ql.includes("biggest") && (ql.includes("goal") || ql.includes("focus"))) fields.bigGoal = answer;
+          else if (ql.includes("revenue") || ql.includes("turnover")) fields.revenue = answer;
+          else if (ql.includes("how did you hear") || ql.includes("referred")) fields.referralSource = answer;
+        }
+        return { intakeText: lines.join("\n"), fields };
+      }
+
       for (const inv of invitees) {
         const email: string = (inv.email || "").toLowerCase().trim();
         const name:  string = (inv.name  || "").trim();
         if (!email) { stats.skippedNoEmail++; continue; }
-        const evName: string = ev.name || "";
-        const startTime: string = ev.start_time || "";
-        const sessionDate = startTime ? startTime.split("T")[0] : new Date().toISOString().split("T")[0];
-        const meta = PROGRAM_FROM_EVENT_NAME(evName);
+        const { intakeText, fields } = buildIntake(inv);
 
         const existing = byEmail[email];
         if (existing) {
@@ -106,6 +152,15 @@ export default async (req: Request) => {
           const dup = existing.programs.find((p: any) =>
             p.program === meta.program && p.sessionDate === sessionDate);
           if (dup) {
+            // Even if program exists, top up any missing top-level data.
+            if (!existing.phone && fields.phone) existing.phone = fields.phone;
+            if (!existing.biz && (fields.businessName || fields.businessNature)) existing.biz = fields.businessName || fields.businessNature;
+            existing.socials = existing.socials || {};
+            ["website","linkedin","instagram","facebook"].forEach((k) => {
+              if (!existing.socials[k] && (fields as any)[k]) existing.socials[k] = (fields as any)[k];
+            });
+            existing.updatedAt = new Date().toISOString();
+            if (!dryRun) await store.set(existing.id, JSON.stringify(existing));
             stats.skippedExisting++;
             continue;
           }
@@ -115,23 +170,36 @@ export default async (req: Request) => {
             label: meta.label,
             workbook: meta.workbook,
             sessionDate,
-            status: "active",
+            sessionEndTime: endTime,
+            status: eventStatus === "canceled" ? "complete" : "active",
             locked: false,
-            intake: `Auto-imported from Calendly · ${evName}`,
-            notes: { themes:"", leaks:"", opps:"", patterns:"", private:"", research:"" },
+            intake: intakeText,
+            websiteUrl: fields.website || "",
+            zoomJoin: zoomJoinUrl,
+            calendlyEventUri: ev.uri || "",
+            calendlyEventName: evName,
+            notes: { themes:"", leaks:"", opps: fields.wantToChange ? `Client wants to change: ${fields.wantToChange}` : "", patterns:"", private:"", research:"" },
             plan: [], taskDone: {}, sessionNotes: [], wins: [],
             createdAt: new Date().toISOString(),
             source: "calendly-sync"
           };
+          if (cancellation) newProg.cancellation = { reason: cancellation.reason || "", canceledAt: cancellation.created_at || "" };
           if (meta.workbook === "mdc") newProg.mdcWorkbook = { businessSnapshot:"", vision:"", meNow:"", sprintFocus:"", weeklyCheckins:{} };
           if (meta.workbook === "happyhour") newProg.happyHour = { assets:"", discussed:"", actions:"", resources:"" };
           existing.programs.push(newProg);
+          // Top up missing top-level fields — never overwrite existing values
+          if (!existing.phone && fields.phone) existing.phone = fields.phone;
+          if (!existing.biz && (fields.businessName || fields.businessNature)) existing.biz = fields.businessName || fields.businessNature;
+          existing.socials = existing.socials || {};
+          ["website","linkedin","instagram","facebook"].forEach((k) => {
+            if (!existing.socials[k] && (fields as any)[k]) existing.socials[k] = (fields as any)[k];
+          });
           existing.updatedAt = new Date().toISOString();
           if (!dryRun) await store.set(existing.id, JSON.stringify(existing));
           stats.updated++;
           sample.push({ kind: "updated", name: existing.name, email, reason: `+${meta.label} · ${sessionDate}` });
         } else {
-          // Create path
+          // Create path — populate every field we have
           const id = `client-cal-${email.replace(/[^a-z0-9]/g, "-")}-${Date.now()}`;
           const newProg: any = {
             id: `prog-${meta.program}-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,
@@ -139,26 +207,40 @@ export default async (req: Request) => {
             label: meta.label,
             workbook: meta.workbook,
             sessionDate,
-            status: "active",
+            sessionEndTime: endTime,
+            status: eventStatus === "canceled" ? "complete" : "active",
             locked: false,
-            intake: `Auto-imported from Calendly · ${evName}`,
-            notes: { themes:"", leaks:"", opps:"", patterns:"", private:"", research:"" },
+            intake: intakeText,
+            websiteUrl: fields.website || "",
+            zoomJoin: zoomJoinUrl,
+            calendlyEventUri: ev.uri || "",
+            calendlyEventName: evName,
+            notes: { themes:"", leaks:"", opps: fields.wantToChange ? `Client wants to change: ${fields.wantToChange}` : "", patterns:"", private:"", research:"" },
             plan: [], taskDone: {}, sessionNotes: [], wins: [],
             createdAt: new Date().toISOString(),
             source: "calendly-sync"
           };
+          if (cancellation) newProg.cancellation = { reason: cancellation.reason || "", canceledAt: cancellation.created_at || "" };
           if (meta.workbook === "mdc") newProg.mdcWorkbook = { businessSnapshot:"", vision:"", meNow:"", sprintFocus:"", weeklyCheckins:{} };
           if (meta.workbook === "happyhour") newProg.happyHour = { assets:"", discussed:"", actions:"", resources:"" };
           const record: any = {
             id,
             name: name || email.split("@")[0],
             email,
-            phone: inv.text_reminder_number || "",
-            biz: "",
+            phone: fields.phone || inv.text_reminder_number || "",
+            biz: fields.businessName || fields.businessNature || "",
             clientAccess: generateAccessCode(name || email),
             status: "active",
             health: "green",
-            socials: { website:"", linkedin:"", instagram:"", whatsapp:"" },
+            timezone: inv.timezone || "",
+            referralSource: fields.referralSource || "",
+            socials: {
+              website: fields.website || "",
+              linkedin: fields.linkedin || "",
+              instagram: fields.instagram || "",
+              facebook: fields.facebook || "",
+              whatsapp: ""
+            },
             programs: [newProg],
             tasks: [],
             coachNotes: [],
@@ -166,16 +248,6 @@ export default async (req: Request) => {
             updatedAt: new Date().toISOString(),
             source: "calendly-sync"
           };
-          // Pull name/business from question_and_answers if available
-          const qas: any[] = inv.questions_and_answers || [];
-          for (const q of qas) {
-            const qText = (q.question || "").toLowerCase();
-            const a = q.answer || "";
-            if (!a) continue;
-            if (qText.includes("business name") || qText.includes("business")) record.biz = record.biz || a;
-            if (qText.includes("phone")) record.phone = record.phone || a;
-            if (qText.includes("website")) record.programs[0].websiteUrl = a;
-          }
           if (!dryRun) {
             await store.set(record.id, JSON.stringify(record));
             byEmail[email] = record;
