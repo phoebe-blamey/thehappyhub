@@ -64,8 +64,10 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 .hub.active { display: flex; flex-direction: column; min-height: 100vh; overflow-y: auto; }
 .topbar { background: var(--magenta); color: white; padding: 0 24px; height: 54px;
   display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; flex-shrink: 0; }
-.topbar-logo { font-family: var(--f-head); font-size: 17px; font-weight: 700; flex: 1; }
-.topbar-logo span { color: var(--sunshine); }
+.topbar-logo { font-family: var(--f-head); font-size: 17px; font-weight: 700; }
+.topbar-logo:hover { opacity: 0.9; }
+.topbar-logo-text { letter-spacing: 0.02em; }
+@media (max-width: 600px) { .topbar-logo-text { display: none; } }
 .topbar-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   padding: 3px 10px; border-radius: 99px; }
 .badge-coach { background: var(--hot-pink); }
@@ -197,6 +199,73 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   30%  { background: #FFFBE8; transform: scale(1.02); }
   100% { background: white;   transform: scale(1); }
 }
+/* ============================================================
+   v10000 — visual pass on the client portal: type hierarchy,
+   breathing room, brand-colour rationing. Pulled into a single
+   block so it's easy to find and tune.
+   ============================================================ */
+
+/* Section h3 — standardised across every client-section block.
+   Was a mix of font-sizes and margins before; now consistently
+   compact, magenta, with a tight bottom margin. */
+#client-hub .client-section h3 {
+  font-family: var(--f-head);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--magenta);
+  margin: 0 0 12px;
+  letter-spacing: 0.02em;
+}
+
+/* Sections themselves — slightly more vertical breathing, softer
+   border so two adjacent sections read as siblings, not a tall list */
+#client-hub .client-section {
+  background: white;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(201,38,107,0.04);
+}
+
+/* Three-card story — slightly tighter, equal heights via grid */
+#client-hub .three-card-story {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+#client-hub .story-card {
+  padding: 16px 18px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+}
+#client-hub .story-card-icon { font-size: 20px; line-height: 1; margin-bottom: 6px; }
+#client-hub .story-card-title { font-family: var(--f-head); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px; }
+#client-hub .story-card-body { font-size: 13px; line-height: 1.55; flex: 1; }
+
+/* Greeting strip — slimmer than before */
+#client-hub .client-greeting-strip {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+}
+#client-hub .client-greeting-hi { font-size: clamp(16px, 2.2vw, 19px); margin-bottom: 2px; }
+
+/* Smaller hero on phones */
+@media (max-width: 600px) {
+  #client-hub .client-hero { padding: 14px 16px 12px !important; }
+  #client-hub #client-hero-name { font-size: 18px !important; }
+  #client-hub .client-hero-tagline { font-size: 12px !important; }
+}
+
+/* Coach side: per-client status strip — make it more compact horizontally
+   so the four pills don't take so much vertical real estate */
+#client-status-strip > div {
+  padding: 10px 14px !important;
+}
+
 /* Live-sync indicator — a tiny pulsing dot that appears next to the topbar
    date while the platform is pulling fresh data from Netlify Blobs. Subtle
    so it doesn't feel like the page is misbehaving, just enough to confirm

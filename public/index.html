@@ -25,7 +25,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v9900 — editable intake · deep dive auto-fills profile · nurture status filter · special-notes popup · note jump-to · research copy + expand · pretty locked banner · compact check-in">
+<meta name="hmh-build" content="v10000 — full outstandings batch: tab reorder · zoom in hero · auto-nurture · PB logo · per-client settings · ask-phoebe AI · inline reply · cohort email broadcast · badge image upload · reminder cron · tighter voice · web-design pass">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -70,8 +70,11 @@
 <!-- ========== COACH HUB ========== -->
 <div class="hub" id="coach-hub">
   <div class="topbar">
-    <div class="topbar-logo">PeaBe <span>Coaching Hub</span></div>
-    <span class="topbar-badge badge-coach">Coach View</span>
+    <a href="/" class="topbar-logo" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit" title="PeaBe Coaching Hub">
+      <img src="/icons/peabe.svg" alt="PeaBe" style="width:32px;height:32px;display:block;flex-shrink:0">
+      <span class="topbar-logo-text" style="font-family:var(--f-head);font-size:15px;font-weight:700;color:white">Hub</span>
+    </a>
+    <span class="topbar-badge badge-coach">Coach</span>
     <span class="topbar-date" id="coach-topbar-date" style="font-size:11px;color:rgba(255,255,255,0.75);font-weight:500;letter-spacing:0.01em;margin-left:4px" title="Today"></span>
     <button id="coach-search-trigger" onclick="openCoachSearch()" title="Search clients, tasks, settings (⌘K / Ctrl+K)" style="margin-left:auto;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.95);border:1px solid rgba(255,255,255,0.25);font-size:12px;padding:5px 12px 5px 10px;border-radius:99px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--f-body)">
       🔎 <span class="search-trigger-label">Search</span> <span style="opacity:0.7;font-size:10px;border:1px solid rgba(255,255,255,0.3);padding:1px 5px;border-radius:4px;margin-left:2px" class="search-trigger-shortcut">⌘K</span>
@@ -433,6 +436,15 @@
           <div class="vis-bar vis-cf"><span>✅ Client facing</span> — session summary shared with client</div>
           <div id="happyhour-content"></div>
         </div>
+
+        <!-- PER-CLIENT SETTINGS TAB — consolidated profile + preferences for
+             the active client. Phoebe asked for this so she doesn't have to
+             dive into the Edit Client modal every time she wants to set
+             special notes or change a status. -->
+        <div class="tab-pane" id="tab-client-settings">
+          <div class="vis-bar vis-co"><span>🔒 Coach only</span> — profile, preferences, and account-level actions for this client</div>
+          <div id="client-settings-content"></div>
+        </div>
         </div><!-- /detail-content-wrap -->
       </div><!-- /page-client-detail -->
 
@@ -554,8 +566,11 @@
             <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600;list-style:none">+ New custom badge</summary>
             <div style="margin-top:10px;padding:14px;background:var(--marshmallow);border-radius:10px">
               <div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:10px;margin-bottom:8px">
-                <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px">Emoji</label>
-                  <input id="cb-icon" maxlength="3" placeholder="🌸" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-size:20px;text-align:center;background:var(--paper);outline:none"></div>
+                <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px">Emoji or image</label>
+                  <input id="cb-icon" maxlength="3" placeholder="🌸" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-size:20px;text-align:center;background:var(--paper);outline:none">
+                  <input type="file" id="cb-icon-upload" accept="image/png,image/svg+xml,image/jpeg,image/webp" onchange="handleBadgeIconUpload(event)" style="display:none">
+                  <button type="button" onclick="document.getElementById('cb-icon-upload').click()" class="btn-sm" style="font-size:10px;padding:4px 8px;width:100%;margin-top:4px">📤 Upload image</button>
+                </div>
                 <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px">Badge name</label>
                   <input id="cb-name" placeholder="e.g. Brave Moment" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none"></div>
                 <div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px">Tier</label>
@@ -753,7 +768,10 @@
      The hero + topbar are persistent; only the content + sub-nav swap. -->
 <div class="hub" id="client-hub">
   <div class="topbar">
-    <div class="topbar-logo">PeaBe <span>Coaching Hub</span></div>
+    <a href="/" class="topbar-logo" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit" title="PeaBe Coaching Hub">
+      <img src="/icons/peabe.svg" alt="PeaBe" style="width:32px;height:32px;display:block;flex-shrink:0">
+      <span class="topbar-logo-text" style="font-family:var(--f-head);font-size:15px;font-weight:700;color:white">Hub</span>
+    </a>
     <span class="topbar-badge badge-client" id="client-topbar-prog">My Hub</span>
     <span class="topbar-date" id="client-topbar-date" style="font-size:11px;color:rgba(255,255,255,0.75);font-weight:500;letter-spacing:0.01em;margin-left:4px" title="Today"></span>
     <!-- Next-session pill — populated live by updateClientNextSessionPill().
@@ -766,23 +784,26 @@
     <button class="btn-logout" onclick="logout()">Sign out</button>
   </div>
   <div class="client-layout">
-    <div class="client-hero" style="background:var(--magenta);color:white;padding:24px 24px 22px">
+    <div class="client-hero" style="background:var(--magenta);color:white;padding:20px 24px 18px">
       <div class="client-hero-inner">
-        <div class="client-hero-prog" id="client-hero-prog">My Hub</div>
-        <h2 id="client-hero-name" style="font-family:var(--f-head);font-size:clamp(22px,4vw,32px);margin-bottom:4px">Your Hub</h2>
-        <p class="client-hero-tagline" id="client-hero-tagline">You're good at what you do. Let's make your money reflect it.</p>
+        <div class="client-hero-prog" id="client-hero-prog" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;opacity:0.8;margin-bottom:2px">My Hub</div>
+        <h2 id="client-hero-name" style="font-family:var(--f-head);font-size:clamp(20px,3.2vw,26px);font-weight:700;margin:0 0 2px;line-height:1.15">Your Hub</h2>
+        <p class="client-hero-tagline" id="client-hero-tagline" style="font-size:13px;opacity:0.9;line-height:1.4;margin:0">You're good at what you do. Let's make your money reflect it.</p>
         <div id="client-hero-progress-wrap"></div>
+        <!-- Quick links rail in the hero — Zoom join when one's pinned to
+             the active program, plus future links. Always-visible so clients
+             never have to hunt for the join button on session day. -->
+        <div id="client-hero-links" style="display:none;margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center"></div>
         <!-- Earned-only badge ribbon — kept compact so the hero stays a hero -->
         <div id="client-hero-badges-wrap"></div>
         <!-- "My Why" pin — promoted from inside each program into the hero
              so the client's reason-for-being is visible from every tab.
              Click to edit inline. Always rendered (shows "+ Add my why"
              prompt if empty), so clients see what they could write here. -->
-        <div id="client-hero-why-wrap" style="margin-top:14px;background:rgba(255,255,255,0.14);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.22);border-radius:14px;padding:12px 16px;display:flex;align-items:flex-start;gap:12px">
-          <span style="font-size:20px;line-height:1;flex-shrink:0;margin-top:1px">💛</span>
+        <div id="client-hero-why-wrap" style="margin-top:10px;background:rgba(255,255,255,0.13);backdrop-filter:blur(2px);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:9px 14px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:16px;line-height:1;flex-shrink:0">💛</span>
           <div style="flex:1;min-width:0">
-            <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.85;margin-bottom:2px">My why</div>
-            <div id="client-hero-why-text" style="font-size:14px;line-height:1.4;font-style:italic;cursor:pointer" onclick="editClientWhyFromHero()" title="Click to edit">+ Add my why</div>
+            <div id="client-hero-why-text" style="font-size:13px;line-height:1.4;font-style:italic;cursor:pointer;opacity:0.95" onclick="editClientWhyFromHero()" title="Click to edit">+ Add my why</div>
           </div>
         </div>
       </div>
@@ -795,13 +816,12 @@
       <button id="client-new-note-action" class="btn-sm primary" style="font-size:11px;padding:4px 12px">Read it</button>
       <button onclick="dismissNewNoteBanner()" class="btn-sm" style="font-size:11px;padding:4px 10px;background:white;color:var(--stone)">Dismiss</button>
     </div>
-    <!-- Top-level tab nav: Summary | My Programs | Settings -->
+    <!-- Top-level tab nav: Summary | My Programs | My to-dos | Settings -->
     <div class="client-tabs" style="background:var(--marshmallow);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto">
-      <button class="client-tab active" data-ctab="summary" onclick="switchClientTab('summary')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:600;color:var(--magenta);border-bottom:3px solid var(--hot-pink);cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">🏠 Summary</button>
-      <button class="client-tab" data-ctab="todos" onclick="switchClientTab('todos')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">✅ My to-dos <span id="client-tab-todos-count" style="display:none;font-size:10px;font-weight:700;background:var(--hot-pink);color:white;padding:1px 7px;border-radius:99px;line-height:1.4"></span></button>
-      <button class="client-tab" data-ctab="wins" onclick="switchClientTab('wins')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">🏆 Wins</button>
-      <button class="client-tab" data-ctab="programs" onclick="switchClientTab('programs')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">📚 My Programs</button>
-      <button class="client-tab" data-ctab="settings" onclick="switchClientTab('settings')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;margin-left:auto">⚙️ Settings</button>
+      <button class="client-tab active" data-ctab="summary"  onclick="switchClientTab('summary')"  style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:600;color:var(--magenta);border-bottom:3px solid var(--hot-pink);cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">🏠 Summary</button>
+      <button class="client-tab"        data-ctab="programs" onclick="switchClientTab('programs')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">📚 My Programs</button>
+      <button class="client-tab"        data-ctab="todos"    onclick="switchClientTab('todos')"    style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">✅ My to-dos <span id="client-tab-todos-count" style="display:none;font-size:10px;font-weight:700;background:var(--hot-pink);color:white;padding:1px 7px;border-radius:99px;line-height:1.4"></span></button>
+      <button class="client-tab"        data-ctab="settings" onclick="switchClientTab('settings')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;margin-left:auto">⚙️ Settings</button>
     </div>
     <!-- Sub-nav for the Programs tab — list of all programs the client is in -->
     <div id="client-prog-nav-wrap" style="display:none;background:var(--paper);border-bottom:1px solid var(--border-soft);padding:10px 24px;overflow-x:auto;align-items:center;gap:8px">
@@ -2867,18 +2887,42 @@ var BADGES = {
 // ============================================================
 var PHOEBE_VOICE = (
   "Voice and style — write as if Phoebe Blamey wrote it herself.\n" +
-  "- Australian English. organise / prioritise / colour / cosy. Not US spellings.\n" +
-  "- Warm, direct, conversational. No corporate jargon. NEVER use: leverage, synergy, ecosystem, robust, unlock, level up, game-changer, deep-dive (as a verb), deliverables, KPIs unless quoting.\n" +
-  "- Smart, real, empowering. She's a financial expert + business coach but speaks like a mate at a kitchen table — not a consultant.\n" +
-  "- Short sentences. Plain words. Specific over abstract. \"$5k month\" not \"meaningful revenue increase\".\n" +
-  "- Speak TO the client in second person (\"you\"). Refer to Phoebe as \"Phoebe\" or \"I\" depending on context — never \"the coach\" or \"your coach\".\n" +
-  "- Australian dates: 8 May 2026, never 5/8/2026. Australian times: 9:30am / 2:00pm — not 09:30 / 14:00.\n" +
-  "- Currency: AUD with $ prefix.\n" +
-  "- Money is doable, not scary. Her brand sits in \"happy money\" territory — abundance + practicality, never woo or fear.\n" +
-  "- Direct without being harsh. If something's off, say so — but with warmth. \"Your pricing is leaving money on the table\" not \"You're not optimising your pricing strategy\".\n" +
+  "\n" +
+  "BRAND DNA\n" +
+  "- Phoebe is a financial expert + business coach. \"Happy Money\" world: money is doable, not scary. Practical abundance. Never woo, never fear.\n" +
+  "- She talks like a mate at a kitchen table, not a consultant. Sharp brain, soft delivery.\n" +
+  "- Empowering without being preachy. She believes the client can do the work — and shows them how.\n" +
+  "\n" +
+  "LANGUAGE\n" +
+  "- Australian English: organise / prioritise / colour / cosy / programme→program / favourite. Never US spellings.\n" +
+  "- AU dates: 8 May 2026 (never 5/8/2026 or 2026-05-08).\n" +
+  "- AU times: 9:30am / 2:00pm (never 09:30 / 14:00).\n" +
+  "- Currency: AUD with $ prefix. Specific numbers beat vague descriptors. \"$5k month\" not \"meaningful revenue increase\".\n" +
+  "- Short sentences. Plain words. Active voice.\n" +
+  "- Speak TO the client in second person (\"you\"). Phoebe is \"Phoebe\" or \"I\" — NEVER \"the coach\" or \"your coach\".\n" +
+  "- Clients are people, not \"users\". Other coaches are peers. Programs are programs, not products.\n" +
+  "\n" +
+  "BANNED PHRASES (never use, even when quoting other people's work):\n" +
+  "leverage, synergy, ecosystem, robust, unlock (as a verb), level up, game-changer, deep dive (as a verb), deliverables, KPIs (unless directly quoting), \"at the end of the day\", \"circle back\", \"reach out\" (use \"message\" or \"tell\"), \"crush it\", \"smash it\", \"hustle\", \"grind\".\n" +
+  "\n" +
+  "TONE EXAMPLES — do this:\n" +
+  "- \"Your pricing is leaving money on the table.\" ✓\n" +
+  "- \"This is the bit most people get stuck on. Two questions to ask yourself…\" ✓\n" +
+  "- \"You did the hard part already. Here's the next move.\" ✓\n" +
+  "- \"Money story matters. We'll come back to that, but first the numbers.\" ✓\n" +
+  "\n" +
+  "TONE EXAMPLES — do NOT do this:\n" +
+  "- \"You're not optimising your pricing strategy.\" ✗ (corporate)\n" +
+  "- \"I hope this helps.\" ✗ (filler)\n" +
+  "- \"To leverage this opportunity, we need to…\" ✗ (banned word + abstract)\n" +
+  "- \"Crush your goals!\" ✗ (energy-drink hustle voice)\n" +
+  "\n" +
+  "STRUCTURE\n" +
+  "- Direct without being harsh. If something's off, say so with warmth.\n" +
+  "- Acknowledge the feeling, then move to the action. Never just one or the other.\n" +
   "- No padding, no diplomatic softening, no \"I hope this helps\" sign-offs.\n" +
-  "- Sign-off (when needed): \"Phoebe x\".\n" +
-  "- Clients are people, not \"users\". Other coaches are peers. Programs are programs not products."
+  "- Sign-off (when needed and the format calls for one): \"Phoebe x\". Skip the sign-off in summaries / reports / inline UI text.\n" +
+  "- Education over advice — explain the WHY behind a suggestion. \"This matters because…\""
 );
 
 // Convenience: prepend the voice rules to a user prompt for AI calls.
@@ -2932,6 +2976,7 @@ function mergeCustomBadgesIntoRegistry() {
     if (!b || !b.id) return;
     BADGES[b.id] = {
       icon: b.icon || '⭐',
+      image: b.image || null,
       name: b.name || 'Custom badge',
       desc: b.desc || '',
       tier: b.tier || 'gold',
@@ -2940,6 +2985,16 @@ function mergeCustomBadgesIntoRegistry() {
       isCustom: true,
     };
   });
+}
+
+// Render either an emoji or an uploaded image for a badge. Use this anywhere
+// a badge icon is shown (toast, achievements grid, hero ribbon, picker).
+function renderBadgeIconFor(b) {
+  if (!b) return '';
+  if (b.image) {
+    return '<img src="' + b.image + '" alt="' + (b.name || '').replace(/"/g,'&quot;') + '" style="width:1em;height:1em;display:inline-block;vertical-align:-0.15em;border-radius:50%;object-fit:cover">';
+  }
+  return b.icon || '⭐';
 }
 mergeCustomBadgesIntoRegistry();
 
@@ -3033,6 +3088,47 @@ function renderCustomBadgeList() {
   }).join('');
 }
 
+// Handle a badge image upload — converts to a small data URI so the badge
+// is self-contained and survives without a separate hosting endpoint.
+// Resizes to max 64×64 to keep coach-settings blob small.
+function handleBadgeIconUpload(event) {
+  var file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (file.size > 1024 * 200) {
+    branded.alert('Image too big — please pick something under 200KB. Or just use an emoji.');
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var img = new Image();
+    img.onload = function() {
+      // Resize to a max of 64×64, keeping aspect ratio
+      var max = 64;
+      var ratio = Math.min(max / img.width, max / img.height, 1);
+      var w = Math.round(img.width * ratio);
+      var h = Math.round(img.height * ratio);
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      var dataUri = canvas.toDataURL('image/png');
+      // Stash on a hidden field so saveCustomBadge picks it up over the emoji
+      window._pendingBadgeImage = dataUri;
+      var iconInput = document.getElementById('cb-icon');
+      if (iconInput) {
+        iconInput.value = '🖼';
+        iconInput.disabled = true;
+        iconInput.style.opacity = '0.6';
+        iconInput.title = 'Image uploaded — clear this field to switch back to an emoji';
+      }
+      branded.toast('Image attached to next badge save');
+    };
+    img.onerror = function() { branded.alert('Couldn\'t read that image — try a different file.'); };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function saveCustomBadge() {
   var icon = (document.getElementById('cb-icon').value || '').trim() || '⭐';
   var name = (document.getElementById('cb-name').value || '').trim();
@@ -3040,10 +3136,14 @@ function saveCustomBadge() {
   var tier = document.getElementById('cb-tier').value || 'gold';
   var anim = document.getElementById('cb-anim').value || 'pop';
   if (!name) { branded.alert('Give the badge a name first.'); return; }
+  // Image upload wins over emoji if one was attached
+  var imageUri = window._pendingBadgeImage || null;
+  window._pendingBadgeImage = null;
   var customs = loadCustomBadges();
   var b = {
     id: 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
     icon: icon, name: name, desc: desc, tier: tier, animation: anim,
+    image: imageUri,  // optional data-URI; overrides emoji at render time
     createdAt: new Date().toISOString(),
   };
   customs.push(b);
@@ -3359,7 +3459,7 @@ function renderEarnedBadgeRibbon(client) {
   var extra = earnedBadges.length - visible.length;
   var pills = visible.map(function(b) {
     var tc = (typeof BADGE_TIER_COLORS !== 'undefined' && BADGE_TIER_COLORS[b.tier]) || { bg:'rgba(255,255,255,0.18)', border:'rgba(255,255,255,0.3)', text:'#FFFFFF' };
-    return '<div title="' + b.name + ' — ' + b.desc + '" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.28);border-radius:99px;padding:5px 12px 5px 8px;font-size:12px;font-weight:600;color:white">' +
+    return '<div title="' + b.name + ' — ' + b.desc + '" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.28);border-radius:99px;padding:5px 12px 5px 8px;font-size:12px;font-weight:600;color:white;cursor:default;pointer-events:none">' +
       '<span style="font-size:16px;line-height:1">' + b.icon + '</span><span>' + b.name + '</span></div>';
   }).join('');
   var moreChip = extra > 0
@@ -3836,6 +3936,135 @@ function switchTab(id) {
   var btn = document.querySelector('.tab-btn[data-tab="' + id + '"]');
   if (btn) btn.classList.add('active');
   if (typeof sessionSet === 'function') sessionSet(HMH_SESSION.COACH_TAB, id);
+  // Lazy-render the per-client settings panel only when its tab is opened
+  if (id === 'client-settings' && typeof renderPerClientSettingsTab === 'function') {
+    var c = clients.find(function(c){ return c.id === currentClientId; });
+    if (c) renderPerClientSettingsTab(c);
+  }
+}
+
+// Per-client Settings tab — consolidates the bits previously hidden behind
+// the Edit Client modal so Phoebe can find/change them quickly. Sections:
+//   - Identity (name, email, phone, biz)
+//   - Why + special notes (already-existing fields, surfaced)
+//   - Status (active/nurture/complete) + health
+//   - Account (access code, regenerate, view as client, send welcome/code)
+//   - Danger zone (archive, merge)
+function renderPerClientSettingsTab(client) {
+  var el = document.getElementById('client-settings-content');
+  if (!el || !client) return;
+  var cid = client.id;
+  function field(id, label, value, placeholder, type) {
+    type = type || 'text';
+    return '<div style="margin-bottom:12px">' +
+      '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">' + label + '</label>' +
+      '<input id="' + id + '" type="' + type + '" value="' + (value || '').replace(/"/g,'&quot;') + '" placeholder="' + (placeholder || '').replace(/"/g,'&quot;') + '" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none">' +
+      '</div>';
+  }
+  function textarea(id, label, value, placeholder, accent) {
+    var bg = accent ? '#FFFBE8' : 'var(--paper)';
+    var border = accent ? '#E8A020' : 'var(--border)';
+    return '<div style="margin-bottom:12px;' + (accent ? 'background:'+bg+';border:1.5px solid '+border+';border-radius:10px;padding:10px 12px' : '') + '">' +
+      '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:' + (accent ? '#A07030' : 'var(--hot-pink)') + ';margin-bottom:5px">' + label + '</label>' +
+      '<textarea id="' + id + '" rows="3" placeholder="' + (placeholder || '').replace(/"/g,'&quot;') + '" style="width:100%;border:1.5px solid ' + (accent ? '#E8A020' : 'var(--border)') + ';border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;line-height:1.5">' + escapeHtml(value || '') + '</textarea>' +
+      '</div>';
+  }
+  var notifsOff = !!client.notificationsDisabled;
+  el.innerHTML =
+    // Top action row — quick utilities
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--marshmallow);border-radius:10px;margin-bottom:16px">' +
+      '<button class="btn-sm primary" onclick="openClientPortalAsClient(\'' + cid + '\')">👁 View as client</button>' +
+      '<button class="btn-sm" onclick="resendWelcomeEmail(\'' + cid + '\')">💌 Send welcome</button>' +
+      '<button class="btn-sm" onclick="sendCredentialsEmail(\'' + cid + '\')">🔑 Send code</button>' +
+      '<button class="btn-sm" onclick="openMergeClientModal(\'' + cid + '\')">🔀 Merge with duplicate</button>' +
+    '</div>' +
+
+    // Identity
+    '<h3 style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700;margin:0 0 12px">👤 Identity</h3>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">' +
+      field('cs-name',  'Full name',  client.name,  'Sarah Chen') +
+      field('cs-biz',   'Business',   client.biz,   'Health coach, Melbourne') +
+      field('cs-email', 'Email',      client.email, 'sarah@example.com', 'email') +
+      field('cs-phone', 'Phone',      client.phone, '+61412345678') +
+    '</div>' +
+
+    // Why + special notes
+    '<h3 style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700;margin:18px 0 12px">💛 Voice + accessibility</h3>' +
+    field('cs-why',   'Their why',   client.why,   'e.g. Be home for school pickup and still hit $400k') +
+    textarea('cs-special', '⚠️ Special notes / accessibility — shown as a banner above this client whenever you open them',
+      client.specialNotes,
+      'e.g. Deaf — needs Zoom captions on. Don\'t call before 9am AEST. Prefers WhatsApp.',
+      true) +
+
+    // Status + Health
+    '<h3 style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700;margin:18px 0 12px">📊 Status</h3>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">' +
+      '<div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Lifecycle</label>' +
+        '<select id="cs-status" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;cursor:pointer">' +
+          ['active','nurture','complete'].map(function(s){
+            var lbl = { active:'💛 Active', nurture:'🌱 Nurture (warm)', complete:'✓ Complete' }[s];
+            return '<option value="' + s + '"' + (((client.status||'active')===s)?' selected':'') + '>' + lbl + '</option>';
+          }).join('') +
+        '</select></div>' +
+      '<div><label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Health</label>' +
+        '<select id="cs-health" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;cursor:pointer">' +
+          ['green','amber','red'].map(function(h){
+            var lbl = { green:'🟢 On track', amber:'🟡 Check in', red:'🔴 Needs attention' }[h];
+            return '<option value="' + h + '"' + ((client.health===h)?' selected':'') + '>' + lbl + '</option>';
+          }).join('') +
+        '</select></div>' +
+    '</div>' +
+
+    // Account / access code
+    '<h3 style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700;margin:18px 0 12px">🔑 Account</h3>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:220px">' +
+        '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Access code</label>' +
+        '<input id="cs-access" value="' + (client.clientAccess||'').replace(/"/g,'&quot;') + '" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:monospace;font-size:14px;color:var(--hot-pink);font-weight:700;background:var(--paper);outline:none;text-transform:uppercase">' +
+      '</div>' +
+      '<button class="btn-sm" onclick="copyToClipboard(\'' + (client.clientAccess||'').replace(/\'/g,'') + '\')" style="margin-top:22px">📋 Copy</button>' +
+    '</div>' +
+    '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--magenta);background:var(--marshmallow);border-radius:10px;padding:10px 14px">' +
+      '<input type="checkbox" id="cs-notifs-disabled"' + (notifsOff ? ' checked' : '') + '>' +
+      '<span><strong>Don\'t send automatic emails to this client</strong> — overrides the global notifications setting</span>' +
+    '</label>' +
+
+    // Danger zone
+    '<h3 style="font-family:var(--f-head);font-size:15px;color:#A03030;font-weight:700;margin:24px 0 12px">⚠️ Danger zone</h3>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;background:#FFF5F5;border:1px solid rgba(192,57,43,0.2);border-radius:10px;padding:12px 14px">' +
+      '<button class="btn-sm" onclick="toggleArchiveClient(\'' + cid + '\')" style="background:white;color:#A03030;border-color:rgba(192,57,43,0.3)">' +
+        (client.archived ? '↩ Restore from archive' : '📦 Archive client') +
+      '</button>' +
+    '</div>' +
+
+    // Save
+    '<div style="margin-top:18px;display:flex;justify-content:flex-end;gap:10px">' +
+      '<button class="btn-sm primary" onclick="savePerClientSettings(\'' + cid + '\')">💾 Save changes</button>' +
+    '</div>';
+}
+
+async function savePerClientSettings(clientId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  function v(id) { var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; }
+  var newAccess = (v('cs-access') || '').toUpperCase();
+  if (newAccess && newAccess !== client.clientAccess) {
+    var result = await changeClientAccessCode(clientId, newAccess);
+    if (!result.ok) { branded.alert('Access code not saved: ' + result.error); return; }
+  }
+  client.name  = v('cs-name')  || client.name;
+  client.biz   = v('cs-biz');
+  client.email = v('cs-email');
+  client.phone = v('cs-phone');
+  client.why   = v('cs-why');
+  client.specialNotes = v('cs-special');
+  client.status = v('cs-status') || 'active';
+  client.health = v('cs-health') || 'green';
+  client.notificationsDisabled = !!document.getElementById('cs-notifs-disabled')?.checked;
+  client.updatedAt = new Date().toISOString();
+  await persistClient(client);
+  branded.success('Saved');
+  if (typeof openClient === 'function') openClient(clientId);
 }
 
 // ========== CLIENTS RENDERING ==========
@@ -4418,12 +4647,13 @@ function buildProgramTabs(client, prog) {
   } else {
     tabDefs.push({ id:'session-notes', label:'Notes', tag:'sh' });
   }
-  // All programs get tools + profitability + wins + tasks + message
+  // All programs get tools + profitability + wins + tasks + message + settings
   tabDefs.push({ id:'tools', label:'🛠 Tools', tag:'co' });
   tabDefs.push({ id:'profitability', label:'$ Value', tag:'co' });
   tabDefs.push({ id:'wins', label:'Wins 🏆', tag:'co' });
   tabDefs.push({ id:'tasks', label:'Tasks', tag:'co' });
   tabDefs.push({ id:'message', label:'Message client', tag:'co' });
+  tabDefs.push({ id:'client-settings', label:'⚙️ Settings', tag:'co' });
 
   tabs.innerHTML = tabDefs.map(function(t, i) {
     var tagText = t.tag==='co' ? 'Coach only' : t.tag==='sh' ? 'Shareable' : 'Client facing';
@@ -4443,6 +4673,26 @@ async function toggleLock(clientId, progId) {
   var prog = (client.programs||[]).find(function(p) { return p.id === progId; });
   if (!prog) return;
   prog.locked = !prog.locked;
+  if (prog.locked) {
+    prog.status = 'complete';
+    prog.completedAt = new Date().toISOString();
+  }
+  // Auto-shift client to nurture once every active program is locked/complete.
+  // Mental model: "active" = currently working with me, "nurture" = on the
+  // back-burner / keeping warm. Phoebe can override from the Status dropdown
+  // any time. Only fires when at least one program exists — never moves brand
+  // new clients before they've had a session.
+  var activePrograms = (client.programs||[]).filter(function(p) {
+    return p && p.workbook !== 'none' && p.workbook !== 'inquiry';
+  });
+  if (activePrograms.length && activePrograms.every(function(p) { return p.locked || p.status === 'complete'; })) {
+    if (client.status !== 'nurture') {
+      client.status = 'nurture';
+      client.statusChangedAt = new Date().toISOString();
+      client.autoNurturedAt = new Date().toISOString();
+      branded.toast(client.name + ' moved to 🌱 Nurture (all programs complete) — change in Status dropdown if needed');
+    }
+  }
   await persistClient(client);
   openProgram(client, progId); // re-render
   buildClientProgramTabs(client);
@@ -5642,6 +5892,38 @@ function renderClientProgram(client, prog) {
   var ribbonEl = document.getElementById('client-hero-badges-wrap');
   if (ribbonEl) ribbonEl.innerHTML = (typeof renderEarnedBadgeRibbon === 'function') ? renderEarnedBadgeRibbon(client) : '';
   if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
+  if (typeof updateClientHeroLinks === 'function') updateClientHeroLinks(client, prog);
+}
+
+// Update the quick-links rail in the client portal hero. Surfaces:
+//   - 🎥 Join Zoom (when the active program has zoomJoin set)
+//   - 📅 Next session pill (delegates to existing pill in topbar)
+// Hides itself if no links to show. Re-runs whenever a different
+// program tab is picked.
+function updateClientHeroLinks(client, prog) {
+  var rail = document.getElementById('client-hero-links');
+  if (!rail) return;
+  var bits = [];
+  // Active program Zoom join — most useful link a client can possibly want
+  if (prog && prog.zoomJoin) {
+    var passcode = prog.zoomPasscode ? ' · code ' + escapeHtml(prog.zoomPasscode) : '';
+    bits.push('<a href="' + prog.zoomJoin + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.92);color:var(--magenta);padding:7px 14px;border-radius:99px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.1)">🎥 Join Zoom · ' + escapeHtml((PROGRAMS[prog.program] && PROGRAMS[prog.program].short) || prog.label || prog.program) + passcode + '</a>');
+  }
+  // Other programs that ALSO have zoomJoin — show as smaller secondary pills
+  (client.programs || []).forEach(function(p) {
+    if (!p || !p.zoomJoin) return;
+    if (prog && p.id === prog.id) return; // already shown above
+    if (p.workbook === 'none' || p.workbook === 'inquiry') return;
+    var label = (PROGRAMS[p.program] && PROGRAMS[p.program].short) || p.label || p.program;
+    bits.push('<a href="' + p.zoomJoin + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,0.18);color:white;padding:5px 11px;border-radius:99px;text-decoration:none;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,0.25)">🎥 ' + escapeHtml(label) + '</a>');
+  });
+  if (!bits.length) {
+    rail.style.display = 'none';
+    rail.innerHTML = '';
+    return;
+  }
+  rail.style.display = 'flex';
+  rail.innerHTML = bits.join('');
 }
 
 // Renders shared session notes for the client portal — filters prog.sessionNotes
@@ -5905,15 +6187,60 @@ function renderClientSummary(client) {
   // Auto-built from existing data — no new fields required.
   html += renderClientJourneyStrip(client);
 
-  // ── Achievements badges (clickable for confetti) ─────────────────────
+  // ── Recent wins — Wins tab was retired, the feed lives here on Summary
+  // bottom now. Up to 5 most recent, with "+ Share a win" button. Older
+  // ones still accessible via the existing wins area if needed.
+  html += renderClientWinsBlock(client);
+
+  // ── Achievements badges — confetti fires on click here, NOT on the hero
+  // ribbon pills. attachBadgeConfetti scopes itself to .client-section so
+  // hero badges (which live in client-hero-badges-wrap, outside any
+  // .client-section) stay purely decorative.
   if (typeof renderBadgesSection === 'function') {
     var ach = renderBadgesSection(client);
     if (ach) html += '<div class="client-section">' + ach.replace('<div style="margin-top:24px">','<div>') + '</div>';
   }
 
   el.innerHTML = html;
-  // Attach confetti handler to every earned badge
   if (typeof attachBadgeConfetti === 'function') attachBadgeConfetti();
+}
+
+// Inline wins feed for the Summary tab — replaces the standalone Wins tab.
+// Keeps the "🏆 Share a win" CTA prominent and shows the 5 most recent
+// posts. Ordered newest first; both client-side and Phoebe-side posts.
+function renderClientWinsBlock(client) {
+  if (!client) return '';
+  var firstName = (client.name||'').split(' ')[0] || 'you';
+  var all = [];
+  (client.wins||[]).forEach(function(w){ if (w) all.push({ w:w, prog:null }); });
+  (client.programs||[]).forEach(function(p){ (p.wins||[]).forEach(function(w){ if (w) all.push({ w:w, prog:p }); }); });
+  all.sort(function(a,b){ return (b.w.date||b.w.createdAt||'').localeCompare(a.w.date||a.w.createdAt||''); });
+  var recent = all.slice(0, 5);
+  var html = '<div class="client-section"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+    '<h3 style="font-size:14px;letter-spacing:0.04em;margin:0">🏆 Wins</h3>' +
+    '<button onclick="openShareWinModal()" class="btn-sm primary" style="font-size:11px;padding:5px 12px">+ Share a win</button>' +
+    '</div>';
+  if (!recent.length) {
+    html += '<div style="font-size:13px;color:var(--stone);padding:8px 0;line-height:1.5">No wins yet, ' + firstName + '. First booked client, first invoice paid, first time you said no — it all counts.</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:8px">';
+    recent.forEach(function(item) {
+      var w = item.w;
+      var by = w.shareSource === 'coach' ? '💛 Phoebe' : '🌟 ' + firstName;
+      var dateStr = w.date ? new Date(w.date).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) : '';
+      var beforeAfter = (w.before && w.after) ? '<div style="font-size:13px;color:var(--magenta);margin-top:4px">' + escapeHtml(w.before) + ' → <strong>' + escapeHtml(w.after) + '</strong></div>' : '';
+      html += '<div style="background:white;border:1px solid var(--border-soft);border-left:3px solid var(--hot-pink);border-radius:10px;padding:10px 12px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">' +
+          '<div style="font-size:13px;color:var(--magenta);font-weight:700">' + escapeHtml(w.metric || w.title || 'Win') + '</div>' +
+          '<div style="font-size:11px;color:var(--stone)">' + by + (dateStr ? ' · ' + dateStr : '') + '</div>' +
+        '</div>' + beforeAfter +
+        (w.note ? '<div style="font-size:12px;color:var(--magenta);margin-top:4px;line-height:1.5;white-space:pre-wrap;opacity:0.85">' + escapeHtml(w.note) + '</div>' : '') +
+        '</div>';
+    });
+    html += '</div>';
+    if (all.length > 5) html += '<div style="font-size:11px;color:var(--stone);text-align:center;margin-top:8px">Showing 5 most recent of ' + all.length + '</div>';
+  }
+  return html + '</div>';
 }
 
 // "My journey" — high-level timeline showing the arc of the client's work.
@@ -6087,19 +6414,23 @@ function escapeHtml(str) {
     .replace(/"/g,'&quot;');
 }
 
-// Attach a confetti+toast handler to every earned badge in the page.
-// Locked badges stay non-interactive.
+// Attach a confetti+toast handler to every earned badge in the achievements
+// section ONLY. Hero ribbon pills (in #client-hero-badges-wrap) stay purely
+// decorative — clicking the hero shouldn't celebrate, only viewing the full
+// achievements grid should. Phoebe asked for this distinction.
 function attachBadgeConfetti() {
   document.querySelectorAll('.client-section [title]').forEach(function(el) {
     var title = el.getAttribute('title') || '';
     if (title.indexOf('Locked:') === 0) return; // skip locked
+    // Belt-and-braces: explicitly exclude anything inside the hero ribbon
+    // even if some refactor accidentally drops it inside a .client-section
+    if (el.closest && el.closest('#client-hero-badges-wrap')) return;
     if (el.dataset.confettiBound) return;
     el.dataset.confettiBound = '1';
     el.style.cursor = 'pointer';
     el.addEventListener('click', function() {
       if (typeof fireConfetti === 'function') fireConfetti(40);
       if (typeof branded !== 'undefined' && branded.toast) {
-        // Title format from renderBadgesSection: "Name — Description"
         var parts = title.split(' — ');
         branded.toast('🎉 ' + parts[0] + (parts[1] ? ' · ' + parts[1] : ''));
       }
@@ -6381,9 +6712,16 @@ async function checkUnmatchedZooms() {
         });
       });
     });
+    // Dismissed (Misc) recordings — Phoebe explicitly told us "this doesn't
+    // belong against any client". Stored on coach-settings so the dismiss
+    // sticks across devices.
+    var dismissed = new Set(((window._coachSettings && window._coachSettings.dismissedZoomIds) || []).map(String));
     var unmatched = recordings.filter(function(r){
       var key = String(r.id || r.uuid || '');
-      return key && !attached.has(key) && r.hasRecording;
+      if (!key) return false;
+      if (attached.has(key)) return false;
+      if (dismissed.has(key)) return false;
+      return r.hasRecording;
     });
     if (!unmatched.length) { slot.style.display = 'none'; return; }
     renderUnmatchedZooms(unmatched);
@@ -6415,21 +6753,38 @@ function renderUnmatchedZooms(unmatched) {
           '</div>' +
         '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
-          '<select id="zoom-assign-target-' + (r.id || r.uuid) + '" onchange="updateZoomAssignButtons(\'' + (r.id || r.uuid) + '\')" style="flex:1;min-width:200px;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);outline:none">' +
-            '<option value="">— pick where it goes —</option>' +
-            '<optgroup label="Existing clients">' + clientOpts + '</optgroup>' +
-            '<optgroup label="Other">' +
-              '<option value="__new_client__">+ Create new client from this Zoom</option>' +
-              '<option value="__resource__">+ Save as resource (Happy Hub)</option>' +
-            '</optgroup>' +
+          '<select id="zoom-assign-target-' + (r.id || r.uuid) + '" onchange="updateZoomAssignButtons(\'' + (r.id || r.uuid) + '\')" style="flex:1;min-width:180px;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);outline:none">' +
+            '<option value="">— pick existing client —</option>' + clientOpts +
           '</select>' +
-          '<button class="btn-sm primary" onclick="handleZoomAssignment(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'').replace(/[<>]/g,'') + '\')" style="font-size:11px">Go →</button>' +
+          '<button class="btn-sm primary" onclick="handleZoomAssignment(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'').replace(/[<>]/g,'') + '\')" style="font-size:11px">Assign →</button>' +
         '</div>' +
         '<div id="zoom-assign-program-row-' + (r.id || r.uuid) + '" style="display:none;margin-top:6px;padding-left:6px"></div>' +
+        // Three explicit alternative actions — clearer than burying them in
+        // a single dropdown. Each is a one-tap path with no second click.
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">' +
+          '<span style="font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:700">Or</span>' +
+          '<button class="btn-sm" onclick="createClientFromZoom(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'').replace(/[<>]/g,'') + '\')" style="font-size:11px;background:white;color:var(--magenta);border-color:var(--hot-pink)">+ New client</button>' +
+          '<button class="btn-sm" onclick="saveZoomAsResource(\'' + (r.id || r.uuid) + '\',\'' + (r.startTime || '').replace(/[\'"]/g,'') + '\',\'' + (r.topic||'').replace(/[\'"]/g,'').replace(/[<>]/g,'') + '\')" style="font-size:11px;background:white;color:var(--teal);border-color:var(--teal)">+ Save as resource</button>' +
+          '<button class="btn-sm" onclick="dismissUnmatchedZoom(\'' + (r.id || r.uuid) + '\')" style="font-size:11px;background:white;color:var(--stone);margin-left:auto" title="Hide from this list — internal/test/non-client recordings">📦 Misc / dismiss</button>' +
+        '</div>' +
       '</div>';
     }).join('') +
-    '<div style="font-size:11px;color:var(--stone);margin-top:6px;font-style:italic">Recordings auto-match when the date is within ±1 day of a client\'s session date. Otherwise pick a destination above — existing client (with optional program), brand-new client, or save the recording as a resource in the Happy Hub library.</div>' +
+    '<div style="font-size:11px;color:var(--stone);margin-top:6px;font-style:italic">Recordings auto-match when the date is within ±1 day of a client\'s session date. Otherwise pick where it should go — assign to an existing client, spin up a new client from the topic, save it as a resource in the Happy Hub, or dismiss it to Misc if it\'s a test / internal call you don\'t need on file.</div>' +
   '</div>';
+}
+
+// Hide an unmatched Zoom recording from the home-page panel. Used for
+// internal calls, tests, or anything that doesn't belong against a client.
+// Persists the meeting ID in coach-settings.dismissedZoomIds so the panel
+// stays clean across reloads + devices.
+async function dismissUnmatchedZoom(meetingId) {
+  if (!window._coachSettings) window._coachSettings = {};
+  var dismissed = window._coachSettings.dismissedZoomIds || [];
+  if (dismissed.indexOf(String(meetingId)) === -1) dismissed.push(String(meetingId));
+  window._coachSettings.dismissedZoomIds = dismissed;
+  flushCoachSettings();
+  branded.toast('Dismissed — won\'t show in unmatched again');
+  if (typeof checkUnmatchedZooms === 'function') checkUnmatchedZooms();
 }
 
 // When Phoebe picks a destination from the dropdown, surface a second
@@ -7040,6 +7395,90 @@ async function markReviewRequestAddressed(clientId, requestId) {
   branded.toast('Marked addressed');
 }
 
+// Inline reply to a review request without leaving the home page. Opens
+// a branded modal with the request quoted at the top, an editable textarea
+// for the reply, and a Send button that:
+//   - Emails the client (if they have an email + notifications on)
+//   - Drops the reply onto a coach note for the record
+//   - Marks the review request addressed
+async function openInlineReplyForRR(clientId, requestId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var rr = (client.reviewRequests || []).find(function(r){ return r.id === requestId; });
+  if (!rr) return;
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '💬';
+  document.getElementById('branded-modal-title').textContent = 'Reply to ' + client.name;
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="background:var(--marshmallow);border-radius:10px;padding:10px 12px;margin-bottom:14px">' +
+      '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">They asked</div>' +
+      '<div style="font-size:13px;color:var(--magenta);line-height:1.5;white-space:pre-wrap">' + escapeHtml(rr.text || '') + '</div>' +
+    '</div>' +
+    '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Your reply</label>' +
+    '<textarea id="rr-reply-text" rows="6" placeholder="Hi ' + ((client.name||'').split(' ')[0] || 'there') + ',\n\n…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"></textarea>' +
+    (client.email
+      ? '<label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--magenta)">' +
+          '<input type="checkbox" id="rr-reply-email" checked> Email this reply to ' + escapeHtml(client.email) +
+        '</label>'
+      : '<div style="font-size:11px;color:var(--stone);margin-top:8px;font-style:italic">No email on file — your reply will save as a coach note only.</div>');
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var cancel = document.createElement('button'); cancel.className = 'btn-sm'; cancel.textContent = 'Cancel';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  var send = document.createElement('button'); send.className = 'btn-sm primary'; send.textContent = '💌 Send + mark addressed';
+  send.onclick = async function() {
+    var replyText = (document.getElementById('rr-reply-text').value || '').trim();
+    if (!replyText) { branded.alert('Type a reply first.'); return; }
+    var emailIt = !!document.getElementById('rr-reply-email')?.checked && !!client.email;
+    // Save as a coach note for the record (not visible to client by default)
+    client.coachNotes = client.coachNotes || [];
+    client.coachNotes.unshift({
+      id: 'cn-rr-' + Date.now(),
+      type: 'reply',
+      text: '💬 Replied to "' + (rr.text || '').slice(0, 60) + '":\n\n' + replyText,
+      date: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString(),
+      visibleToClient: false,
+      autoSource: 'review-reply',
+    });
+    rr.addressed = true;
+    rr.addressedAt = new Date().toISOString();
+    rr.replyText = replyText;
+    // Optionally email
+    var emailResult = null;
+    if (emailIt) {
+      try {
+        var emailResp = await fetch('/api/send-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'email',
+            to: client.email,
+            subject: 'A note from Phoebe',
+            message: replyText + '\n\nPhoebe x',
+            clientName: client.name,
+          }),
+        });
+        emailResult = await emailResp.json();
+        if (!emailResp.ok) console.warn('[reply] email send failed:', emailResult);
+      } catch (e) { console.warn('[reply] email send error:', e); }
+    }
+    await persistClient(client);
+    host.style.display = 'none';
+    branded.success(emailIt && emailResult && !emailResult.error ? 'Reply emailed + marked addressed.' : 'Reply saved + marked addressed.');
+    if (typeof renderHome === 'function') renderHome();
+    if (typeof logActivity === 'function') {
+      logActivity('reply', 'Replied to ' + client.name, { clientId: client.id, clientName: client.name, detail: replyText.slice(0, 80) });
+    }
+  };
+  actions.appendChild(cancel);
+  actions.appendChild(send);
+  host.style.display = 'flex';
+}
+
 // Open the share-a-win prompt — both client and coach can call this. We
 // detect role via the URL / DOM (client-hub active). Posts to client.wins
 // with shareSource so the wins feed can label posts correctly.
@@ -7215,7 +7654,122 @@ function clientTaskRow(t, clientId, urgency) {
       '<div style="font-size:13px;color:var(--magenta);'+(t.done?'text-decoration:line-through;opacity:0.5':'')+'">' + (t.text||'') + '</div>' +
       (dateLabel ? '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + dateLabel + '</div>' : '') +
     '</div>' +
+    (!t.done ? '<button onclick="event.stopPropagation();openAskPhoebeOnTask(\''+clientId+'\',\''+t.id+'\')" title="Get help on this task — AI suggestion or message Phoebe directly" style="background:white;color:var(--hot-pink);border:1px solid var(--hot-pink);font-size:10px;font-weight:700;padding:4px 9px;border-radius:99px;cursor:pointer;flex-shrink:0;align-self:center">🙋 Help</button>' : '') +
   '</div>';
+}
+
+// Ask Phoebe on a task — opens a branded modal with two options:
+//  1. AI-suggested first response (Sonnet, grounded in the client's plan
+//     + recent session notes + the task text). Phoebe-voice. Loads
+//     immediately when the modal opens.
+//  2. Or skip the AI and message Phoebe directly. The message lands in
+//     her review-request panel on home with the task linked.
+async function openAskPhoebeOnTask(clientId, taskId) {
+  if (!clientId) clientId = currentClientId;
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var task = (client.tasks || []).find(function(x){ return x.id === taskId; });
+  if (!task) return;
+
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '🙋';
+  document.getElementById('branded-modal-title').textContent = 'Help with this task';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="background:var(--marshmallow);border-radius:10px;padding:10px 12px;margin-bottom:14px">' +
+      '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Your task</div>' +
+      '<div style="font-size:13px;color:var(--magenta);font-weight:600">' + escapeHtml(task.text || '') + '</div>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+      '<div style="font-size:18px">✦</div>' +
+      '<div style="font-size:13px;color:var(--magenta);font-weight:700">Quick suggestion (drafted as Phoebe would)</div>' +
+    '</div>' +
+    '<div id="ask-phoebe-ai-output" style="background:#FFF8FB;border:1.5px solid rgba(236,44,138,0.18);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--magenta);margin-bottom:14px;min-height:80px;white-space:pre-wrap">' +
+      '<em style="color:var(--stone)">Drafting…</em>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Or message Phoebe directly</div>' +
+    '<textarea id="ask-phoebe-direct" rows="3" placeholder="What\'s tripping you up? Phoebe will see this on her side." style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.5"></textarea>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var cancel = document.createElement('button'); cancel.className = 'btn-sm'; cancel.textContent = 'Close';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  var send = document.createElement('button'); send.className = 'btn-sm primary'; send.textContent = 'Send to Phoebe';
+  send.onclick = async function() {
+    var msg = (document.getElementById('ask-phoebe-direct').value || '').trim();
+    if (!msg) {
+      var ok = await branded.confirm('Type a message first, or close — the AI suggestion above is just a draft, not sent.', { title: 'No message?', okLabel: 'OK' });
+      return;
+    }
+    client.reviewRequests = client.reviewRequests || [];
+    client.reviewRequests.unshift({
+      id: 'rr-' + Date.now(),
+      text: msg,
+      ts: new Date().toISOString(),
+      addressed: false,
+      taskId: task.id,
+      taskText: task.text,
+    });
+    await persistClient(client);
+    host.style.display = 'none';
+    branded.success('Sent to Phoebe — she\'ll see it next time she logs in. 💛');
+    if (typeof logActivity === 'function') {
+      logActivity('review-request', client.name + ' is asking for help on a task',
+        { clientId: client.id, clientName: client.name, detail: (task.text || '').slice(0, 80) });
+    }
+  };
+  actions.appendChild(cancel);
+  actions.appendChild(send);
+  host.style.display = 'flex';
+
+  // ── Fire the AI suggestion in the background ──
+  try {
+    var prog = (client.programs || [])[0] || {};
+    var planLines = [];
+    (prog.plan || []).forEach(function(s) {
+      (s.tasks || []).forEach(function(t) { if (t && (t.text || t.task)) planLines.push('- ' + (t.text || t.task)); });
+    });
+    var recentNotes = [];
+    (prog.sessionNotes || []).slice(-3).forEach(function(n) {
+      if (n && (n.aiSummary || n.text)) recentNotes.push((n.date || '') + ': ' + String(n.aiSummary || n.text || '').slice(0, 400));
+    });
+    var ctx =
+      'Client: ' + (client.name || '') + (client.biz ? ' (' + client.biz + ')' : '') + '\n' +
+      (client.why ? 'Their why: ' + client.why + '\n' : '') +
+      'Their task they\'re stuck on: ' + (task.text || '') + (task.dueDate ? ' (due ' + task.dueDate + ')' : '') + '\n' +
+      (planLines.length ? '\nTheir current plan:\n' + planLines.slice(0, 12).join('\n') + '\n' : '') +
+      (recentNotes.length ? '\nRecent session notes:\n' + recentNotes.join('\n\n') + '\n' : '');
+    var prompt = (typeof phoebeVoice === 'function' ? phoebeVoice : function(s){ return s; })(
+      'A coaching client is stuck on a task. Drafting a helpful first response in Phoebe\'s voice.\n\n' +
+      ctx + '\n\n' +
+      'Write 2-4 short sentences that:\n' +
+      '1. Acknowledge what\'s likely getting in the way (without making them feel bad)\n' +
+      '2. Offer ONE concrete next move they can take in the next hour\n' +
+      '3. Tell them to message Phoebe directly if they\'re still stuck after that\n\n' +
+      'Speak TO the client in second person. NO sign-off. NO greeting. Plain text — no headings.'
+    );
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) data.content.forEach(function(b) { if (b && b.type === 'text' && b.text) text += b.text; });
+    var out = document.getElementById('ask-phoebe-ai-output');
+    if (out) {
+      if (text.trim()) out.textContent = text.trim();
+      else out.innerHTML = '<em style="color:var(--stone)">Couldn\'t draft a suggestion this time. Type below to message Phoebe directly.</em>';
+    }
+  } catch (err) {
+    var out2 = document.getElementById('ask-phoebe-ai-output');
+    if (out2) out2.innerHTML = '<em style="color:var(--stone)">AI suggestion unavailable. Type below to message Phoebe directly.</em>';
+  }
 }
 
 async function clientToggleTaskDone(clientId, taskId) {
@@ -11320,10 +11874,81 @@ async function broadcastToCohort(cohortId, channel) {
   if (members.length === 0) { branded.alert('No members to broadcast to.'); return; }
   var co = _findCohort(cohortId);
   var label = channel === 'email' ? 'email' : 'SMS';
-  var msg = await branded.prompt('Send ' + label + ' to ' + members.length + ' member' + (members.length===1?'':'s') + ' of ' + (co.name||'this cohort'), '', 'Type your message…', { title:'Broadcast', okLabel:'Send' });
-  if (!msg || !msg.trim()) return;
-  // For now this is staged — Phoebe approves before send. Plug into send-message.mts later.
-  branded.alert('Broadcast staged for ' + members.length + ' clients:\n\n"' + msg.slice(0,200) + (msg.length>200?'…':'') + '"\n\n(Multi-recipient send not yet wired to backend — will batch through /api/send-message in the next pass.)', { title:'Ready to send' });
+  // Branded modal — subject + body, recipient preview, confirm before send
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '📧';
+  document.getElementById('branded-modal-title').textContent = 'Email ' + (co.name || 'cohort') + ' (' + members.length + ' member' + (members.length===1?'':'s') + ')';
+  var body = document.getElementById('branded-modal-body');
+  var recipientList = members.map(function(m) {
+    return '<span style="display:inline-block;background:var(--marshmallow);color:var(--magenta);padding:3px 9px;border-radius:99px;font-size:11px;margin:2px 3px">' + escapeHtml(m.name || m.email || 'Unknown') + (m.email ? '' : ' <em style="color:var(--stone)">(no email)</em>') + '</span>';
+  }).join('');
+  body.innerHTML =
+    '<div style="margin-bottom:12px">' +
+      '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Subject</label>' +
+      '<input id="bcast-subject" placeholder="A note from Phoebe" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none">' +
+    '</div>' +
+    '<div style="margin-bottom:12px">' +
+      '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Message</label>' +
+      '<textarea id="bcast-body" rows="6" placeholder="Hi {name},\n\n…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"></textarea>' +
+      '<div style="font-size:10px;color:var(--stone);margin-top:4px;font-style:italic">Tip: use {name} or {firstName} as a placeholder — they\'re replaced per-client at send time.</div>' +
+    '</div>' +
+    '<div style="background:var(--marshmallow);border-radius:10px;padding:10px 12px">' +
+      '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Sending to ' + members.length + ' member' + (members.length===1?'':'s') + '</div>' +
+      '<div>' + recipientList + '</div>' +
+    '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var cancel = document.createElement('button'); cancel.className = 'btn-sm'; cancel.textContent = 'Cancel';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  var send = document.createElement('button'); send.className = 'btn-sm primary'; send.textContent = '📧 Send to ' + members.length;
+  send.onclick = async function() {
+    var subject = (document.getElementById('bcast-subject').value || 'A note from Phoebe').trim();
+    var msgBody = (document.getElementById('bcast-body').value || '').trim();
+    if (!msgBody) { branded.alert('Type a message first.'); return; }
+    send.disabled = true; send.textContent = 'Sending…';
+    var sent = 0, failed = 0, skipped = 0;
+    // Send sequentially — keeps it simple and avoids hammering Gmail's rate
+    // limits. With <50 members per cohort this is fine; we can batch in
+    // Promise.all(chunks of 5) if we ever hit a cohort that's bigger.
+    for (var i = 0; i < members.length; i++) {
+      var m = members[i];
+      if (!m.email) { skipped++; continue; }
+      if (m.notificationsDisabled) { skipped++; continue; }
+      var personal = msgBody
+        .replace(/\{name\}/gi, m.name || 'there')
+        .replace(/\{firstName\}/gi, (m.name || 'there').split(' ')[0]);
+      try {
+        var resp = await fetch('/api/send-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'email',
+            to: m.email,
+            subject: subject,
+            message: personal + '\n\nPhoebe x',
+            clientName: m.name,
+          }),
+        });
+        if (resp.ok) sent++; else failed++;
+      } catch (err) {
+        failed++;
+      }
+    }
+    host.style.display = 'none';
+    var summary = sent + ' sent';
+    if (failed)  summary += ' · ' + failed + ' failed';
+    if (skipped) summary += ' · ' + skipped + ' skipped (no email or opted out)';
+    if (failed > 0) branded.alert('Broadcast finished — ' + summary, { title: 'Some sends failed' });
+    else            branded.success('Broadcast sent · ' + summary);
+    if (typeof logActivity === 'function') {
+      logActivity('cohort-broadcast', 'Cohort broadcast: ' + (co.name || 'untitled'), { detail: summary + ' · "' + subject + '"' });
+    }
+  };
+  actions.appendChild(cancel);
+  actions.appendChild(send);
+  host.style.display = 'flex';
 }
 
 // ============================================================
@@ -11847,8 +12472,9 @@ function renderHome() {
               '<div style="font-size:13px;color:var(--magenta);margin-top:4px;line-height:1.5;white-space:pre-wrap">' + escapeHtml(item.rr.text || '') + '</div>' +
             '</div>' +
           '</div>' +
-          '<div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">' +
+          '<div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end;flex-wrap:wrap">' +
             '<button class="btn-sm" onclick="openClient(\'' + item.client.id + '\')" style="font-size:11px">Open client</button>' +
+            '<button class="btn-sm" onclick="openInlineReplyForRR(\'' + item.client.id + '\',\'' + item.rr.id + '\')" style="font-size:11px;background:white;color:var(--hot-pink);border-color:var(--hot-pink)">💬 Reply</button>' +
             '<button class="btn-sm primary" onclick="markReviewRequestAddressed(\'' + item.client.id + '\',\'' + item.rr.id + '\')" style="font-size:11px">✓ Mark addressed</button>' +
           '</div>' +
           '</div>';
