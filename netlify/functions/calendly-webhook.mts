@@ -210,6 +210,54 @@ export default async (req: Request) => {
     }).catch(err => console.error("Failed to trigger social discovery:", err));
   }
 
+  // ── Welcome email for brand-new clients (fire-and-forget) ─────────────────
+  // Returning clients booking another session don't need a welcome — they
+  // already know the portal. Paid programs get a warm "your space is ready"
+  // message; free discovery / inquiry calls get a lighter "see you soon".
+  if (isNew && email) {
+    const baseUrl = new URL(req.url).origin;
+    const portalLink = `${baseUrl}/?client=${clientRecord.clientAccess}`;
+    const firstName = name.split(" ")[0] || "there";
+    const sessionDateStr = sessionDate
+      ? new Date(sessionDate).toLocaleString("en-AU", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit", hour12: true })
+      : "";
+    const isPaidProgram = programInfo.isPaid;
+    const subject = isPaidProgram
+      ? `Welcome to PeaBe Coaching Hub — let's get started`
+      : `Looking forward to our ${programInfo.label}, ${firstName}`;
+    const body = isPaidProgram
+      ? `Hi ${firstName},\n\n` +
+        `Lovely to have you on board. Your private client space is set up and ready when you are.\n\n` +
+        (sessionDateStr ? `Our first session: ${sessionDateStr}\n\n` : "") +
+        `YOUR ACCESS\n` +
+        `Portal: ${portalLink}\n` +
+        `Code:   ${clientRecord.clientAccess}\n\n` +
+        `WHAT YOU'LL FIND INSIDE\n` +
+        `• Your plan once we've had our first session\n` +
+        `• Tasks I'll send you week-to-week\n` +
+        `• A wins tracker — let me know when you hit one!\n\n` +
+        `Have a poke around the portal before we meet so you can hit the ground running.\n\n` +
+        `Any questions, just reply to this email.\n\n` +
+        `Phoebe x`
+      : `Hi ${firstName},\n\n` +
+        `Booking confirmed — looking forward to our ${programInfo.label.toLowerCase()}.\n\n` +
+        (sessionDateStr ? `When: ${sessionDateStr}\n\n` : "") +
+        `If you decide to work with me afterwards, you'll get access to a private hub to track everything we cover.\n\n` +
+        `See you soon,\n` +
+        `Phoebe x`;
+    fetch(`${baseUrl}/api/send-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type:       "email",
+        to:         email,
+        subject:    subject,
+        message:    body,
+        clientName: name,
+      }),
+    }).catch(err => console.error("[calendly-webhook] welcome email failed:", err));
+  }
+
   return new Response(JSON.stringify({ success: true, clientId, isNew, program: programInfo.label }), {
     status: 200,
     headers: { "Content-Type": "application/json" },

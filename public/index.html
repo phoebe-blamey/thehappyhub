@@ -13,7 +13,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v8900 — three-card client summary (What/How/Where), branded background, next-session topbar pill, badge confetti, auto-advance MDC from Zoom tags">
+<meta name="hmh-build" content="v9000 — streaming AI proxy fixes 504 on research brief; refresh persistence; Knowledge Bank chat in ? drawer">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -890,6 +890,25 @@
       <div style="color:var(--stone);font-size:14px">→</div>
     </a>
 
+    <!-- ── Phoebe's Knowledge Bank — AI Q&A grounded in this client's profile, plan and notes.
+         Only renders when a client is signed in (currentClientId is set). -->
+    <div id="help-kbank" style="display:none;margin-top:14px;padding:12px;border:1.5px solid var(--hot-pink);border-radius:12px;background:linear-gradient(135deg,#fff8fa 0%, #ffeef4 100%)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="font-size:18px">💡</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:13px;color:var(--magenta);font-family:var(--f-head)">Phoebe's Knowledge Bank</div>
+          <div style="font-size:11px;color:var(--stone);line-height:1.4">Ask anything about your plan, your program, or what to do next. I'll answer using your profile.</div>
+        </div>
+      </div>
+      <div id="kbank-chat" style="max-height:220px;overflow-y:auto;background:white;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;font-size:12px;line-height:1.5;color:var(--magenta);display:none"></div>
+      <div style="display:flex;gap:6px">
+        <input id="kbank-input" placeholder="e.g. What's my next priority?" style="flex:1;border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:white;outline:none"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();askKnowledgeBank();}">
+        <button onclick="askKnowledgeBank()" class="btn-sm primary" style="padding:8px 12px;font-size:12px">Ask</button>
+      </div>
+      <div style="font-size:10px;color:var(--stone);margin-top:6px;line-height:1.4">Suggestions: <a href="javascript:void(0)" onclick="askKnowledgeBank('What should I focus on this week?')" style="color:var(--hot-pink);text-decoration:none">this week's focus</a> · <a href="javascript:void(0)" onclick="askKnowledgeBank('What was my last session about?')" style="color:var(--hot-pink);text-decoration:none">last session recap</a> · <a href="javascript:void(0)" onclick="askKnowledgeBank('What does my plan say I should do next?')" style="color:var(--hot-pink);text-decoration:none">next plan step</a></div>
+    </div>
+
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--stone);margin-bottom:8px">❓ Quick help</div>
       <details style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;background:white">
@@ -1126,22 +1145,135 @@ var branded = (function() {
 (function() {
   var origFetch = window.fetch.bind(window);
 
+  // Reassemble an Anthropic SSE stream into the standard non-streaming JSON shape.
+  // The server forces stream:true upstream whenever a call uses tools (e.g.
+  // web_search) because Sonnet+web_search routinely takes 30-60s, well past
+  // Netlify's 26s function timeout. Streaming keeps the connection open while
+  // the response builds. For callers that asked for buffered JSON (no stream
+  // flag in their original body), we transparently buffer the SSE here and
+  // synthesise a Response whose .json() returns the normal Anthropic shape so
+  // callers don't need to change.
+  async function bufferSseToJson(resp) {
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    var contentBlocks = []; // index → { type, text? , name?, input?, ... }
+    var message = { id: '', type: 'message', role: 'assistant', model: '', content: [], stop_reason: null, stop_sequence: null, usage: {} };
+
+    function processEvent(eventBlock) {
+      // An SSE event block is one or more "field: value" lines. We only need
+      // the data: line (Anthropic puts JSON there). Multiple data: lines per
+      // block are concatenated per the spec.
+      var dataLines = [];
+      eventBlock.split('\n').forEach(function(line) {
+        if (line.indexOf('data: ') === 0) dataLines.push(line.slice(6));
+        else if (line.indexOf('data:') === 0) dataLines.push(line.slice(5));
+      });
+      if (!dataLines.length) return;
+      var dataStr = dataLines.join('\n');
+      if (dataStr === '[DONE]') return;
+      var p;
+      try { p = JSON.parse(dataStr); } catch (e) { return; }
+
+      if (p.type === 'message_start' && p.message) {
+        message.id = p.message.id || message.id;
+        message.model = p.message.model || message.model;
+        message.role = p.message.role || message.role;
+        message.usage = p.message.usage || message.usage;
+      } else if (p.type === 'content_block_start' && typeof p.index === 'number') {
+        // Clone the block so we can mutate text/input as deltas arrive
+        var block = Object.assign({}, p.content_block || {});
+        if (block.type === 'text' && typeof block.text !== 'string') block.text = '';
+        if (block.type === 'tool_use' && !block.input) block.input = {};
+        if (block.type === 'tool_use') block._partialJson = '';
+        contentBlocks[p.index] = block;
+      } else if (p.type === 'content_block_delta' && typeof p.index === 'number') {
+        var b = contentBlocks[p.index];
+        if (!b) return;
+        var d = p.delta || {};
+        if (d.type === 'text_delta' && typeof d.text === 'string') {
+          b.text = (b.text || '') + d.text;
+        } else if (d.type === 'input_json_delta' && typeof d.partial_json === 'string') {
+          b._partialJson = (b._partialJson || '') + d.partial_json;
+        } else if (d.type === 'thinking_delta' && typeof d.thinking === 'string') {
+          b.thinking = (b.thinking || '') + d.thinking;
+        }
+      } else if (p.type === 'content_block_stop' && typeof p.index === 'number') {
+        var bs = contentBlocks[p.index];
+        if (bs && bs.type === 'tool_use' && bs._partialJson) {
+          try { bs.input = JSON.parse(bs._partialJson); } catch (e) {}
+          delete bs._partialJson;
+        }
+      } else if (p.type === 'message_delta') {
+        if (p.delta) {
+          if (p.delta.stop_reason) message.stop_reason = p.delta.stop_reason;
+          if (p.delta.stop_sequence) message.stop_sequence = p.delta.stop_sequence;
+        }
+        if (p.usage) message.usage = Object.assign({}, message.usage, p.usage);
+      }
+    }
+
+    while (true) {
+      var r = await reader.read();
+      if (r.done) break;
+      buffer += decoder.decode(r.value, { stream: true });
+      // Events are separated by blank lines (\n\n)
+      var idx;
+      while ((idx = buffer.indexOf('\n\n')) >= 0) {
+        var evt = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        if (evt.trim()) processEvent(evt);
+      }
+    }
+    if (buffer.trim()) processEvent(buffer);
+
+    message.content = contentBlocks.filter(Boolean).map(function(b) {
+      var copy = Object.assign({}, b);
+      delete copy._partialJson;
+      return copy;
+    });
+
+    return new Response(JSON.stringify(message), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   window.fetch = function(url, opts) {
     // Only intercept Anthropic API calls
     if (typeof url !== 'string' || url.indexOf('api.anthropic.com') < 0) {
       return origFetch(url, opts);
     }
     opts = opts || {};
+    // Did the caller ask for streaming themselves? If so, they have their own
+    // SSE reader and we must pass the upstream stream straight through.
+    var callerWantsStream = false;
+    try {
+      if (typeof opts.body === 'string') {
+        var parsed = JSON.parse(opts.body);
+        callerWantsStream = parsed && parsed.stream === true;
+      }
+    } catch (e) {}
+
     return origFetch('/api/ai-call', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: opts.body
     }).then(function(resp) {
-      if (resp.ok) return resp;
-      // Surface a useful error so callers can branded.error() it
-      return resp.text().then(function(txt) {
-        throw new Error('AI proxy returned ' + resp.status + ': ' + txt.slice(0, 200));
-      });
+      if (!resp.ok) {
+        return resp.text().then(function(txt) {
+          throw new Error('AI proxy returned ' + resp.status + ': ' + txt.slice(0, 200));
+        });
+      }
+      // Server marks SSE responses with X-Anthropic-Stream: 1. If the caller
+      // already handles SSE (asked for stream:true), pass through unchanged.
+      // Otherwise, transparently buffer it back into a JSON response.
+      var isStream = resp.headers.get('X-Anthropic-Stream') === '1' ||
+                     (resp.headers.get('Content-Type') || '').indexOf('text/event-stream') >= 0;
+      if (isStream && !callerWantsStream) {
+        return bufferSseToJson(resp);
+      }
+      return resp;
     });
   };
 
@@ -2007,12 +2139,99 @@ function getDemoClients() {
 }
 
 
+// ========== SESSION PERSISTENCE ==========
+// Reload should keep you exactly where you were. Both Phoebe and clients
+// hated being booted back to the landing page on every refresh. We persist
+// just enough to put them back: the role they signed in as, the client code
+// (for clients), and whichever page / client / tab they last viewed. None of
+// it is sensitive — the coach PIN itself is not stored, and the client code
+// is the same one already in their bookmarked URL.
+var HMH_SESSION = {
+  ROLE: 'hmh_session_role',                  // 'coach' | 'client'
+  CLIENT_CODE: 'hmh_session_clientCode',     // client portal access code
+  PAGE: 'hmh_session_page',                  // coach: which sidebar page
+  OPEN_CLIENT: 'hmh_session_openClientId',   // coach: client whose detail is open
+  COACH_TAB: 'hmh_session_coachTab',         // coach: active tab inside client detail
+  PORTAL_TAB: 'hmh_session_portalTab',       // client portal: summary/programs/settings
+  PORTAL_PROG: 'hmh_session_portalProgId'    // client portal: which program tab
+};
+function sessionSet(key, val) {
+  try { if (val == null) localStorage.removeItem(key); else localStorage.setItem(key, String(val)); } catch (e) {}
+}
+function sessionGet(key) {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+function clearSession() {
+  Object.values(HMH_SESSION).forEach(function(k) { sessionSet(k, null); });
+}
+
+// Restore a previously-signed-in session. Called on page load, BEFORE we
+// fall back to the landing page. Returns true if a session was restored
+// (caller should skip the landing flow), false if none / invalid.
+async function restoreSession() {
+  var role = sessionGet(HMH_SESSION.ROLE);
+  if (!role) return false;
+  try {
+    if (role === 'coach') {
+      document.getElementById('landing').style.display = 'none';
+      document.getElementById('coach-hub').classList.add('active');
+      await loadClients();
+      try { await runWeeklyAccountabilityCheck(); } catch (e) {}
+      renderClients();
+      renderHome();
+      // Restore last page — special-case client-detail since it needs an
+      // openClient() call to populate the panel before we showPage() to it.
+      var savedPage = sessionGet(HMH_SESSION.PAGE) || 'home';
+      var savedClientId = sessionGet(HMH_SESSION.OPEN_CLIENT);
+      if (savedPage === 'client-detail' && savedClientId && clients.find(function(c){ return c.id === savedClientId; })) {
+        openClient(savedClientId);
+        var savedTab = sessionGet(HMH_SESSION.COACH_TAB);
+        if (savedTab) { try { switchTab(savedTab); } catch (e) {} }
+      } else {
+        showPage(savedPage);
+      }
+      try { startNotificationPolling(); } catch (e) {}
+      var rfab = document.getElementById('review-fab');
+      if (rfab) { rfab.style.display = 'inline-flex'; if (typeof updateReviewCount === 'function') updateReviewCount(); }
+      return true;
+    }
+    if (role === 'client') {
+      var code = sessionGet(HMH_SESSION.CLIENT_CODE);
+      if (!code) return false;
+      if (!clients.length) { try { await loadClients(); } catch (e) {} }
+      var client = clients.find(function(c) { return (c.clientAccess || '').toUpperCase() === code.toUpperCase(); });
+      if (!client) { clearSession(); return false; }
+      document.getElementById('landing').style.display = 'none';
+      document.getElementById('client-hub').classList.add('active');
+      currentClientId = client.id;
+      loadClientPortal(client);
+      // Restore the active client-portal tab (summary/programs/settings)
+      var portalTab = sessionGet(HMH_SESSION.PORTAL_TAB);
+      if (portalTab && typeof switchClientTab === 'function') {
+        try { switchClientTab(portalTab); } catch (e) {}
+      }
+      // Restore the active program tab if they were on Programs
+      var portalProg = sessionGet(HMH_SESSION.PORTAL_PROG);
+      if (portalProg && typeof switchClientProgram === 'function') {
+        var btn = document.querySelector('.cprog-tab[data-progid="' + portalProg + '"]');
+        if (btn) { try { switchClientProgram(portalProg, btn); } catch (e) {} }
+      }
+      return true;
+    }
+  } catch (err) {
+    console.warn('[Session] restore failed:', err && err.message);
+    clearSession();
+  }
+  return false;
+}
+
 // ========== ACCESS ==========
 function focusCoachPin() { document.getElementById('coach-pin').focus(); }
 
 async function enterCoach() {
   var pin = document.getElementById('coach-pin').value.toUpperCase();
   if (pin === getCoachPin()) {
+    sessionSet(HMH_SESSION.ROLE, 'coach');
     document.getElementById('landing').style.display = 'none';
     document.getElementById('coach-hub').classList.add('active');
     await loadClients();
@@ -2045,6 +2264,8 @@ async function enterClient() {
   if (!clients.length) await loadClients();
   var client = clients.find(function(c) { return c.clientAccess === lookup; });
   if (client) {
+    sessionSet(HMH_SESSION.ROLE, 'client');
+    sessionSet(HMH_SESSION.CLIENT_CODE, client.clientAccess);
     document.getElementById('landing').style.display = 'none';
     document.getElementById('client-hub').classList.add('active');
     currentClientId = client.id;
@@ -2097,6 +2318,10 @@ window.addEventListener('load', async function() {
     await loadClients();
     document.getElementById('client-code').value = code;
     enterClient();
+  } else {
+    // No URL access code — try to restore the previous session (coach or
+    // client) so a refresh doesn't kick anyone back to the landing page.
+    try { await restoreSession(); } catch (e) { console.warn('[Session] restore error:', e); }
   }
   // If we had any saves that failed to reach the server last time (offline,
   // server hiccup, etc.) flush them now that the page is loading and we
@@ -2105,6 +2330,7 @@ window.addEventListener('load', async function() {
 });
 
 function logout() {
+  clearSession();
   document.getElementById('landing').style.display = 'flex';
   document.getElementById('coach-hub').classList.remove('active');
   document.getElementById('client-hub').classList.remove('active');
@@ -2450,7 +2676,207 @@ function toggleHelpPanel() {
       } else if (phoneLink) {
         phoneLink.style.display = 'none';
       }
+      // Phoebe's Knowledge Bank — only show for signed-in clients (the AI
+      // grounds answers in their own profile, so it doesn't make sense
+      // for the coach view or the landing page).
+      var kbank = document.getElementById('help-kbank');
+      var clientHubActive = document.getElementById('client-hub') && document.getElementById('client-hub').classList.contains('active');
+      if (kbank) {
+        if (clientHubActive && currentClientId) {
+          kbank.style.display = 'block';
+          // Restore chat history from localStorage if any
+          renderKBankHistory();
+        } else {
+          kbank.style.display = 'none';
+        }
+      }
     } catch(e) {}
+  }
+}
+
+// ============================================================
+// PHOEBE'S KNOWLEDGE BANK — client-side AI Q&A drawer
+// Grounds Claude in the signed-in client's profile so answers
+// reference their actual plan, program, sessions and notes.
+// ============================================================
+function kbankStorageKey(clientId) { return 'hmh_kbank_chat_' + clientId; }
+
+function loadKBankHistory(clientId) {
+  try {
+    var raw = localStorage.getItem(kbankStorageKey(clientId));
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) { return []; }
+}
+function saveKBankHistory(clientId, msgs) {
+  try { localStorage.setItem(kbankStorageKey(clientId), JSON.stringify((msgs || []).slice(-20))); } catch (e) {}
+}
+function renderKBankHistory() {
+  var box = document.getElementById('kbank-chat');
+  if (!box || !currentClientId) return;
+  var msgs = loadKBankHistory(currentClientId);
+  if (!msgs.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = msgs.map(function(m) {
+    if (m.role === 'user') {
+      return '<div style="margin:6px 0;padding:6px 10px;background:var(--marshmallow);border-radius:10px 10px 2px 10px;color:var(--magenta);font-weight:600">' + escapeHtmlSafe(m.content) + '</div>';
+    }
+    return '<div style="margin:6px 0;padding:6px 10px;background:#fff5fa;border-radius:10px 10px 10px 2px;color:var(--magenta);white-space:pre-wrap">' + escapeHtmlSafe(m.content) + '</div>';
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+// Local escaper — most pages have one, but make sure this is safe in isolation
+function escapeHtmlSafe(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+  });
+}
+
+// Build a compact markdown-ish brief of this client's profile so Claude can
+// answer grounded questions. We include: who they are, programs/sessions/dates,
+// the plan (if generated), recent session notes (the ones marked sharedWithClient
+// or any text), themes/leaks/opps from coaching notes, current MDC sprint/week,
+// and a few wins. We deliberately keep it under ~3KB so latency stays low.
+function buildKBankProfileContext(client) {
+  if (!client) return '';
+  var lines = [];
+  lines.push('Client: ' + (client.name || 'Unknown'));
+  if (client.biz) lines.push('Business: ' + client.biz);
+  var progs = (client.programs || []);
+  if (progs.length) {
+    lines.push('');
+    lines.push('Programs:');
+    progs.slice(0, 5).forEach(function(p) {
+      var pi = (typeof PROGRAMS !== 'undefined' && PROGRAMS[p.program]) || {};
+      var bits = ['- ' + (pi.label || p.label || p.program)];
+      if (p.sessionDate) bits.push('booked ' + p.sessionDate);
+      if (p.status) bits.push('status: ' + p.status);
+      if (p.workbook === 'mdc') bits.push('MDC sprint ' + (p.mdcSprint || 1) + ' week ' + (p.mdcWeek || 1));
+      lines.push(bits.join(' · '));
+    });
+  }
+  // Pick the program the client is currently viewing; fall back to first.
+  var activeProgId = sessionGet(HMH_SESSION.PORTAL_PROG);
+  var activeProg = progs.find(function(p) { return p.id === activeProgId; }) || progs[0];
+  if (activeProg) {
+    lines.push('');
+    lines.push('Current program focus: ' + (PROGRAMS[activeProg.program]?.label || activeProg.label || activeProg.program));
+    if (activeProg.plan && activeProg.plan.length) {
+      lines.push('');
+      lines.push('Plan items:');
+      activeProg.plan.slice(0, 12).forEach(function(item, i) {
+        var done = (activeProg.taskDone && activeProg.taskDone[i]) ? '[done]' : '[ ]';
+        var t = typeof item === 'string' ? item : (item.text || item.task || '');
+        if (t) lines.push(done + ' ' + t);
+      });
+    }
+    var n = activeProg.notes || {};
+    if (n.themes) lines.push('\nThemes: ' + n.themes);
+    if (n.opps)   lines.push('Opportunities: ' + n.opps);
+    if (n.leaks)  lines.push('Leaks: ' + n.leaks);
+    if (n.patterns) lines.push('Patterns: ' + n.patterns);
+    var notesArr = activeProg.sessionNotes || [];
+    if (notesArr.length) {
+      lines.push('');
+      lines.push('Recent session notes (newest first):');
+      notesArr.slice().reverse().slice(0, 4).forEach(function(sn) {
+        if (!sn) return;
+        var head = sn.date ? sn.date : '';
+        var txt = (sn.text || '').replace(/\s+/g, ' ').slice(0, 600);
+        if (txt) lines.push('• ' + (head ? head + ' — ' : '') + txt);
+      });
+    }
+    if (Array.isArray(activeProg.wins) && activeProg.wins.length) {
+      lines.push('');
+      lines.push('Recent wins:');
+      activeProg.wins.slice(-3).forEach(function(w) {
+        if (typeof w === 'string') lines.push('• ' + w);
+        else if (w && w.text) lines.push('• ' + w.text);
+      });
+    }
+  }
+  return lines.join('\n');
+}
+
+async function askKnowledgeBank(presetQuestion) {
+  if (!currentClientId) return;
+  var input = document.getElementById('kbank-input');
+  var box = document.getElementById('kbank-chat');
+  if (!box) return;
+  var q = (presetQuestion || (input && input.value) || '').trim();
+  if (!q) return;
+  if (input && !presetQuestion) input.value = '';
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var history = loadKBankHistory(currentClientId);
+  history.push({ role: 'user', content: q });
+  saveKBankHistory(currentClientId, history);
+  // Insert a placeholder assistant bubble we'll stream into
+  history.push({ role: 'assistant', content: '…' });
+  saveKBankHistory(currentClientId, history);
+  renderKBankHistory();
+
+  var profile = buildKBankProfileContext(client);
+  var system = 'You are Phoebe Blamey\'s warm, smart AI assistant inside her coaching hub. ' +
+    'You answer questions for her clients using their own profile and plan. ' +
+    'Voice: warm, direct, conversational, Australian English. No corporate jargon. No "leverage", "synergy". ' +
+    'Speak to the client in second person ("you"). Cite their plan or notes when you answer. ' +
+    'If you genuinely do not have the info, say so honestly and suggest they message Phoebe. ' +
+    'Be concise — 2-4 short paragraphs max, or a tight numbered list if it helps. ' +
+    'Never make up dates, numbers, or session content that isn\'t in their profile.';
+  // Build a flat conversation: profile context as the first user turn, then the chat
+  var messages = [];
+  messages.push({ role: 'user', content: 'Here is my profile so you can answer accurately:\n\n' + profile });
+  messages.push({ role: 'assistant', content: 'Got it. Ask away — I\'ll ground my answers in your plan and notes.' });
+  // Replay prior chat (skip the placeholder we just added)
+  var prior = history.slice(0, -1);
+  prior.forEach(function(m) { messages.push({ role: m.role, content: m.content }); });
+
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 700,
+        stream: true,
+        system: system,
+        messages: messages
+      })
+    });
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    var answer = '';
+    while (true) {
+      var r = await reader.read();
+      if (r.done) break;
+      buffer += decoder.decode(r.value, { stream: true });
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var l = lines[i];
+        if (l.indexOf('data: ') === 0) {
+          try {
+            var p = JSON.parse(l.slice(6));
+            if (p.type === 'content_block_delta' && p.delta && p.delta.type === 'text_delta' && p.delta.text) {
+              answer += p.delta.text;
+              // Update the placeholder live
+              history[history.length - 1].content = answer;
+              renderKBankHistory();
+            }
+          } catch(e) {}
+        }
+      }
+    }
+    if (!answer) answer = 'Sorry, I couldn\'t generate an answer just now. Try again, or message Phoebe directly.';
+    history[history.length - 1].content = answer;
+    saveKBankHistory(currentClientId, history);
+    renderKBankHistory();
+  } catch (err) {
+    history[history.length - 1].content = 'Sorry, the assistant is unavailable right now. Please message Phoebe directly.';
+    saveKBankHistory(currentClientId, history);
+    renderKBankHistory();
+    console.error('[KnowledgeBank]', err);
   }
 }
 
@@ -2654,6 +3080,11 @@ function showPage(id) {
   document.querySelectorAll('.sidebar-item').forEach(function(s) { s.classList.remove('active'); });
   var pg = document.getElementById('page-' + id);
   if (pg) pg.classList.add('active');
+  // Remember the active page so refresh stays here
+  if (typeof sessionSet === 'function' && sessionGet(HMH_SESSION.ROLE) === 'coach') {
+    sessionSet(HMH_SESSION.PAGE, id);
+    if (id !== 'client-detail') sessionSet(HMH_SESSION.OPEN_CLIENT, null);
+  }
   // Auto-render page content when shown
   setTimeout(function() {
     try {
@@ -2678,6 +3109,7 @@ function switchTab(id) {
   if (pane) pane.classList.add('active');
   var btn = document.querySelector('.tab-btn[data-tab="' + id + '"]');
   if (btn) btn.classList.add('active');
+  if (typeof sessionSet === 'function') sessionSet(HMH_SESSION.COACH_TAB, id);
 }
 
 // ========== CLIENTS RENDERING ==========
@@ -2693,6 +3125,11 @@ function openClient(id) {
   var client = clients.find(function(c) { return c.id === id; });
   if (!client) return;
   currentClientId = id;
+  // Persist so refresh keeps us on this client's detail page
+  if (typeof sessionSet === 'function') {
+    sessionSet(HMH_SESSION.OPEN_CLIENT, id);
+    sessionSet(HMH_SESSION.PAGE, 'client-detail');
+  }
 
   var initials = client.name.split(' ').map(function(n) { return n[0]; }).join('').slice(0,2);
   document.getElementById('detail-avatar').textContent = initials;
@@ -3738,6 +4175,11 @@ function loadClientPortal(client) {
   document.getElementById('client-hero-name').textContent = client.name.split(' ')[0] + '\'s Hub';
   document.getElementById('client-hero-tagline').textContent = 'You\'re good at what you do. Let\'s make your money reflect it.';
 
+  // First-visit welcome modal — runs once per device per client. Stops Phoebe
+  // having to chase up "what's this hub thing?" after Calendly auto-creates
+  // them. The modal points at the three places we want them to look first.
+  try { maybeShowFirstVisitWelcome(client); } catch(e) { console.warn('[Welcome modal]', e); }
+
   // Build program nav — show all unlocked + completed programs
   var progs = (client.programs||[]).filter(function(p){ return p.workbook!=='none' && p.workbook!=='inquiry'; });
   var nav = document.getElementById('client-prog-nav');
@@ -3769,6 +4211,48 @@ function loadClientPortal(client) {
   if (typeof updateClientNextSessionPill === 'function') updateClientNextSessionPill(client);
 }
 
+// First-visit welcome modal — fires once per client per device. We use the
+// branded modal since it matches the rest of the portal. Suppressed if the
+// client has already seen it (localStorage flag) OR if they came in via the
+// review FAB / are an existing client with prior session notes.
+function maybeShowFirstVisitWelcome(client) {
+  if (!client) return;
+  var key = 'hmh_welcomed_' + client.id;
+  try {
+    if (localStorage.getItem(key)) return;
+    // If they've already got session notes / completed tasks, don't pop up.
+    var hasHistory = (client.programs || []).some(function(p) {
+      return (p.sessionNotes && p.sessionNotes.length) || (p.taskDone && Object.values(p.taskDone).some(Boolean));
+    });
+    if (hasHistory) { localStorage.setItem(key, '1'); return; }
+  } catch (e) {}
+  if (typeof branded === 'undefined' || !branded.alert) return;
+  var firstName = (client.name || '').split(' ')[0] || 'there';
+  var prog = (client.programs || [])[0] || {};
+  var pi = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog.program]) || {};
+  var sessionLine = '';
+  if (prog.sessionDate) {
+    try {
+      var d = new Date(prog.sessionDate);
+      sessionLine = '\nYour first ' + (pi.short || 'session') + ': ' +
+        d.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' }) +
+        ' at ' + d.toLocaleTimeString('en-AU', { hour:'numeric', minute:'2-digit', hour12:true }) + '\n';
+    } catch (e) {}
+  }
+  var body =
+    'Welcome ' + firstName + ' — lovely to have you here.\n' +
+    sessionLine +
+    '\nThis is your private space with Phoebe. Three things to know:\n\n' +
+    '• 📚 My Programs holds your plan, your tasks and your wins\n' +
+    '• ⚙️ Settings is where you change your access code\n' +
+    '• ❓ Bottom-right has Phoebe\'s Knowledge Bank — ask it anything\n\n' +
+    'Have a poke around. We\'ll go through everything together in our first session.';
+  setTimeout(function() {
+    branded.alert(body, { title: 'Welcome to your hub 💛', okLabel: 'Let\'s go' });
+    try { localStorage.setItem(key, '1'); } catch (e) {}
+  }, 600);
+}
+
 // Switches between the three top-level client tabs: Summary / Programs / Settings
 function switchClientTab(which) {
   // Update tab pill styling
@@ -3794,6 +4278,7 @@ function switchClientTab(which) {
   if (!client) return;
   if (which === 'summary')  renderClientSummary(client);
   if (which === 'settings') renderClientSettings(client);
+  if (typeof sessionSet === 'function') sessionSet(HMH_SESSION.PORTAL_TAB, which);
 }
 
 // Switch program in the client portal. Looks up the live client from currentClientId
@@ -3807,6 +4292,7 @@ function switchClientProgram(progId, btn) {
   if(btn) btn.classList.add('active');
   var prog = (client.programs||[]).find(function(p){return p.id===progId;});
   if(prog) renderClientProgram(client, prog);
+  if (typeof sessionSet === 'function') sessionSet(HMH_SESSION.PORTAL_PROG, progId);
 }
 
 function renderClientProgram(client, prog) {
@@ -3892,12 +4378,41 @@ function renderClientProgram(client, prog) {
     // Sprint + week selector (client-side) — see all weeks, not just current
     var sprintNavHtml = renderClientMdcSprintNav(client, prog, sprint, week);
     var ci=((wb.weeklyCheckins||{})[sprint+'-'+week]||{});
-    var sprintFocusHtml = '<div class="client-section"><h3>Sprint '+sprint+' · Week '+week+'</h3>' +
+    // Find any session notes tagged for THIS sprint+week (so each weekly card
+    // shows the actual session that ran: AI summary + Zoom video). Notes get
+    // the sprint/week tag when Phoebe assigns a Zoom recording.
+    var weekNotes = (prog.sessionNotes||[]).filter(function(n) {
+      return n && n.sprint === sprint && n.week === week;
+    });
+    var weekSessionHtml = '';
+    if (weekNotes.length) {
+      weekSessionHtml = weekNotes.map(function(n) {
+        var bits = [];
+        // Zoom video link with subtitles (player URL or playable file)
+        var videoUrl = n.zoomVideoUrl || n.zoomUrl || '';
+        if (videoUrl) {
+          bits.push('<a href="' + videoUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--mist);color:var(--teal);padding:6px 14px;border-radius:99px;text-decoration:none;font-weight:600">🎥 Watch session ' + (n.zoomPasscode ? '(passcode: ' + n.zoomPasscode + ')' : '') + '</a>');
+        }
+        if (n.hasTranscript) {
+          bits.push('<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--stone);margin-left:8px">CC subtitles available</span>');
+        }
+        var linksRow = bits.length ? '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + bits.join('') + '</div>' : '';
+        // Polished summary (only if approved/shared)
+        var summaryHtml = (n.aiSummary && n.sharedWithClient)
+          ? '<div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Session summary</div>' +
+            '<div style="font-size:13px;line-height:1.7;color:var(--magenta);white-space:pre-wrap">' + n.aiSummary + '</div>'
+          : '<div style="font-size:12px;color:var(--stone);font-style:italic">Phoebe will share the session summary here once it\'s polished.</div>';
+        return summaryHtml + linksRow;
+      }).join('<div style="height:1px;background:var(--border-soft);margin:14px 0"></div>');
+      weekSessionHtml = '<div class="client-section">' +
+        '<h3>This week\'s session</h3>' + weekSessionHtml + '</div>';
+    }
+    var sprintFocusHtml = '<div class="client-section"><h3>🐔 Sprint '+sprint+' · Week '+week+'</h3>' +
       sprintNavHtml +
       '<div class="sprint-grid" style="margin-top:10px">' +
-      '<div class="sprint-card"><div class="sprint-card-label">My focus this week</div><div style="font-size:14px;color:var(--magenta);line-height:1.6">'+(ci.focus||'<em style="color:var(--stone)">Set by Phoebe</em>')+'</div></div>' +
-      '<div class="sprint-card"><div class="sprint-card-label">My actions</div><div style="font-size:14px;color:var(--magenta);line-height:1.6;white-space:pre-wrap">'+(ci.actions||'<em style="color:var(--stone)">Not set yet</em>')+'</div></div>' +
-      '</div></div>';
+      '<div class="sprint-card"><div class="sprint-card-label">🎯 My focus this week</div><div style="font-size:14px;color:var(--magenta);line-height:1.6">'+(ci.focus||'<em style="color:var(--stone)">Set by Phoebe</em>')+'</div></div>' +
+      '<div class="sprint-card"><div class="sprint-card-label">✅ My actions</div><div style="font-size:14px;color:var(--magenta);line-height:1.6;white-space:pre-wrap">'+(ci.actions||'<em style="color:var(--stone)">Not set yet</em>')+'</div></div>' +
+      '</div></div>' + weekSessionHtml;
     var sprintNotesBlock = sharedNotesHtml ? '<div class="client-section"><h3>Sprint notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '';
     // Fillable workbook — client can answer all the workbook prompts directly.
     // Buttons row at top: Print, Design (toggle "design" view stylesheet)
@@ -4582,7 +5097,7 @@ async function assignZoomToClient(meetingId, startTime, topic) {
     // is critical — it's how the "Uncategorised Zooms" widget knows this
     // recording is now attached and stops surfacing it as unmatched.
     prog.sessionNotes = prog.sessionNotes || [];
-    prog.sessionNotes.push({
+    var newNote = {
       id: 'sn-zoom-' + Date.now(),
       date: sessionDate,
       text: '[Zoom: ' + (topic || 'Session') + '] — transcript pulled (' + (data.characterCount||'?') + ' chars).',
@@ -4590,9 +5105,19 @@ async function assignZoomToClient(meetingId, startTime, topic) {
       zoomTopic: topic || '',
       zoomTranscript: data.transcript || '',
       sharedWithClient: false,
+      aiSummaryStatus: 'queued',
       createdAt: new Date().toISOString()
-    });
+    };
+    prog.sessionNotes.push(newNote);
     await persistClient(client);
+    // Fire-and-forget: kick off the AI summary review. It sets sharedWithClient
+    // back to false and surfaces the polished version on Phoebe's home page
+    // for review before the client sees anything.
+    if (data.transcript && typeof runTranscriptReview === 'function') {
+      runTranscriptReview(client, prog, newNote).catch(function(err) {
+        console.warn('[TranscriptReview] background fail', err);
+      });
+    }
     logActivity('transcript', 'Transcript assigned to ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (topic||'Zoom session') + ' · ' + sessionDate });
     branded.success('Transcript saved against ' + client.name + '\'s ' + ((PROGRAMS[prog.program]||{}).label || prog.program) + ' program. Editable on the Session notes tab.');
     // Refresh
@@ -8012,6 +8537,143 @@ async function broadcastToCohort(cohortId, channel) {
 // ============================================================
 // HOME / DASHBOARD — task-centric overview of the day
 // ============================================================
+// ============================================================
+// AI TRANSCRIPT REVIEW QUEUE
+// Every Zoom transcript that lands triggers a Sonnet summary.
+// The polished version is held in `note.aiSummary` with status
+// 'pending-review'. Phoebe sees a queue at the top of the home
+// page, edits if needed, and approves — only then is it shared
+// with the client. Until approved the client sees nothing.
+// ============================================================
+async function runTranscriptReview(client, prog, note) {
+  if (!client || !prog || !note || !note.zoomTranscript) return;
+  if (note.aiSummaryStatus === 'in-progress') return;
+  note.aiSummaryStatus = 'in-progress';
+  try {
+    var prompt = 'You are Phoebe Blamey\'s editor. Below is a raw Zoom transcript from a coaching session with ' + (client.name || 'a client') +
+      (client.biz ? ' (' + client.biz + ')' : '') + '. Turn it into a polished, client-facing session summary.\n\n' +
+      'Structure (use these exact headings):\n' +
+      '## What we covered\n' +
+      '## Your wins this session\n' +
+      '## Action items for you\n' +
+      '## What I\'m sitting with\n\n' +
+      'Voice: warm, direct, conversational, Australian English. Speak to the client in second person ("you"). ' +
+      'Strip filler, half-sentences and the noise of real speech. Keep specifics: numbers, names, deadlines. ' +
+      'No corporate jargon. No "leverage", "synergy". Maximum 400 words total.\n\n' +
+      'TRANSCRIPT:\n' + String(note.zoomTranscript).slice(0, 18000);
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    if (!resp.ok) throw new Error('AI review failed: ' + resp.status);
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) {
+      data.content.forEach(function(b) { if (b && b.type === 'text' && b.text) text += b.text; });
+    }
+    if (!text) throw new Error('Empty AI response');
+    note.aiSummary = text;
+    note.aiSummaryStatus = 'pending-review';
+    note.aiSummaryGeneratedAt = new Date().toISOString();
+    await persistClient(client);
+    if (typeof renderHome === 'function') renderHome();
+    if (typeof logActivity === 'function') {
+      logActivity('ai-summary', 'Session summary ready for review · ' + client.name,
+        { clientId: client.id, clientName: client.name, progId: prog.id, detail: (note.zoomTopic || 'Zoom session') + ' · awaiting your approval' });
+    }
+  } catch (err) {
+    console.warn('[TranscriptReview]', err && err.message);
+    note.aiSummaryStatus = 'error';
+    note.aiSummaryError = String(err && err.message || err);
+    try { await persistClient(client); } catch (e) {}
+  }
+}
+
+// Walk every client and build the queue of session notes awaiting review.
+function gatherTranscriptReviewQueue() {
+  var queue = [];
+  (clients || []).forEach(function(c) {
+    (c.programs || []).forEach(function(p) {
+      (p.sessionNotes || []).forEach(function(n) {
+        if (n && n.aiSummaryStatus === 'pending-review' && n.aiSummary) {
+          queue.push({ client: c, prog: p, note: n });
+        }
+      });
+    });
+  });
+  // Newest first
+  queue.sort(function(a, b) {
+    var ad = a.note.aiSummaryGeneratedAt || a.note.date || '';
+    var bd = b.note.aiSummaryGeneratedAt || b.note.date || '';
+    return bd.localeCompare(ad);
+  });
+  return queue;
+}
+
+// Open a branded modal showing the polished summary, editable, with
+// Approve / Reject. Approve sets sharedWithClient:true so the client
+// sees it. Reject clears the summary and leaves the raw transcript
+// untouched on the coach side.
+function openTranscriptReview(clientId, progId, noteId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var prog = (client.programs || []).find(function(p){ return p.id === progId; });
+  if (!prog) return;
+  var note = (prog.sessionNotes || []).find(function(n){ return n.id === noteId; });
+  if (!note || !note.aiSummary) return;
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '✨';
+  document.getElementById('branded-modal-title').textContent = 'Review session summary · ' + client.name;
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="font-size:12px;color:var(--stone);margin-bottom:8px">' +
+      (note.zoomTopic || 'Zoom session') + ' · ' + (note.date || '') +
+    '</div>' +
+    '<textarea id="trev-edit" style="width:100%;min-height:280px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;line-height:1.5;resize:vertical;white-space:pre-wrap"></textarea>' +
+    '<div style="font-size:11px;color:var(--stone);margin-top:6px">Edit anything you want before sharing. Approve to release this to ' + (client.name||'the client').split(' ')[0] + '. Reject to discard the AI summary (raw transcript stays).</div>';
+  var ta = document.getElementById('trev-edit');
+  if (ta) ta.value = note.aiSummary;
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var reject = document.createElement('button'); reject.className = 'btn-sm'; reject.textContent = 'Reject';
+  var approve = document.createElement('button'); approve.className = 'btn-sm primary'; approve.textContent = '✓ Approve & share';
+  reject.onclick = async function() {
+    note.aiSummaryStatus = 'rejected';
+    note.aiSummary = '';
+    try { await persistClient(client); } catch(e) {}
+    host.style.display = 'none';
+    if (typeof renderHome === 'function') renderHome();
+    if (typeof branded !== 'undefined') branded.toast('Summary discarded — raw transcript still saved');
+  };
+  approve.onclick = async function() {
+    var edited = (ta && ta.value || '').trim();
+    if (!edited) { if (typeof branded !== 'undefined') branded.alert('Summary is empty — type or paste something first.'); return; }
+    note.aiSummary = edited;
+    note.aiSummaryStatus = 'approved';
+    note.aiSummaryApprovedAt = new Date().toISOString();
+    note.sharedWithClient = true;
+    note.text = edited; // The shared text is the polished summary, not the [Zoom: …] stub
+    try { await persistClient(client); } catch(e) {}
+    host.style.display = 'none';
+    if (typeof renderHome === 'function') renderHome();
+    if (typeof branded !== 'undefined') branded.success('Shared with ' + (client.name||'').split(' ')[0] + ' · ' + (note.date || 'today'));
+    if (typeof logActivity === 'function') {
+      logActivity('ai-summary', 'Session summary approved & shared · ' + client.name,
+        { clientId: client.id, clientName: client.name, progId: prog.id, detail: (note.zoomTopic || 'Zoom session') });
+    }
+  };
+  actions.appendChild(reject);
+  actions.appendChild(approve);
+  host.style.display = 'flex';
+}
+
 function renderHome() {
   console.log('[Home] render called');
   var el = document.getElementById('home-content');
@@ -8106,6 +8768,41 @@ function renderHome() {
   }
 
   var html = '';
+
+  // ── AI session summaries waiting for your approval ──
+  // Top-of-page so they don't get lost. Each card lets you review/edit/approve
+  // before the polished summary is released to the client.
+  try {
+    var reviewQueue = (typeof gatherTranscriptReviewQueue === 'function') ? gatherTranscriptReviewQueue() : [];
+    if (reviewQueue.length) {
+      html += '<div style="background:linear-gradient(135deg,#FFFAF0,#FFF0E0);border:2px solid #E8A020;border-radius:14px;padding:18px;margin-bottom:14px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
+        '<div style="font-size:20px">✨</div>' +
+        '<div style="font-family:var(--f-head);font-size:15px;color:#A07030;font-weight:700">' +
+        reviewQueue.length + ' session summar' + (reviewQueue.length === 1 ? 'y' : 'ies') + ' ready for your review' +
+        '</div></div>';
+      html += '<div style="font-size:12px;color:#A07030;margin-bottom:10px;line-height:1.5">' +
+        'I\'ve polished these from the Zoom transcripts. Have a quick read, edit anything that\'s off, and approve to share with the client.' +
+        '</div>';
+      reviewQueue.slice(0, 6).forEach(function(item) {
+        var initials = item.client.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2);
+        var topic = item.note.zoomTopic || 'Zoom session';
+        var date = item.note.date || (item.note.aiSummaryGeneratedAt || '').split('T')[0] || '';
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px;background:white;border:1px solid #F0D8B8;border-radius:8px;margin-bottom:6px">' +
+          '<div style="width:30px;height:30px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#C9266B">' + initials + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;color:#C9266B;font-weight:600">' + item.client.name + '</div>' +
+            '<div style="font-size:11px;color:#ACA495;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + topic + (date ? ' · ' + date : '') + '</div>' +
+          '</div>' +
+          '<button onclick="openTranscriptReview(\'' + item.client.id + '\',\'' + item.prog.id + '\',\'' + item.note.id + '\')" class="btn-sm primary" style="padding:6px 12px;font-size:11px">Review</button>' +
+          '</div>';
+      });
+      if (reviewQueue.length > 6) {
+        html += '<div style="font-size:11px;color:#A07030;margin-top:8px">+' + (reviewQueue.length - 6) + ' more — open the next client to see them.</div>';
+      }
+      html += '</div>';
+    }
+  } catch (e) { console.warn('[Home] review queue render', e); }
 
   // Quick actions FIRST so the most-used moves are right where the eye lands
   html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">';

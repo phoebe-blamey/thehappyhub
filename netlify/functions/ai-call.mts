@@ -58,13 +58,26 @@ export default async (req: Request, _context: Context) => {
     });
   }
 
+  // Long-running calls (anything with tools — web_search, etc) routinely take
+  // 30-90 seconds. Netlify's standard function timeout is 26 seconds, so a
+  // synchronous request would hit a 504 "Inactivity Timeout". The fix: stream
+  // the Anthropic response. The function returns as soon as the upstream
+  // stream opens (sub-second), and Netlify keeps the response stream flowing
+  // beyond the function's own execution-time limit.
+  //
+  // Behaviour:
+  //   - If body includes `stream: true` OR the call has tools, we set
+  //     stream:true upstream and pipe the raw SSE through to the client.
+  //   - Otherwise (fast calls without tools), keep the existing buffered
+  //     JSON response so callers expecting JSON still work.
+  const wantStream = body.stream === true || hasTools;
+
   try {
     const payload: any = { model, max_tokens, messages };
     if (system) payload.system = system;
-    // Forward tools (e.g. web_search) and tool_choice if the caller provided them.
-    // Anthropic handles server-side tools like web_search internally.
     if (hasTools) payload.tools = body.tools;
     if (body.tool_choice) payload.tool_choice = body.tool_choice;
+    if (wantStream) payload.stream = true;
 
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -76,19 +89,41 @@ export default async (req: Request, _context: Context) => {
       body: JSON.stringify(payload),
     });
 
-    const data = await resp.json();
-
     if (!resp.ok) {
+      // Read the error body whether it's streaming or not — error responses
+      // are always JSON regardless of the stream flag we sent.
+      const errBody = await resp.text();
+      let details: any = errBody;
+      try { details = JSON.parse(errBody); } catch {}
       return new Response(
         JSON.stringify({
           error: "Anthropic API error",
           status: resp.status,
-          details: data,
+          details,
         }),
         { status: resp.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    if (wantStream && resp.body) {
+      // Pipe the SSE stream straight through to the client. The browser-side
+      // interceptor parses the events and reassembles them into the standard
+      // Anthropic JSON shape so existing callers work unchanged.
+      return new Response(resp.body, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          // Custom marker so the client interceptor knows to parse SSE
+          "X-Anthropic-Stream": "1",
+        },
+      });
+    }
+
+    // Fast path: short calls return buffered JSON
+    const data = await resp.json();
     return new Response(JSON.stringify(data), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
