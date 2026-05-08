@@ -643,6 +643,233 @@ body{padding-top:0}
   border-color: rgba(232,160,32,0.22);
 }
 
+/* ── "What's new since you were last here" pill — sits below the mood
+   pill in the hero top-right corner. Pulses softly on first appearance.
+   Click expands a list. v10900. ── */
+.client-hero-whats-new {
+  position: absolute;
+  top: 56px;
+  right: 24px;
+  z-index: 2;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+@media (max-width: 720px) {
+  .client-hero-whats-new {
+    position: static;
+    margin-top: 8px;
+    align-items: flex-start;
+  }
+}
+.whats-new-pill {
+  background: rgba(251,242,25,0.92);
+  color: #5A4632;
+  border: 1px solid rgba(232,160,32,0.5);
+  border-radius: 99px;
+  padding: 6px 14px 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--f-body);
+  animation: whatsNewPulse 2.4s ease-in-out 1;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.whats-new-pill:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(232,160,32,0.3); }
+@keyframes whatsNewPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232,160,32,0.5); }
+  50%      { box-shadow: 0 0 0 10px rgba(232,160,32,0); }
+}
+.whats-new-list {
+  background: white;
+  border: 1.5px solid rgba(232,160,32,0.4);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--magenta);
+  max-width: 320px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.10);
+  margin-top: 4px;
+}
+.whats-new-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-soft);
+  line-height: 1.4;
+}
+.whats-new-list-item:last-child { border-bottom: none; }
+.whats-new-list-icon { font-size: 14px; line-height: 1.4; flex-shrink: 0; }
+.whats-new-list-dismiss {
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: var(--marshmallow);
+  color: var(--magenta);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  font-family: var(--f-body);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.whats-new-list-dismiss:hover { background: white; border-color: var(--hot-pink); }
+
+/* ── Custom sections (v10900 primitive) — bidirectional notes blocks
+   that both Phoebe and clients can add, edit, and share with each
+   other. Used in: coach per-program panel, client per-program portal. ── */
+.custom-sections-block .custom-sec-card {
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  position: relative;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.custom-sections-block .custom-sec-card:hover {
+  border-color: var(--hot-pink);
+  box-shadow: 0 2px 8px rgba(236,44,138,0.08);
+}
+.custom-sec-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+.custom-sec-author {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 10px;
+}
+.custom-sec-author-coach { background: rgba(236,44,138,0.12); color: var(--hot-pink); }
+.custom-sec-author-client { background: rgba(95,163,168,0.15); color: var(--teal); }
+.custom-sec-share-toggle {
+  background: rgba(232,160,32,0.10);
+  border: 1px solid rgba(232,160,32,0.35);
+  color: #A07030;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--f-body);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.custom-sec-share-toggle.on {
+  background: var(--mist);
+  border-color: var(--teal);
+  color: var(--teal);
+}
+.custom-sec-share-toggle:hover { transform: translateY(-1px); }
+.custom-sec-shared-pill {
+  background: rgba(95,163,168,0.12);
+  color: var(--teal);
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.custom-sec-when { color: var(--stone); font-size: 10px; }
+.custom-sec-delete {
+  background: transparent;
+  border: none;
+  color: var(--stone);
+  font-size: 18px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-left: auto;
+  padding: 0;
+  line-height: 1;
+  transition: all 0.15s;
+}
+.custom-sec-delete:hover { background: rgba(192,57,43,0.10); color: #C0392B; }
+.custom-sec-title {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--f-head);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--magenta);
+  padding: 0 0 4px;
+  margin-bottom: 4px;
+}
+.custom-sec-title::placeholder { color: var(--stone); opacity: 0.55; font-weight: 400; }
+.custom-sec-title-readonly {
+  font-family: var(--f-head);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--magenta);
+  padding: 0 0 4px;
+  margin-bottom: 4px;
+}
+.custom-sec-body {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: var(--f-body);
+  font-size: 13px;
+  color: var(--magenta);
+  background: var(--paper);
+  outline: none;
+  resize: vertical;
+  line-height: 1.6;
+  min-height: 70px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.custom-sec-body:hover { border-color: var(--border); }
+.custom-sec-body:focus { border-color: var(--hot-pink); background: white; }
+.custom-sec-body::placeholder { color: var(--stone); opacity: 0.55; }
+.custom-sec-body-readonly {
+  font-family: var(--f-body);
+  font-size: 13px;
+  color: var(--magenta);
+  background: var(--paper);
+  border-radius: 8px;
+  padding: 8px 10px;
+  line-height: 1.6;
+  min-height: 50px;
+  white-space: pre-wrap;
+}
+.custom-section-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  border: 1.5px dashed var(--hot-pink);
+  color: var(--hot-pink);
+  padding: 8px 18px;
+  border-radius: 99px;
+  font-family: var(--f-body);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 6px;
+}
+.custom-section-add-btn:hover {
+  background: var(--hot-pink);
+  color: white;
+  border-style: solid;
+  transform: translateY(-1px);
+}
+
 /* ── MDC week strip — client view only. 24 weeks in a single horizontal
    scroll, with a small divider every 6 weeks (sprint boundary) so the
    cohort still feels chunked into phases without showing a sprint

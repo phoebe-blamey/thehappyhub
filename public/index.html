@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v10800 — UX cleanup: hero medallions (not buttons) + click pop · mood picker → top-right hero corner · MDC weeks-only nav (no sprint switcher) · AI auto-suggests 'My Why' silently · real MDC workbook PDF download · yellow radial removed (kept on-brand pink)">
+<meta name="hmh-build" content="v10900 — refactor phase 1: 'Add section' primitive (bidirectional, shareable) · Open-as-client primary CTA · wins+profitability folded into Tools · settings gear icon · 'what's new since you were last here' hero pill · medallions trimmed to 5">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -227,8 +227,12 @@
               <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap" id="detail-prog-label"></div>
             </div>
             <div class="detail-actions">
-              <button class="btn-sm primary" onclick="switchTab('message')">📧 Message client</button>
-              <button class="btn-sm" onclick="copyClientLink()">Copy client link</button>
+              <!-- Primary CTA — fastest path to "what does the client see right now?".
+                   Phoebe asked for this prominently. Opens in a new tab so her own
+                   coach session stays untouched. -->
+              <button class="btn-sm primary" onclick="openClientPortalAsClient(currentClientId)" title="Open this client's hub in a new tab to see exactly what they see right now">👁 Open as client</button>
+              <button class="btn-sm" onclick="switchTab('message')">📧 Message</button>
+              <button class="btn-sm" onclick="copyClientLink()" title="Copy a shareable link to this client's portal">🔗 Copy link</button>
             </div>
           </div>
           <div class="client-link-bar">
@@ -406,6 +410,10 @@
         <div class="tab-pane" id="tab-session-notes">
           <div class="vis-bar vis-co"><span>🔒 Coach only</span> — shared notes appear in client portal</div>
           <div id="session-notes-list"></div>
+          <!-- v10900: custom sections live here too — same context as session
+               notes, both Phoebe and the client can add free-form sections,
+               either side can flip a "share with the other" toggle. -->
+          <div id="custom-sections-host" style="margin-top:18px"></div>
         </div>
 
         <!-- TOOLS TAB -->
@@ -826,6 +834,10 @@
       <span id="client-next-session-text"></span>
     </a>
     <span class="save-status-pill-c" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Your work saves automatically as you go"></span>
+    <!-- v10900: settings gear in the topbar — fast access to client preferences
+         without making Settings a peer of Summary/Programs/To-dos in the
+         primary nav. The Settings tab still exists below for discoverability. -->
+    <button onclick="switchClientTab('settings')" title="Settings" aria-label="Settings" style="background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.22);color:white;width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.15s" onmouseover="this.style.background='rgba(255,255,255,0.24)'" onmouseout="this.style.background='rgba(255,255,255,0.14)'">⚙️</button>
     <button class="btn-logout" onclick="logout()">Sign out</button>
   </div>
   <div class="client-layout">
@@ -857,6 +869,10 @@
            (Elodie's screenshot showed exactly this position). On mobile
            the CSS reflows it inline below the hero text. -->
       <div id="client-hero-mood-wrap" class="client-hero-mood-corner"></div>
+      <!-- v10900: "what's new since you were last here" pill — fades in below
+           the mood pill when there's fresh activity from Phoebe (shared
+           notes, new tasks, new wins, new shared sections). Click to expand. -->
+      <div id="client-hero-whats-new" class="client-hero-whats-new" style="display:none"></div>
     </div>
     <!-- New-note notification banner — shows when Phoebe has shared something
          the client hasn't read yet. Click "Read it" jumps to that program. -->
@@ -3652,8 +3668,9 @@ function renderEarnedBadgeRibbon(client) {
   var earned = (client.badges || []).map(function(b) { return b.id; });
   if (!earned.length) return '';
   var earnedBadges = earned.map(function(id) { return BADGES[id]; }).filter(Boolean);
-  // Show up to 8 medallions, then a "+N more" round chip
-  var visible = earnedBadges.slice(0, 8);
+  // v10900: trimmed to 5 medallions max so the hero stays a hero, not a
+  // trophy wall. The full grid lives in the "All my achievements" accordion.
+  var visible = earnedBadges.slice(0, 5);
   var extra = earnedBadges.length - visible.length;
   var medallions = visible.map(function(b, i) {
     var safeName = String(b.name || '').replace(/'/g,"\\'");
@@ -4862,10 +4879,12 @@ function buildProgramTabs(client, prog) {
   } else {
     tabDefs.push({ id:'session-notes', label:'Notes', tag:'sh' });
   }
-  // All programs get tools + profitability + wins + tasks + message + settings
+  // All programs get tools + tasks + message + settings.
+  // v10900: Wins folded into Tools (Elodie: too many top-level options).
+  // Profitability also folded into Tools — same logic. The dedicated panes
+  // still exist (#tab-wins, #tab-profitability) and are reachable via the
+  // Tools panel buttons, so no data is lost.
   tabDefs.push({ id:'tools', label:'🛠 Tools', tag:'co' });
-  tabDefs.push({ id:'profitability', label:'$ Value', tag:'co' });
-  tabDefs.push({ id:'wins', label:'Wins 🏆', tag:'co' });
   tabDefs.push({ id:'tasks', label:'Tasks', tag:'co' });
   tabDefs.push({ id:'message', label:'Message client', tag:'co' });
   tabDefs.push({ id:'client-settings', label:'⚙️ Settings', tag:'co' });
@@ -5855,6 +5874,87 @@ function loadClientPortal(client) {
   if (typeof updateClientHeroMood === 'function') updateClientHeroMood(client);
   // Topbar "next session" pill — also persistent across tabs
   if (typeof updateClientNextSessionPill === 'function') updateClientNextSessionPill(client);
+  // v10900: "since you were last here" hero pill. Stamps the visit ts
+  // AFTER computing what's new so this visit's content is "old" next time.
+  if (typeof updateClientHeroWhatsNew === 'function') updateClientHeroWhatsNew(client);
+}
+
+// Detects activity Phoebe has added since the client's last visit and
+// surfaces a pulsing yellow pill in the hero. Click to expand. Items:
+//   - shared session notes added since lastClientVisitAt
+//   - tasks added by Phoebe (clientVisible) since lastClientVisitAt
+//   - shared custom sections from Phoebe since lastClientVisitAt
+// After 1.5s the visit timestamp is updated so the pill clears next time.
+function updateClientHeroWhatsNew(client) {
+  var wrap = document.getElementById('client-hero-whats-new');
+  if (!wrap || !client) return;
+  var lastVisit = client.lastClientVisitAt || '1970-01-01T00:00:00Z';
+  var items = [];
+  // Shared session notes from Phoebe
+  (client.programs || []).forEach(function(p) {
+    (p.sessionNotes || []).forEach(function(n) {
+      if (!n.sharedWithClient) return;
+      var ts = n.aiSummaryApprovedAt || n.createdAt || n.date || '';
+      if (ts && ts > lastVisit) {
+        items.push({ icon:'📝', label:'New session note · ' + (n.zoomTopic || (PROGRAMS[p.program]||{}).label || p.program) });
+      }
+    });
+    // Shared custom sections from Phoebe
+    (p.customSections || []).forEach(function(s) {
+      if (s.author !== 'phoebe' || !s.shared) return;
+      if ((s.createdAt || s.updatedAt || '') > lastVisit) {
+        items.push({ icon:'📌', label:'Phoebe shared a section · ' + (s.title || 'Untitled') });
+      }
+    });
+  });
+  // New client-visible tasks added by Phoebe
+  (client.tasks || []).forEach(function(t) {
+    if (!t.clientVisible) return;
+    if ((t.createdAt || '') > lastVisit) {
+      items.push({ icon:'✅', label:'New task: ' + (t.text || 'Untitled task') });
+    }
+  });
+  if (!items.length) {
+    wrap.style.display = 'none';
+    // Stamp the visit so we don't accumulate phantom newness across reloads
+    client.lastClientVisitAt = new Date().toISOString();
+    if (typeof persistClient === 'function') persistClient(client).catch(function(){});
+    return;
+  }
+  // Cap to 6 items in the dropdown
+  var visible = items.slice(0, 6);
+  var more = items.length - visible.length;
+  var listHtml = visible.map(function(it) {
+    return '<div class="whats-new-list-item">' +
+      '<span class="whats-new-list-icon">' + it.icon + '</span>' +
+      '<span>' + escapeHtml(it.label) + '</span>' +
+    '</div>';
+  }).join('');
+  if (more > 0) listHtml += '<div class="whats-new-list-item"><span class="whats-new-list-icon">…</span><span>+' + more + ' more</span></div>';
+  wrap.innerHTML =
+    '<button class="whats-new-pill" onclick="toggleWhatsNewList()">' +
+      '<span>✨</span><span>' + items.length + ' new since you were last here</span>' +
+    '</button>' +
+    '<div id="whats-new-list" class="whats-new-list" style="display:none">' +
+      listHtml +
+      '<button class="whats-new-list-dismiss" onclick="dismissWhatsNew()">Got it · mark all as seen</button>' +
+    '</div>';
+  wrap.style.display = 'flex';
+}
+
+function toggleWhatsNewList() {
+  var list = document.getElementById('whats-new-list');
+  if (!list) return;
+  list.style.display = list.style.display === 'none' ? 'block' : 'none';
+}
+
+async function dismissWhatsNew() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  client.lastClientVisitAt = new Date().toISOString();
+  await persistClient(client);
+  var wrap = document.getElementById('client-hero-whats-new');
+  if (wrap) wrap.style.display = 'none';
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -6392,9 +6492,10 @@ function renderClientProgram(client, prog) {
       : '';
     // Per-program client notes — companion to coach notes, owned by the client
     var clientNotesHtml = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
+    var customSectionsHtml = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
     var reflectHtml = isLocked ? '' : '<div class="client-section"><h3>' + firstName + '\'s reflections</h3><textarea id="client-reflect-'+prog.id+'" onchange="saveClientReflection(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:100px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What did this session bring up for you? What are you noticing?">'+(prog.clientReflection||'')+'</textarea></div>';
     var clientWinsHtml = clientWinsSection(prog);
-    content = lockNotice + whyPin + clientWinsHtml + planHtml + notesHtml + clientNotesHtml + reflectHtml + fullAchievementsAccordion;
+    content = lockNotice + whyPin + clientWinsHtml + planHtml + notesHtml + clientNotesHtml + customSectionsHtml + reflectHtml + fullAchievementsAccordion;
     area.innerHTML = content;
     renderPlanGrid(prog.plan||[], prog.taskDone||{}, 'client-plan-grid-'+prog.id, isLocked);
   } else if (prog.workbook==='mdc') {
@@ -6486,7 +6587,8 @@ function renderClientProgram(client, prog) {
       '<textarea id="client-mdc-session-'+prog.id+'" onchange="saveClientMDCCheckin(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What came up for you this week? What can you change as a result?">'+(ci.clientSession||'')+'</textarea>' +
       '</div>';
     var clientNotesMdc = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
-    content = lockNotice + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + fullAchievementsAccordion;
+    var customSectionsMdc = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
+    content = lockNotice + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + customSectionsMdc + fullAchievementsAccordion;
     area.innerHTML = content;
     // Auto-scroll the active week pill into the centre of the strip so
     // clients always land on the right week without having to scroll.
@@ -6504,10 +6606,12 @@ function renderClientProgram(client, prog) {
       (hh.resources?'<div class="intake-answer"><div class="intake-q">Resources</div><div class="intake-a" style="white-space:pre-wrap">'+hh.resources+'</div></div>':'') +
       (!hh.assets&&!hh.discussed?'<p style="color:var(--stone);font-size:13px">Your session summary will appear here after your Happy Hour.</p>':'');
     var clientNotesHh = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
-    content = lockNotice + whyPin + '<div class="client-section"><h3>☀️ Your Happy Hour summary</h3>' + hhBody + '</div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + clientNotesHh + fullAchievementsAccordion;
+    var customSecHh = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
+    content = lockNotice + whyPin + '<div class="client-section"><h3>☀️ Your Happy Hour summary</h3>' + hhBody + '</div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + clientNotesHh + customSecHh + fullAchievementsAccordion;
     area.innerHTML = content;
   } else {
-    content = lockNotice + whyPin + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + fullAchievementsAccordion;
+    var customSecFallback = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
+    content = lockNotice + whyPin + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + customSecFallback + fullAchievementsAccordion;
     area.innerHTML = content;
   }
 
@@ -9083,6 +9187,200 @@ async function saveClientPerProgramNotes(clientId, progId, value) {
   await persistClient(client);
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// CUSTOM SECTIONS — v10900 primitive
+// Bidirectional, sharable text sections that both Phoebe and the client
+// can add, edit, share with the other party, or keep private.
+//
+// Data shape per program:
+//   prog.customSections = [
+//     {
+//       id, title, body,
+//       author: 'phoebe' | 'client',
+//       shared: boolean,
+//       createdAt, updatedAt
+//     },
+//     ...
+//   ]
+//
+// Visibility:
+//   - Phoebe (coach view) sees ALL sections — hers + the client's, regardless
+//     of `shared` flag. She's the coach; full visibility is the point.
+//   - Client (portal view) sees their own sections (always) + Phoebe's
+//     sections WHERE shared===true. Phoebe's private notes stay private.
+//
+// Functions are framework-agnostic — drop renderCustomSectionsBlock(...)
+// into any program-render path and it works.
+// ═════════════════════════════════════════════════════════════════════
+
+// Render the full block: heading, list of sections, "+ Add section" button.
+// `viewer` is either 'phoebe' or 'client' — controls visibility filter
+// AND the wording of the "share with X" toggles.
+function renderCustomSectionsBlock(client, prog, viewer) {
+  if (!client || !prog) return '';
+  var sections = (prog.customSections || []);
+  var visible = sections.filter(function(s) {
+    if (viewer === 'phoebe') return true; // coach sees everything
+    // Client sees their own + shared-to-them from Phoebe
+    return s.author === 'client' || s.shared === true;
+  });
+  var heading = viewer === 'phoebe'
+    ? '📌 Custom sections'
+    : '📌 My sections & shared notes';
+  var subhead = viewer === 'phoebe'
+    ? 'Free-form sections — your notes or your client\'s. Tick "share" on yours to send them through to the client portal.'
+    : 'Anything you want to add — questions, reflections, follow-ups. Tick "share with Phoebe" so she can see it.';
+  var sectionCards = visible.length
+    ? visible.map(function(s) { return renderCustomSectionCard(client, prog, s, viewer); }).join('')
+    : '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:14px 0">No sections yet — add the first one below.</div>';
+  return '<div class="client-section custom-sections-block">' +
+    '<h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>' + heading + '</span>' +
+      (visible.length ? '<span style="font-size:11px;color:var(--stone);font-weight:500;letter-spacing:0">· ' + visible.length + '</span>' : '') +
+    '</h3>' +
+    '<p style="font-size:12px;color:var(--stone);margin-bottom:14px">' + subhead + '</p>' +
+    '<div id="custom-sections-list-' + prog.id + '">' + sectionCards + '</div>' +
+    '<button class="custom-section-add-btn" onclick="addCustomSection(\'' + client.id + '\',\'' + prog.id + '\',\'' + viewer + '\')">+ Add a section</button>' +
+  '</div>';
+}
+
+// Single section card — title input + body textarea + share toggle + delete.
+// Authored-by badge so it's clear who wrote it. Edit-on-blur (no save button).
+function renderCustomSectionCard(client, prog, section, viewer) {
+  var canEdit  = viewer === section.author || (viewer === 'phoebe'); // coach can edit anything
+  var canShare = viewer === section.author; // only author flips share toggle
+  var canDelete = viewer === section.author || viewer === 'phoebe'; // coach can delete client noise too
+  var authorBadge = section.author === 'phoebe'
+    ? '<span class="custom-sec-author custom-sec-author-coach">Phoebe</span>'
+    : '<span class="custom-sec-author custom-sec-author-client">' + escapeHtml((client.name||'Client').split(' ')[0]) + '</span>';
+  var shareLabel = viewer === 'phoebe'
+    ? (section.shared ? '🔓 Shared with client' : '🔒 Coach only')
+    : (section.shared ? '🔓 Shared with Phoebe' : '🔒 Just for me');
+  // For sections authored by the OTHER party (eg. Phoebe viewing client's
+  // section), show a read-only "shared with you" pill instead of a toggle.
+  var crossView = viewer !== section.author;
+  var shareControl = canShare
+    ? '<button class="custom-sec-share-toggle' + (section.shared ? ' on' : '') + '" onclick="toggleSectionSharing(\'' + client.id + '\',\'' + prog.id + '\',\'' + section.id + '\')">' + shareLabel + '</button>'
+    : (crossView
+        ? '<span class="custom-sec-shared-pill">' + (section.shared ? '🔓 Shared with you' : '🔒 Private') + '</span>'
+        : '');
+  var deleteBtn = canDelete
+    ? '<button class="custom-sec-delete" onclick="deleteCustomSection(\'' + client.id + '\',\'' + prog.id + '\',\'' + section.id + '\',\'' + viewer + '\')" title="Delete this section">×</button>'
+    : '';
+  var titleInput = canEdit
+    ? '<input type="text" class="custom-sec-title" value="' + escapeHtml(section.title || '') + '" placeholder="Section title" onchange="updateCustomSection(\'' + client.id + '\',\'' + prog.id + '\',\'' + section.id + '\',\'title\',this.value)">'
+    : '<div class="custom-sec-title custom-sec-title-readonly">' + escapeHtml(section.title || 'Untitled section') + '</div>';
+  var bodyInput = canEdit
+    ? '<textarea class="custom-sec-body" placeholder="What\'s on your mind?" onchange="updateCustomSection(\'' + client.id + '\',\'' + prog.id + '\',\'' + section.id + '\',\'body\',this.value)">' + escapeHtml(section.body || '') + '</textarea>'
+    : '<div class="custom-sec-body custom-sec-body-readonly">' + escapeHtml(section.body || '').replace(/\n/g, '<br>') + '</div>';
+  var when = '';
+  if (section.updatedAt) {
+    try { when = new Date(section.updatedAt).toLocaleDateString('en-AU', { day:'numeric', month:'short' }); } catch(e) {}
+  }
+  return '<div class="custom-sec-card" data-section-id="' + section.id + '">' +
+    '<div class="custom-sec-meta">' +
+      authorBadge +
+      shareControl +
+      (when ? '<span class="custom-sec-when">' + when + '</span>' : '') +
+      deleteBtn +
+    '</div>' +
+    titleInput +
+    bodyInput +
+  '</div>';
+}
+
+async function addCustomSection(clientId, progId, viewer) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!prog) return;
+  prog.customSections = prog.customSections || [];
+  var newSec = {
+    id: 'sec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    title: '',
+    body: '',
+    author: viewer === 'phoebe' ? 'phoebe' : 'client',
+    shared: true, // collaborative by default — Elodie wants both sides to share
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  prog.customSections.push(newSec);
+  await persistClient(client);
+  // Re-render whichever surface called this
+  if (viewer === 'client') {
+    if (typeof renderClientProgram === 'function') renderClientProgram(client, prog);
+  } else {
+    if (typeof renderCustomSectionsForCoach === 'function') renderCustomSectionsForCoach(client, prog);
+  }
+  // Focus the new section's title input on next paint
+  setTimeout(function() {
+    var card = document.querySelector('[data-section-id="' + newSec.id + '"]');
+    var input = card ? card.querySelector('.custom-sec-title') : null;
+    if (input && input.focus) input.focus();
+  }, 80);
+}
+
+async function updateCustomSection(clientId, progId, sectionId, field, value) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!prog) return;
+  var sec = (prog.customSections || []).find(function(s){ return s.id === sectionId; });
+  if (!sec) return;
+  sec[field] = value;
+  sec.updatedAt = new Date().toISOString();
+  await persistClient(client);
+}
+
+async function toggleSectionSharing(clientId, progId, sectionId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!prog) return;
+  var sec = (prog.customSections || []).find(function(s){ return s.id === sectionId; });
+  if (!sec) return;
+  sec.shared = !sec.shared;
+  sec.updatedAt = new Date().toISOString();
+  await persistClient(client);
+  // Re-render the toggle button without nuking the whole list
+  var btn = document.querySelector('[data-section-id="' + sectionId + '"] .custom-sec-share-toggle');
+  if (btn) {
+    btn.classList.toggle('on', sec.shared);
+    // Detect viewer from existing label tone — coach view says "Shared with client", client view says "with Phoebe"
+    var coachish = btn.textContent.indexOf('client') !== -1 || btn.textContent.indexOf('Coach') !== -1;
+    btn.textContent = coachish
+      ? (sec.shared ? '🔓 Shared with client' : '🔒 Coach only')
+      : (sec.shared ? '🔓 Shared with Phoebe' : '🔒 Just for me');
+  }
+  if (typeof branded !== 'undefined' && branded.toast) {
+    branded.toast(sec.shared ? '✓ Shared' : 'Now private');
+  }
+}
+
+async function deleteCustomSection(clientId, progId, sectionId, viewer) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!prog) return;
+  var ok = await branded.confirm(
+    'Delete this section? This can\'t be undone.',
+    { title:'Delete section?', okLabel:'Delete', danger:true, cancelLabel:'Keep' }
+  );
+  if (!ok) return;
+  prog.customSections = (prog.customSections || []).filter(function(s){ return s.id !== sectionId; });
+  await persistClient(client);
+  if (viewer === 'client') {
+    if (typeof renderClientProgram === 'function') renderClientProgram(client, prog);
+  } else {
+    if (typeof renderCustomSectionsForCoach === 'function') renderCustomSectionsForCoach(client, prog);
+  }
+}
+
+// Coach-side host: renders into a known DOM slot (id below). Client-side
+// just embeds renderCustomSectionsBlock() inline because the program render
+// path already concats HTML strings; this host is needed because the coach
+// program panes are pre-built static panes that get filled by JS.
+function renderCustomSectionsForCoach(client, prog) {
+  var host = document.getElementById('custom-sections-host');
+  if (!host) return;
+  host.innerHTML = renderCustomSectionsBlock(client, prog, 'phoebe');
+}
+
 // Renders one fillable workbook field for the client side. Client edits → save to prog.
 function makeClientWorkbookField(clientId, progId, field, title, desc, value, placeholder, isLocked) {
   var inputId = 'client-mdc-wb-'+progId+'-'+field;
@@ -10031,6 +10329,9 @@ openProgram = function(client, progId) {
     renderToolsPanel(client, prog);
     // Session notes
     renderSessionNotes(client, prog);
+    // v10900: bidirectional custom sections — Phoebe sees ALL sections
+    // (her own + client's, regardless of share flag).
+    if (typeof renderCustomSectionsForCoach === 'function') renderCustomSectionsForCoach(client, prog);
   }, 100);
 };
 
@@ -10686,7 +10987,57 @@ function renderToolsPanel(client, prog) {
       '</div>' +
     '</div>';
 
-  var html = zoomHtml + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px">';
+  // ── 🏆 WINS SECTION (folded in from the old top-level Wins tab) ──
+  // v10900: Wins no longer has its own top-tab — too many top-level options.
+  // Lives here as a dedicated section with recent-wins preview + the four
+  // win-related actions. The full wins pane (#tab-wins) still exists; the
+  // "View all" button switches to it.
+  var clientWins = (client.wins || []).slice();
+  (client.programs || []).forEach(function(p) {
+    (p.wins || []).forEach(function(w) { if (w) clientWins.push(Object.assign({ _progLabel: (PROGRAMS[p.program]||{}).label || p.program }, w)); });
+  });
+  clientWins.sort(function(a, b) { return (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''); });
+  var recentWins = clientWins.slice(0, 3);
+  var winsHtml =
+    '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:16px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
+        '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700">🏆 Wins · ' + clientWins.length + '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<button class="btn-sm primary" style="font-size:11px" onclick="switchTab(\'wins\'); setTimeout(function(){showAddWinForm();},200)">+ Log a win</button>' +
+          '<button class="btn-sm" style="font-size:11px" onclick="openShareWinModal(\'' + cid + '\')" title="Quick celebration post — visible on the client\'s wins feed">🎉 Share win</button>' +
+          '<button class="btn-sm" style="font-size:11px" onclick="openAwardBadgeModal(\'' + cid + '\')" title="Award a manual or custom badge to celebrate a moment">🎖 Award badge</button>' +
+          (clientWins.length > 0 ? '<button class="btn-sm" style="font-size:11px" onclick="switchTab(\'wins\')">View all →</button>' : '') +
+        '</div>' +
+      '</div>' +
+      (recentWins.length === 0
+        ? '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:8px 0">No wins yet — log the first one and watch the impact compound.</div>'
+        : recentWins.map(function(w) {
+            var d = w.date ? new Date(w.date).toLocaleDateString('en-AU', { day:'numeric', month:'short' }) : '';
+            var prefix = w.metric || w.title || 'Win';
+            var transform = (w.before && w.after) ? ' · ' + escapeHtml(w.before) + ' → ' + escapeHtml(w.after) : '';
+            return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#FFFBE8;border:1px solid rgba(232,160,32,0.25);border-radius:8px;margin-bottom:4px">' +
+              '<span style="font-size:14px">🏆</span>' +
+              '<div style="flex:1;min-width:0;font-size:12px;color:var(--magenta)"><strong>' + escapeHtml(prefix) + '</strong>' + transform + (w._progLabel ? ' <span style="color:var(--stone);font-size:11px">· ' + escapeHtml(w._progLabel) + '</span>' : '') + '</div>' +
+              (d ? '<div style="font-size:10px;color:var(--stone);flex-shrink:0">' + d + '</div>' : '') +
+            '</div>';
+          }).join('')) +
+    '</div>';
+
+  // ── 💰 PROFITABILITY MINI (folded in from the old top-level $ Value tab) ──
+  // Show the headline numbers + a "Full breakdown" link. Same data, less nav.
+  var profitHtml =
+    '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+      '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700;flex-shrink:0">💰 Value</div>' +
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;flex:1;font-size:12px">' +
+        '<div><strong style="color:var(--magenta);font-size:16px">' + (v.profitPct != null ? v.profitPct + '%' : '—') + '</strong><div style="color:var(--stone)">margin</div></div>' +
+        '<div><strong style="color:var(--magenta);font-size:16px">$' + (v.hourlyEarned != null ? v.hourlyEarned : '—') + '</strong><div style="color:var(--stone)">hourly effective</div></div>' +
+        '<div><strong style="color:var(--magenta);font-size:16px">' + (v.signal === 'green' ? '🟢' : v.signal === 'amber' ? '🟡' : v.signal === 'red' ? '🔴' : '—') + '</strong><div style="color:var(--stone)">health</div></div>' +
+      '</div>' +
+      '<button class="btn-sm" style="font-size:11px;flex-shrink:0" onclick="switchTab(\'profitability\')">Full breakdown →</button>' +
+      '<button class="btn-sm" style="font-size:11px;flex-shrink:0" onclick="switchTab(\'profitability\'); setTimeout(function(){showLogTimeForm(\'' + cid + '\');},200)">⏱ Log time</button>' +
+    '</div>';
+
+  var html = zoomHtml + winsHtml + profitHtml + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px">';
 
   // AI Tools
   html += toolCard('✦ Research brief',     'AI-analyse website, intake, social',       'var(--hot-pink)', 'switchTab("intake")');
@@ -10710,10 +11061,9 @@ function renderToolsPanel(client, prog) {
   }
   html += toolCard('📤 Share resource','Send blog/podcast/tool to client','#6040A0','showPage("happy-hub"); renderHappyHub("","","")');
 
-  // Tracking
-  html += toolCard('🏆 Log a win',    'Record before/after result',        '#E8A020', 'switchTab("wins"); setTimeout(function(){showAddWinForm();},200)');
+  // Tracking — wins + log-time moved into the dedicated Wins / Profitability
+  // sections at the top of this panel; only Add task + Log referral remain.
   html += toolCard('✅ Add task',     'Add task for this client',           '#E8A020', 'switchTab("tasks")');
-  html += toolCard('⏱ Log time',     'Record time for profitability',      '#E8A020', 'switchTab("profitability"); setTimeout(function(){showLogTimeForm("'+cid+'");},200)');
   html += toolCard('🤝 Log referral','Record referral given/received',     '#E8A020', 'logReferral("'+cid+'")');
 
   // Health
