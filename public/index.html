@@ -12,7 +12,7 @@
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7800 loaded successfully (modular CSS + demo data)
+✓ The Happy Hub — Build v7900 loaded successfully (MDC fix, badges on top, fillable workbook, testing notes)
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 
@@ -792,6 +792,45 @@
   </div>
 </div>
 
+<!-- ========== REVIEW DRAWER (Phoebe's testing companion, coach-only) ==========
+     Floating note-pad for jotting down issues, ideas, or copy tweaks while you
+     poke around the platform. Each note captures the page you were on so you
+     don't have to type "on the client portal page" every time. Click "Copy all"
+     to grab everything as plain text — paste it into a chat to send back. -->
+<button id="review-fab" onclick="toggleReviewDrawer()" aria-label="Leave feedback"
+  style="position:fixed;bottom:24px;left:24px;height:42px;padding:0 16px;border-radius:99px;
+  background:white;color:var(--magenta);border:1.5px solid var(--hot-pink);font-size:13px;font-weight:600;
+  cursor:pointer;box-shadow:0 4px 14px rgba(201,38,107,0.18);z-index:250;
+  display:none;align-items:center;gap:8px;font-family:var(--f-body)"
+  title="Jot a quick issue, idea, or copy tweak — copy them all to send to me later">
+  <span style="font-size:16px">📝</span><span>Note an issue</span>
+  <span id="review-count-pill" style="display:none;background:var(--hot-pink);color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;margin-left:2px"></span>
+</button>
+
+<div id="review-drawer" style="position:fixed;bottom:78px;left:24px;width:380px;max-width:calc(100vw - 48px);
+  max-height:calc(100vh - 120px);overflow-y:auto;background:white;border-radius:16px;
+  box-shadow:0 16px 48px rgba(201,38,107,0.22);z-index:251;display:none;font-family:var(--f-body)">
+  <div style="background:var(--magenta);color:white;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-radius:16px 16px 0 0">
+    <div>
+      <div style="font-family:var(--f-head);font-size:16px;font-weight:600">Testing notes</div>
+      <div style="font-size:11px;opacity:0.85;margin-top:2px">Capture issues as you find them</div>
+    </div>
+    <button onclick="toggleReviewDrawer()" aria-label="Close" style="background:none;border:none;color:white;font-size:22px;cursor:pointer;line-height:1;padding:0 4px">×</button>
+  </div>
+  <div style="padding:14px">
+    <div style="font-size:11px;color:var(--stone);margin-bottom:6px">
+      <span id="review-current-context">Where you are right now</span>
+    </div>
+    <textarea id="review-input" placeholder="What's broken / odd / could be better?  e.g. &quot;MDC progress bar still says day 7 of 90&quot;" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.5;margin-bottom:8px"></textarea>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn-sm primary" onclick="saveReviewNote()">Save note</button>
+      <button class="btn-sm" onclick="copyAllReviewNotes()" id="review-copy-btn">📋 Copy all</button>
+      <button class="btn-sm" onclick="clearAllReviewNotes()" style="margin-left:auto;font-size:11px;color:var(--stone)">Clear</button>
+    </div>
+    <div id="review-list" style="margin-top:14px"></div>
+  </div>
+</div>
+
 <!-- External resources extracted during Phase B-1 refactor -->
 <script src="js/demo-data.js"></script>
 
@@ -879,22 +918,25 @@
 })();
 
 // ========== PROGRAM REGISTRY (maps all Calendly event types) ==========
+// `lengthDays` drives the "Day N of M" progress bar in the client portal.
+// MDC and Happy Hour use their own progress logic (sprint/week and one-off session)
+// so the day count is mainly meaningful for the 90-day-style programs.
 var PROGRAMS = {
-  '90day':      { label:'90-Day Business Builder',       short:'90-Day',       color:'prog-90day',   workbook:'90day',     icon:'📅' },
-  'accelerator':{ label:'Business Growth Accelerator',   short:'Accelerator',  color:'prog-90day',   workbook:'90day',     icon:'🚀' },
-  'broker':     { label:'Broker Business Breakthrough',  short:'Broker',       color:'prog-90day',   workbook:'90day',     icon:'🏦' },
-  'happyhour':  { label:'Happy Hour',                    short:'Happy Hour',   color:'prog-happyhour',workbook:'happyhour', icon:'☀️' },
-  'adhoc':      { label:'Ad Hoc Coaching',               short:'Ad Hoc',       color:'prog-audit',   workbook:'session',   icon:'💬' },
-  'audit':      { label:'Beautiful Business Audit',      short:'Audit',        color:'prog-audit',   workbook:'audit',     icon:'🔍' },
-  'mdc':        { label:'Million Dollar Conspiracy',     short:'MDC',          color:'prog-mdc',     workbook:'mdc',       icon:'💡' },
-  'mdc-inquiry':{ label:'MDC Inquiry',                   short:'MDC Inquiry',  color:'prog-mdc',     workbook:'inquiry',   icon:'💡' },
-  'inquiry':    { label:'Discovery Call',                short:'Discovery',    color:'prog-stone',   workbook:'inquiry',   icon:'🤝' },
-  'podcast':    { label:'Podcast Recording',             short:'Podcast',      color:'prog-stone',   workbook:'none',      icon:'🎙' },
-  'partner':    { label:'Partner Meeting',               short:'Partner',      color:'prog-stone',   workbook:'none',      icon:'🤝' },
-  'research':   { label:'Research Chat',                 short:'Research',     color:'prog-stone',   workbook:'none',      icon:'🔬' },
-  'general':    { label:'General Session',               short:'Session',      color:'prog-stone',   workbook:'none',      icon:'📌' },
-  'builder-6m': { label:'Business Builder (6-month)',      short:'Builder 6M',   color:'prog-mdc',     workbook:'90day',     icon:'🏗' },
-  'mdc-cohort': { label:'MDC Cohort Member',               short:'MDC',          color:'prog-mdc',     workbook:'mdc',       icon:'💡' },
+  '90day':      { label:'90-Day Business Builder',       short:'90-Day',       color:'prog-90day',   workbook:'90day',     icon:'📅', lengthDays: 90  },
+  'accelerator':{ label:'Business Growth Accelerator',   short:'Accelerator',  color:'prog-90day',   workbook:'90day',     icon:'🚀', lengthDays: 90  },
+  'broker':     { label:'Broker Business Breakthrough',  short:'Broker',       color:'prog-90day',   workbook:'90day',     icon:'🏦', lengthDays: 90  },
+  'happyhour':  { label:'Happy Hour',                    short:'Happy Hour',   color:'prog-happyhour',workbook:'happyhour', icon:'☀️', lengthDays: null }, // single 90-min session
+  'adhoc':      { label:'Ad Hoc Coaching',               short:'Ad Hoc',       color:'prog-audit',   workbook:'session',   icon:'💬', lengthDays: null },
+  'audit':      { label:'Beautiful Business Audit',      short:'Audit',        color:'prog-audit',   workbook:'audit',     icon:'🔍', lengthDays: 60  },
+  'mdc':        { label:'Million Dollar Conspiracy',     short:'MDC',          color:'prog-mdc',     workbook:'mdc',       icon:'💡', lengthDays: 168 }, // 24 weeks
+  'mdc-inquiry':{ label:'MDC Inquiry',                   short:'MDC Inquiry',  color:'prog-mdc',     workbook:'inquiry',   icon:'💡', lengthDays: null },
+  'inquiry':    { label:'Discovery Call',                short:'Discovery',    color:'prog-stone',   workbook:'inquiry',   icon:'🤝', lengthDays: null },
+  'podcast':    { label:'Podcast Recording',             short:'Podcast',      color:'prog-stone',   workbook:'none',      icon:'🎙', lengthDays: null },
+  'partner':    { label:'Partner Meeting',               short:'Partner',      color:'prog-stone',   workbook:'none',      icon:'🤝', lengthDays: null },
+  'research':   { label:'Research Chat',                 short:'Research',     color:'prog-stone',   workbook:'none',      icon:'🔬', lengthDays: null },
+  'general':    { label:'General Session',               short:'Session',      color:'prog-stone',   workbook:'none',      icon:'📌', lengthDays: null },
+  'builder-6m': { label:'Business Builder (6-month)',      short:'Builder 6M',   color:'prog-mdc',     workbook:'90day',     icon:'🏗', lengthDays: 180 },
+  'mdc-cohort': { label:'MDC Cohort Member',               short:'MDC',          color:'prog-mdc',     workbook:'mdc',       icon:'💡', lengthDays: 168 },
 };
 
 // Coach PIN is stored in localStorage so Phoebe can change it from Settings.
@@ -1239,6 +1281,9 @@ async function enterCoach() {
       }
     }, 300);
     startNotificationPolling();
+    // Show the testing review FAB while Phoebe's signed in as coach
+    var rfab = document.getElementById('review-fab');
+    if (rfab) { rfab.style.display = 'inline-flex'; updateReviewCount(); }
   } else {
     document.getElementById('coach-err').textContent = 'Incorrect PIN.';
   }
@@ -1284,6 +1329,11 @@ function logout() {
   document.getElementById('client-err').textContent = '';
   currentClientId = null; currentProgramId = null;
   stopNotificationPolling();
+  // Hide the testing review FAB on logout
+  var rfab = document.getElementById('review-fab');
+  if (rfab) rfab.style.display = 'none';
+  var rdrawer = document.getElementById('review-drawer');
+  if (rdrawer) rdrawer.style.display = 'none';
 }
 
 // ========== NOTIFICATION POLLING ==========
@@ -1555,6 +1605,138 @@ document.addEventListener('keydown', function(e) {
   if (e.key !== 'Escape') return;
   var p = document.getElementById('help-panel');
   if (p && p.style.display === 'block') p.style.display = 'none';
+  var d = document.getElementById('review-drawer');
+  if (d && d.style.display === 'block') d.style.display = 'none';
+});
+
+// ============================================================
+// REVIEW DRAWER — Phoebe's testing companion
+// Stores notes in localStorage as `hmh_review_notes` (JSON array).
+// Each entry: { ts, page, client, viewport, text }
+// ============================================================
+var REVIEW_KEY = 'hmh_review_notes';
+
+function getReviewNotes() {
+  try { return JSON.parse(localStorage.getItem(REVIEW_KEY) || '[]'); }
+  catch(e) { return []; }
+}
+function setReviewNotes(arr) {
+  try { localStorage.setItem(REVIEW_KEY, JSON.stringify(arr)); } catch(e) {}
+  updateReviewCount();
+}
+function updateReviewCount() {
+  var pill = document.getElementById('review-count-pill');
+  if (!pill) return;
+  var n = getReviewNotes().length;
+  if (n > 0) { pill.textContent = n; pill.style.display = 'inline-block'; }
+  else pill.style.display = 'none';
+}
+function reviewCurrentContext() {
+  // Detect what page Phoebe's looking at right now
+  var page = 'unknown';
+  var activePage = document.querySelector('.page.active, .hub.active');
+  if (activePage) page = activePage.id || page;
+  if (document.getElementById('client-hub') && document.getElementById('client-hub').classList.contains('active')) page = 'client-portal';
+  // Active client (if a client detail is open or client portal)
+  var client = '';
+  if (typeof currentClientId !== 'undefined' && currentClientId) {
+    var c = (typeof clients !== 'undefined' ? clients : []).find(function(x){ return x.id === currentClientId; });
+    if (c) client = c.name + ' (' + c.clientAccess + ')';
+  }
+  return { page: page, client: client, viewport: window.innerWidth + '×' + window.innerHeight };
+}
+function toggleReviewDrawer() {
+  var d = document.getElementById('review-drawer');
+  if (!d) return;
+  var open = d.style.display === 'block';
+  d.style.display = open ? 'none' : 'block';
+  if (!open) {
+    // Refresh context label and list whenever it opens
+    var ctx = reviewCurrentContext();
+    var lbl = document.getElementById('review-current-context');
+    if (lbl) lbl.textContent = '📍 ' + ctx.page + (ctx.client ? ' · ' + ctx.client : '') + ' · ' + ctx.viewport;
+    renderReviewList();
+    setTimeout(function(){ var t = document.getElementById('review-input'); if (t) t.focus(); }, 50);
+  }
+}
+function saveReviewNote() {
+  var t = document.getElementById('review-input');
+  if (!t) return;
+  var text = (t.value || '').trim();
+  if (!text) { alert('Type a note first.'); return; }
+  var ctx = reviewCurrentContext();
+  var notes = getReviewNotes();
+  notes.unshift({ ts: new Date().toISOString(), page: ctx.page, client: ctx.client, viewport: ctx.viewport, text: text });
+  setReviewNotes(notes);
+  t.value = '';
+  renderReviewList();
+}
+function deleteReviewNote(ts) {
+  var notes = getReviewNotes().filter(function(n){ return n.ts !== ts; });
+  setReviewNotes(notes);
+  renderReviewList();
+}
+function clearAllReviewNotes() {
+  if (!confirm('Clear all testing notes? This can\'t be undone.')) return;
+  setReviewNotes([]);
+  renderReviewList();
+}
+function renderReviewList() {
+  var list = document.getElementById('review-list');
+  if (!list) return;
+  var notes = getReviewNotes();
+  if (!notes.length) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--stone);padding:12px;text-align:center">No notes yet — saved notes will appear here.</div>';
+    return;
+  }
+  list.innerHTML = '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">' + notes.length + ' note' + (notes.length === 1 ? '' : 's') + '</div>' +
+    notes.map(function(n) {
+      var d = new Date(n.ts);
+      var when = d.toLocaleDateString('en-AU',{day:'numeric',month:'short'}) + ' · ' + d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',hour12:true}).replace(/\s/g,'').toLowerCase();
+      var safe = (n.text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      return '<div style="background:var(--paper);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">' +
+          '<span style="font-size:11px;color:var(--hot-pink);font-weight:700">' + when + '</span>' +
+          '<span style="font-size:10px;background:var(--marshmallow);color:var(--magenta);padding:1px 7px;border-radius:99px">' + (n.page || '?') + '</span>' +
+          (n.client ? '<span style="font-size:10px;background:var(--mist);color:var(--teal);padding:1px 7px;border-radius:99px">' + (n.client||'').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span>' : '') +
+          '<button onclick="deleteReviewNote(\'' + n.ts + '\')" class="btn-sm" style="margin-left:auto;font-size:10px;padding:2px 8px" title="Delete this note">✕</button>' +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--magenta);line-height:1.5;white-space:pre-wrap">' + safe + '</div>' +
+        '</div>';
+    }).join('');
+}
+function copyAllReviewNotes() {
+  var notes = getReviewNotes();
+  if (!notes.length) { alert('No notes to copy yet.'); return; }
+  var build = '# The Happy Hub — Testing notes (' + notes.length + ')\n\n';
+  notes.forEach(function(n, i) {
+    var d = new Date(n.ts);
+    var when = d.toLocaleString('en-AU',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
+    build += (i+1) + '. [' + (n.page||'?') + (n.client?' · '+n.client:'') + ' · ' + when + ']\n   ' + (n.text||'').replace(/\n/g,'\n   ') + '\n\n';
+  });
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(build).then(function() {
+      var btn = document.getElementById('review-copy-btn');
+      if (btn) { var prev = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(function(){ btn.textContent = prev; }, 1500); }
+    }, function() { fallbackCopy(build); });
+  } else { fallbackCopy(build); }
+}
+function fallbackCopy(text) {
+  // Old-browser fallback for clipboard
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); alert('Copied to clipboard.'); }
+  catch(e) { alert('Could not copy automatically — here\'s the text:\n\n' + text.slice(0, 500)); }
+  document.body.removeChild(ta);
+}
+// Close drawer when clicking outside
+document.addEventListener('click', function(e) {
+  var d = document.getElementById('review-drawer');
+  var fab = document.getElementById('review-fab');
+  if (!d || d.style.display !== 'block') return;
+  if (d.contains(e.target) || (fab && fab.contains(e.target))) return;
+  d.style.display = 'none';
 });
 
 function showPage(id) {
@@ -2381,7 +2563,7 @@ function loadClientPortal(client) {
     var isComplete = p.status==='complete'||p.locked;
     return '<button class="cprog-tab'+(i===0?' active':'')+(isComplete?' cprog-complete':'')+'" ' +
       'data-progid="'+p.id+'" ' +
-      'onclick="switchClientProgram(\''+p.id+'\',this,'+JSON.stringify(client).replace(/'/g,"\\'")+')">' +
+      'onclick="switchClientProgram(\''+p.id+'\',this)">' +
       (pi.icon||'📌') + ' ' + (pi.short||p.program) + (isComplete?' ✓':'') + '</button>';
   }).join('');
 
@@ -2392,7 +2574,13 @@ function loadClientPortal(client) {
   }
 }
 
-function switchClientProgram(progId, btn, client) {
+// Switch program in the client portal. Looks up the live client from currentClientId
+// to avoid the old bug where the entire client object was JSON-serialised into an
+// inline onclick attribute (any quotes inside the JSON broke the attribute, which
+// is why switching to MDC silently failed for clients with multiple programs).
+function switchClientProgram(progId, btn) {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
   document.querySelectorAll('.cprog-tab').forEach(function(b){b.classList.remove('active');});
   if(btn) btn.classList.add('active');
   var prog = (client.programs||[]).find(function(p){return p.id===progId;});
@@ -2405,86 +2593,162 @@ function renderClientProgram(client, prog) {
   var n = prog.notes||{};
   var isLocked = prog.locked;
 
-  // Progress bar
+  // Progress bar — program-aware. 90-day, Audit, Builder-6M etc all use `lengthDays`,
+  // MDC uses its 4×6-week sprint/week structure, Happy Hour shows nothing.
   var progressHtml = '';
-  if (prog.workbook==='90day'||prog.workbook==='audit') {
-    var days = prog.sessionDate ? Math.min(90,Math.floor((Date.now()-new Date(prog.sessionDate))/86400000)) : 0;
-    var pct  = Math.round(days/90*100);
-    progressHtml = '<div style="background:rgba(255,255,255,0.2);border-radius:99px;height:6px;margin:16px 0 4px"><div style="background:var(--sunshine);height:100%;border-radius:99px;width:'+pct+'%"></div></div><div style="font-size:11px;opacity:0.7">Day '+days+' of 90</div>';
-  } else if (prog.workbook==='mdc') {
+  var totalDays = (prog.lengthDays != null) ? prog.lengthDays : (pi.lengthDays != null ? pi.lengthDays : null);
+  if (prog.workbook==='mdc') {
     var sprint=prog.mdcSprint||1; var week=prog.mdcWeek||1;
-    var pct=Math.round(((sprint-1)*6+week)/24*100);
-    progressHtml = '<div style="background:rgba(255,255,255,0.2);border-radius:99px;height:6px;margin:16px 0 4px"><div style="background:var(--sunshine);height:100%;border-radius:99px;width:'+pct+'%"></div></div><div style="font-size:11px;opacity:0.7">Sprint '+sprint+' · Week '+week+' of 6</div>';
+    var mdcPct=Math.round(((sprint-1)*6+week)/24*100);
+    progressHtml = '<div style="background:rgba(255,255,255,0.2);border-radius:99px;height:6px;margin:16px 0 4px"><div style="background:var(--sunshine);height:100%;border-radius:99px;width:'+mdcPct+'%"></div></div><div style="font-size:11px;opacity:0.7">Sprint '+sprint+' · Week '+week+' of 6 (24 weeks total)</div>';
+  } else if (totalDays && totalDays > 0) {
+    var days = prog.sessionDate ? Math.min(totalDays, Math.floor((Date.now()-new Date(prog.sessionDate))/86400000)) : 0;
+    var pct  = Math.round(days/totalDays*100);
+    progressHtml = '<div style="background:rgba(255,255,255,0.2);border-radius:99px;height:6px;margin:16px 0 4px"><div style="background:var(--sunshine);height:100%;border-radius:99px;width:'+pct+'%"></div></div><div style="font-size:11px;opacity:0.7">Day '+days+' of '+totalDays+'</div>';
   }
 
-  // Build client-facing content based on program type
-  var content = '';
+  // ── Build client-facing content ──────────────────────────────────────────
+  // New layout (less scrolling, more delight):
+  //   1. Badges/achievements strip at TOP — feel rewarded the moment you log in
+  //   2. Wins (if any)
+  //   3. Program-specific content (plan / MDC workbook / HH summary)
+  //   4. Notes from Phoebe (incl. shared session notes with Zoom + AI summary + actions)
+  //   5. Client reflection / weekly check-in
+  // Resources removed — now lives in the floating Help button (bottom-right "?").
   var lockNotice = isLocked ? '<div style="background:var(--marshmallow);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--stone)">🔒 This program has been completed and locked. Your work is preserved here for reference.</div>' : '';
 
+  // Achievements/badges section — moved from bottom to top so clients see
+  // their wins FIRST, not after scrolling past everything else.
+  var achievementsHtml = (typeof renderBadgesSection === 'function') ? renderBadgesSection(client) : '';
+  if (achievementsHtml) achievementsHtml = '<div class="client-section" style="background:linear-gradient(135deg,#FFFDFA,#FDEFF5);border-color:#F5D5E3">' + achievementsHtml.replace('<div style="margin-top:24px">','<div>') + '</div>';
+
+  // Shared session notes — sessionNotes with sharedWithClient: true.
+  // Each note can carry an optional Zoom URL, AI summary, and suggested actions.
+  var sharedNotesHtml = renderClientSharedNotes(prog);
+
+  var content = '';
   if (prog.workbook==='90day'||prog.workbook==='audit'||prog.workbook==='accelerator') {
-    // My plan
     var planHtml = '<div class="client-section"><h3>My 90-Day Roadmap</h3><div class="plan-grid" id="client-plan-grid-'+prog.id+'"></div></div>';
-    // Session notes from Phoebe
     var notesParts = [];
     if(n.themes) notesParts.push('<strong>Key themes:</strong>\n'+n.themes);
     if(n.leaks) notesParts.push('<strong>Areas to strengthen:</strong>\n'+n.leaks);
     if(n.opps) notesParts.push('<strong>Opportunities:</strong>\n'+n.opps);
-    var notesHtml = '<div class="client-section"><h3>Notes from Phoebe</h3><div style="font-size:14px;line-height:1.8;white-space:pre-wrap;color:var(--magenta)">'+(notesParts.join('\n\n')||'<em style="color:var(--stone)">Your session notes from Phoebe will appear here.</em>')+'</div></div>';
-    // Client reflection
+    var notesHtml = (notesParts.length || sharedNotesHtml)
+      ? '<div class="client-section"><h3>Notes from Phoebe</h3><div style="font-size:14px;line-height:1.8;white-space:pre-wrap;color:var(--magenta)">'+(notesParts.join('\n\n')||'')+'</div>'+sharedNotesHtml+'</div>'
+      : '';
     var reflectHtml = isLocked ? '' : '<div class="client-section"><h3>My reflections</h3><textarea id="client-reflect-'+prog.id+'" onchange="saveClientReflection(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:100px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What did this session bring up for you? What are you noticing?">'+(prog.clientReflection||'')+'</textarea></div>';
-    content = lockNotice + planHtml + notesHtml + reflectHtml + resourcesSection();
-    // Add wins section for client
     var clientWinsHtml = clientWinsSection(prog);
-    content = lockNotice + planHtml + clientWinsHtml + notesHtml + reflectHtml + resourcesSection();
+    content = lockNotice + achievementsHtml + clientWinsHtml + planHtml + notesHtml + reflectHtml;
     area.innerHTML = content;
     renderPlanGrid(prog.plan||[], prog.taskDone||{}, 'client-plan-grid-'+prog.id, isLocked);
   } else if (prog.workbook==='mdc') {
     var wb = prog.mdcWorkbook||{};
     var sprint=prog.mdcSprint||1; var week=prog.mdcWeek||1;
     var ci=((wb.weeklyCheckins||{})[sprint+'-'+week]||{});
-    content = lockNotice +
-      '<div class="client-section"><h3>Sprint '+sprint+' · Week '+week+'</h3>' +
-      '<p style="font-size:13px;color:var(--stone);margin-bottom:16px">Your current sprint focus and weekly priorities</p>' +
+    var clientWinsHtmlMdc = clientWinsSection(prog);
+    // Sprint focus card row (compact 2-up grid)
+    var sprintFocusHtml = '<div class="client-section"><h3>Sprint '+sprint+' · Week '+week+'</h3>' +
+      '<p style="font-size:13px;color:var(--stone);margin-bottom:14px">Your current sprint focus and weekly priorities</p>' +
       '<div class="sprint-grid">' +
       '<div class="sprint-card"><div class="sprint-card-label">My focus this week</div><div style="font-size:14px;color:var(--magenta);line-height:1.6">'+(ci.focus||'<em style="color:var(--stone)">Set by Phoebe</em>')+'</div></div>' +
       '<div class="sprint-card"><div class="sprint-card-label">My actions</div><div style="font-size:14px;color:var(--magenta);line-height:1.6;white-space:pre-wrap">'+(ci.actions||'<em style="color:var(--stone)">Not set yet</em>')+'</div></div>' +
-      '</div></div>' +
-      '<div class="client-section"><h3>My Workbook</h3>' +
-      (wb.businessSnapshot?'<div style="margin-bottom:12px"><div class="intake-q">Business snapshot</div><div class="intake-a">'+wb.businessSnapshot+'</div></div>':'') +
-      (wb.vision?'<div style="margin-bottom:12px"><div class="intake-q">My vision — 5 years</div><div class="intake-a">'+wb.vision+'</div></div>':'') +
-      (wb.sprintFocus?'<div><div class="intake-q">Sprint focus</div><div class="intake-a">'+wb.sprintFocus+'</div></div>':'<em style="color:var(--stone);font-size:13px">Your workbook will fill in as we work together.</em>') +
-      '</div>' +
-      (isLocked?'':
-        '<div class="client-section"><h3>My weekly check-in</h3>' +
-        '<div style="font-size:12px;color:var(--hot-pink);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">What came up for me in session</div>' +
-        '<textarea id="client-mdc-session-'+prog.id+'" onchange="saveClientMDCCheckin(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What came up for you this week? What can you change as a result?">'+(((wb.weeklyCheckins||{})[sprint+'-'+week]||{}).clientSession||'')+'</textarea>' +
-        '</div>') +
-      resourcesSection();
+      '</div></div>';
+    // Sprint notes from Phoebe (replaces the old "Notes from Phoebe" block for MDC)
+    var sprintNotesBlock = sharedNotesHtml ? '<div class="client-section"><h3>Sprint notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '';
+    // Fillable workbook — client can answer all the workbook prompts directly
+    var workbookHtml = '<div class="client-section"><h3>My MDC workbook</h3>' +
+      '<p style="font-size:13px;color:var(--stone);margin-bottom:14px">Answer when you\'re ready — your responses save automatically and Phoebe can see them.</p>' +
+      makeClientWorkbookField(client.id, prog.id, 'businessSnapshot', '📸 Business snapshot', 'The exact truth of where you stand today.', wb.businessSnapshot, 'My business right now — what I do, revenue, customers, systems…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'vision',           '🌟 Vision — Future me', 'Five years from now, you\'re already there. It\'s done!', wb.vision, 'Five years from now I am…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'meNow',             '🪞 Me now — where I\'m winning', 'Take a moment for appreciation, not improvement.', wb.meNow, 'Where I\'m already winning…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'sprintFocus',      '🎯 Sprint focus — the one thing', 'What is my one thing to focus on now?', wb.sprintFocus, 'The one thing I\'m focusing on this sprint…', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'valueHelp',        '💡 My magic — value proposition', 'Start with the change my client gets.', wb.valueHelp, 'I help ________ who feel ________ avoid ________ so they become ________', isLocked) +
+      makeClientWorkbookField(client.id, prog.id, 'acquisition',      '📈 Acquisition — client\'s path', 'How do clients first encounter me?', wb.acquisition, 'Where do clients first encounter me? What makes them feel safe? Where do decisions stall?', isLocked) +
+      (isLocked ? '' : '<div style="margin-top:8px;text-align:right"><button class="btn-sm" onclick="window.print()" title="Print or save your filled workbook">🖨 Print my workbook</button></div>') +
+      '</div>';
+    // Weekly check-in (kept)
+    var checkinHtml = isLocked ? '' :
+      '<div class="client-section"><h3>My weekly check-in</h3>' +
+      '<div style="font-size:12px;color:var(--hot-pink);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">What came up for me in session</div>' +
+      '<textarea id="client-mdc-session-'+prog.id+'" onchange="saveClientMDCCheckin(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What came up for you this week? What can you change as a result?">'+(ci.clientSession||'')+'</textarea>' +
+      '</div>';
+    content = lockNotice + achievementsHtml + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml;
     area.innerHTML = content;
   } else if (prog.workbook==='happyhour') {
     var hh = prog.happyHour||{};
-    content = lockNotice +
-      '<div class="client-section"><h3>☀️ Your Happy Hour Summary</h3>' +
-      (hh.assets?'<div class="intake-answer"><div class="intake-q">What we learned</div><div class="intake-a" style="white-space:pre-wrap">'+hh.assets+'</div></div>':'') +
+    var hhBody = (hh.assets?'<div class="intake-answer"><div class="intake-q">What we learned</div><div class="intake-a" style="white-space:pre-wrap">'+hh.assets+'</div></div>':'') +
       (hh.discussed?'<div class="intake-answer"><div class="intake-q">What we discussed</div><div class="intake-a" style="white-space:pre-wrap">'+hh.discussed+'</div></div>':'') +
       (hh.actions?'<div class="intake-answer"><div class="intake-q">Your actions</div><div class="intake-a" style="white-space:pre-wrap">'+hh.actions+'</div></div>':'') +
       (hh.resources?'<div class="intake-answer"><div class="intake-q">Resources</div><div class="intake-a" style="white-space:pre-wrap">'+hh.resources+'</div></div>':'') +
-      (!hh.assets&&!hh.discussed?'<p style="color:var(--stone);font-size:13px">Your session summary will appear here after your Happy Hour.</p>':'') +
-      '</div>' + resourcesSection();
+      (!hh.assets&&!hh.discussed?'<p style="color:var(--stone);font-size:13px">Your session summary will appear here after your Happy Hour.</p>':'');
+    content = lockNotice + achievementsHtml + '<div class="client-section"><h3>☀️ Your Happy Hour summary</h3>' + hhBody + '</div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '');
     area.innerHTML = content;
   } else {
-    content = lockNotice + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + resourcesSection();
+    content = lockNotice + achievementsHtml + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '');
     area.innerHTML = content;
-  }
-
-  // Append the achievements section (badges + streak + progress) at the bottom
-  if (typeof renderBadgesSection === 'function') {
-    area.innerHTML += renderBadgesSection(client);
   }
 
   // Update hero progress
   document.getElementById('client-hero-progress-wrap').innerHTML = progressHtml;
   document.getElementById('client-hero-prog').textContent = pi.label||prog.label;
+}
+
+// Renders shared session notes for the client portal — filters prog.sessionNotes
+// to just those marked sharedWithClient, and shows each with optional Zoom recording
+// link, AI session summary, and a "Suggested actions" checklist that the client can
+// tick off. Each note is collapsed by default (just the date) — click to expand.
+function renderClientSharedNotes(prog) {
+  var notes = (prog.sessionNotes||[]).filter(function(n){ return n.sharedWithClient; })
+    .slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  if (!notes.length) return '';
+  return notes.map(function(n) {
+    var dateStr = n.date ? new Date(n.date).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}) : 'Session';
+    var zoomLink = n.zoomUrl ? '<a href="'+n.zoomUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--mist);color:var(--teal);padding:5px 12px;border-radius:99px;text-decoration:none;font-weight:600;margin-right:8px">🎥 Watch recording</a>' : '';
+    var summary = n.aiSummary ? '<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">AI session summary</div><div style="font-size:13px;line-height:1.7;color:var(--magenta);white-space:pre-wrap">'+n.aiSummary+'</div></div>' : '';
+    var actions = (n.suggestedActions && n.suggestedActions.length)
+      ? '<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Suggested actions</div>' +
+        n.suggestedActions.map(function(a, i) {
+          var done = (n.actionDone && n.actionDone[i]) === true;
+          return '<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;cursor:pointer;font-size:13px;color:var(--magenta);line-height:1.5">' +
+            '<input type="checkbox" '+(done?'checked':'')+' onchange="toggleClientSuggestedAction(\''+prog.id+'\',\''+n.id+'\','+i+',this.checked)" style="margin-top:3px">' +
+            '<span'+(done?' style="text-decoration:line-through;opacity:0.6"':'')+'>'+a+'</span></label>';
+        }).join('') + '</div>'
+      : '';
+    var bodyText = n.text ? '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--magenta);margin-top:6px">'+n.text+'</div>' : '';
+    return '<details style="background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:10px"><summary style="cursor:pointer;font-weight:600;color:var(--magenta);display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:13px">📒 '+dateStr+'</span>'+zoomLink+'</summary>' + bodyText + summary + actions + '</details>';
+  }).join('');
+}
+
+// Renders one fillable workbook field for the client side. Client edits → save to prog.
+function makeClientWorkbookField(clientId, progId, field, title, desc, value, placeholder, isLocked) {
+  var inputId = 'client-mdc-wb-'+progId+'-'+field;
+  var ro = isLocked ? 'readonly' : '';
+  var safeValue = (value || '').replace(/</g,'&lt;');
+  return '<div style="margin-bottom:14px">' +
+    '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);margin-bottom:2px">'+title+'</div>' +
+    '<div style="font-size:12px;color:var(--stone);margin-bottom:6px">'+desc+'</div>' +
+    '<textarea id="'+inputId+'" '+ro+' onchange="saveClientWorkbookField(\''+clientId+'\',\''+progId+'\',\''+field+'\',this.value)" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="'+placeholder+'">'+safeValue+'</textarea>' +
+  '</div>';
+}
+
+async function saveClientWorkbookField(clientId, progId, field, value) {
+  var client = clients.find(function(c){return c.id===clientId;});
+  var prog   = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  if(!prog) return;
+  prog.mdcWorkbook = prog.mdcWorkbook || {};
+  prog.mdcWorkbook[field] = value;
+  await persistClient(client);
+}
+
+async function toggleClientSuggestedAction(progId, noteId, index, checked) {
+  var client = clients.find(function(c){return c.id===currentClientId;});
+  var prog   = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  if(!prog) return;
+  var note = (prog.sessionNotes||[]).find(function(n){return n.id===noteId;});
+  if(!note) return;
+  note.actionDone = note.actionDone || {};
+  note.actionDone[index] = !!checked;
+  await persistClient(client);
 }
 
 function clientWinsSection(prog) {
@@ -2500,14 +2764,9 @@ function clientWinsSection(prog) {
     }).join('') + '</div>';
 }
 
-function resourcesSection() {
-  return '<div class="client-section"><h3>Resources</h3><div class="resources-list">' +
-    '<a href="https://phoebeblamey.com.au" target="_blank">🌐 phoebeblamey.com.au</a>' +
-    '<a href="https://calendly.com/phoebe-phoebeblamey/new-meeting" target="_blank">📅 Book a clarity call</a>' +
-    '<a href="https://phoebeblamey.com.au/courses/" target="_blank">📚 Happy Money Society</a>' +
-    '<a href="https://phoebeblamey.com.au/podcasts/" target="_blank">🎙 Happy Money Journey podcast</a>' +
-    '</div></div>';
-}
+// resourcesSection() was removed when the floating "?" Help button became the
+// canonical place for client resources (phoebeblamey.com.au, podcast, courses,
+// Calendly link). Don't re-add — the Help drawer is now the home for all that.
 
 async function saveClientReflection(clientId, progId) {
   var client = clients.find(function(c){return c.id===clientId;});
@@ -2748,20 +3007,134 @@ function renderSessionNotes(client, prog) {
   if (!el) return;
   var notes = (prog.sessionNotes||[]).slice().reverse();
   el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
-    '<span style="font-size:12px;color:var(--stone)">Notes shared with client appear in their portal</span>' +
+    '<span style="font-size:12px;color:var(--stone)">Notes shared with client appear in their portal — with optional Zoom recording, AI summary, and ticked action list.</span>' +
     '<button class="btn-sm primary" onclick="addSessionNote(\'' + client.id + '\',\'' + prog.id + '\')">+ Add session note</button>' +
     '</div>' +
     (notes.length === 0 ? '<div style="color:var(--stone);font-size:13px">No session notes yet.</div>' : '') +
     notes.map(function(n) {
+      var actionsList = (n.suggestedActions||[]).map(function(a, i) {
+        return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">' +
+          '<input type="text" value="' + (a||'').replace(/"/g,'&quot;') + '" onchange="updateSessionAction(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\','+i+',this.value)" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);outline:none">' +
+          '<button onclick="removeSessionAction(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\','+i+')" class="btn-sm" style="font-size:11px;padding:4px 8px" title="Remove">✕</button>' +
+          '</div>';
+      }).join('');
       return '<div style="background:white;border:1.5px solid ' + (n.sharedWithClient?'rgba(95,163,168,0.4)':'var(--border)') + ';border-radius:12px;padding:14px;margin-bottom:10px">' +
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">' +
         '<input type="date" value="' + (n.date||'') + '" onchange="updateNoteDate(\'' + client.id + '\',\'' + prog.id + '\',\'' + n.id + '\',this)" style="border:none;background:none;font-family:var(--f-body);font-size:12px;font-weight:600;color:var(--hot-pink);cursor:pointer">' +
         '<span style="font-size:11px;padding:2px 8px;border-radius:99px;' + (n.sharedWithClient ? 'background:var(--mist);color:var(--teal)' : 'background:var(--marshmallow);color:var(--magenta)') + '">' + (n.sharedWithClient ? '✅ Visible to client' : '🔒 Coach only') + '</span>' +
         '<button onclick="toggleShareNote(\'' + client.id + '\',\'' + prog.id + '\',\'' + n.id + '\')" class="btn-sm" style="margin-left:auto;font-size:11px">' + (n.sharedWithClient ? 'Make private' : 'Share with client') + '</button>' +
         '</div>' +
-        '<textarea onchange="saveSessionNote(\'' + client.id + '\',\'' + prog.id + '\',\'' + n.id + '\',this)" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:8px;padding:10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6">' + (n.text||'') + '</textarea>' +
+        '<textarea onchange="saveSessionNote(\'' + client.id + '\',\'' + prog.id + '\',\'' + n.id + '\',this)" placeholder="Session notes…" style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:8px;padding:10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6">' + (n.text||'') + '</textarea>' +
+        // Zoom URL + AI summary + suggested actions block
+        '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">' +
+            '<div><label style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em">🎥 Zoom recording URL</label>' +
+              '<input type="url" value="'+(n.zoomUrl||'').replace(/"/g,'&quot;')+'" onchange="updateSessionMeta(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\',\'zoomUrl\',this.value)" placeholder="https://us02web.zoom.us/rec/share/…" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:var(--f-body);color:var(--magenta);background:var(--paper);outline:none;margin-top:3px"></div>' +
+            '<div style="display:flex;align-items:flex-end;gap:6px"><button class="btn-sm" onclick="aiSummariseSession(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\')" title="Use Claude to summarise the session text and extract suggested actions">✦ AI summarise + suggest actions</button></div>' +
+          '</div>' +
+          '<label style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em">AI session summary (client-visible)</label>' +
+          '<textarea onchange="updateSessionMeta(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\',\'aiSummary\',this.value)" placeholder="Plain-language summary the client will see — generate with the AI button or write your own…" style="width:100%;min-height:60px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;font-family:var(--f-body);color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6;margin-top:3px;margin-bottom:8px">' + (n.aiSummary||'') + '</textarea>' +
+          '<label style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em">Suggested actions for client</label>' +
+          '<div style="margin-top:6px">' + actionsList + '</div>' +
+          '<button class="btn-sm" onclick="addSessionAction(\''+client.id+'\',\''+prog.id+'\',\''+n.id+'\')" style="margin-top:4px;font-size:11px">+ Add action</button>' +
+        '</div>' +
         '</div>';
     }).join('');
+}
+
+// Per-session metadata (Zoom URL, AI summary). Generic key/value writer.
+async function updateSessionMeta(clientId, progId, noteId, key, value) {
+  var client = clients.find(function(c){return c.id===clientId;});
+  var prog = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  if(!prog) return;
+  var note = (prog.sessionNotes||[]).find(function(n){return n.id===noteId;});
+  if(!note) return;
+  note[key] = value;
+  await persistClient(client);
+}
+
+async function addSessionAction(clientId, progId, noteId) {
+  var client = clients.find(function(c){return c.id===clientId;});
+  var prog = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  if(!prog) return;
+  var note = (prog.sessionNotes||[]).find(function(n){return n.id===noteId;});
+  if(!note) return;
+  note.suggestedActions = note.suggestedActions || [];
+  note.suggestedActions.push('');
+  await persistClient(client);
+  renderSessionNotes(client, prog);
+}
+
+async function updateSessionAction(clientId, progId, noteId, index, value) {
+  var client = clients.find(function(c){return c.id===clientId;});
+  var prog = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  if(!prog) return;
+  var note = (prog.sessionNotes||[]).find(function(n){return n.id===noteId;});
+  if(!note || !note.suggestedActions) return;
+  note.suggestedActions[index] = value;
+  await persistClient(client);
+}
+
+async function removeSessionAction(clientId, progId, noteId, index) {
+  var client = clients.find(function(c){return c.id===clientId;});
+  var prog = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  if(!prog) return;
+  var note = (prog.sessionNotes||[]).find(function(n){return n.id===noteId;});
+  if(!note || !note.suggestedActions) return;
+  note.suggestedActions.splice(index, 1);
+  if (note.actionDone) {
+    var newDone = {};
+    Object.keys(note.actionDone).forEach(function(k){
+      var ki = parseInt(k, 10);
+      if (ki < index) newDone[ki] = note.actionDone[k];
+      else if (ki > index) newDone[ki-1] = note.actionDone[k];
+    });
+    note.actionDone = newDone;
+  }
+  await persistClient(client);
+  renderSessionNotes(client, prog);
+}
+
+// AI helper — sends the session text to Claude and asks for a 2-paragraph
+// client-friendly summary plus 3-5 suggested actions. Writes both back to the note.
+async function aiSummariseSession(clientId, progId, noteId) {
+  var client = clients.find(function(c){return c.id===clientId;});
+  var prog = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
+  if(!prog) return;
+  var note = (prog.sessionNotes||[]).find(function(n){return n.id===noteId;});
+  if(!note) return;
+  if (!note.text || note.text.trim().length < 30) {
+    alert('Add some session notes first — there\'s nothing to summarise yet.');
+    return;
+  }
+  var btn = event && event.target;
+  if (btn) { btn.disabled = true; btn.textContent = '✦ Working…'; }
+  try {
+    var resp = await fetch('/api/ai-call', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: 'You are Phoebe Blamey\'s coaching assistant. Australian English. Warm, direct, no jargon. The client is a real human business owner. Return ONLY a JSON object with two keys: "summary" (2 short paragraphs the client can read after the session — no headings, no preamble) and "actions" (an array of 3-5 short imperative action sentences they can do this week).',
+        messages: [{ role:'user', content: 'Coach session notes for ' + (client.name||'a client') + ' (' + (PROGRAMS[prog.program]?PROGRAMS[prog.program].label:prog.program) + '):\n\n' + note.text }]
+      })
+    });
+    var data = await resp.json();
+    var raw = ((data.content||[]).find(function(b){return b.type==='text';})||{}).text || '';
+    // Pull the first {...} JSON block out of the response
+    var match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('AI did not return JSON. Raw: ' + raw.slice(0, 200));
+    var parsed = JSON.parse(match[0]);
+    note.aiSummary = parsed.summary || '';
+    note.suggestedActions = (parsed.actions || []).filter(function(a){ return typeof a === 'string' && a.trim(); });
+    note.actionDone = {};
+    await persistClient(client);
+    renderSessionNotes(client, prog);
+  } catch(e) {
+    alert('AI summary failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✦ AI summarise + suggest actions'; }
+  }
 }
 
 async function updateNoteDate(clientId, progId, noteId, el) {

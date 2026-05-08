@@ -321,10 +321,17 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   border: 1.5px solid var(--border); cursor: pointer; background: white; color: var(--stone);
   transition: all 0.15s; white-space: nowrap; }
 .cprog-tab.active { background: var(--hot-pink); color: white; border-color: var(--hot-pink); }
-.client-content { padding: 24px; max-width: 800px; }
+.client-content { padding: 20px 24px 64px; max-width: 880px; }
 .client-section { background: white; border: 1.5px solid var(--border); border-radius: 14px;
-  padding: 20px; margin-bottom: 16px; }
-.client-section h3 { font-family: var(--f-head); font-size: 16px; color: var(--magenta); margin-bottom: 12px; }
+  padding: 16px 18px; margin-bottom: 12px; }
+.client-section h3 { font-family: var(--f-head); font-size: 16px; color: var(--magenta); margin-bottom: 10px; }
+.client-section h3 + p { margin-top: -4px; }
+/* Tighter section vertical rhythm — less scrolling, more density */
+.client-section .sprint-grid { gap: 10px; }
+.client-section .sprint-card { padding: 12px 14px; }
+.client-hero { padding: 22px 24px 18px !important; }
+.client-hero h2 { margin-bottom: 2px !important; }
+.client-hero p { margin-bottom: 0; }
 .resources-list a { display: flex; align-items: center; gap: 10px; padding: 10px 0;
   border-bottom: 1px solid var(--border-soft); color: var(--magenta); text-decoration: none;
   font-size: 13px; transition: color 0.15s; }
