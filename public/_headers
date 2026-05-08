@@ -1,0 +1,47 @@
+# Netlify HTTP headers — applied at the edge.
+#
+# Goal: long-cache the assets that don't change between deploys (icons,
+# the manifest), short-cache the assets that DO change every deploy
+# (HTML, CSS, JS) so users get the new version immediately on push.
+#
+# Netlify gzips/brotlis text assets automatically — we don't need to
+# specify Content-Encoding here.
+
+# ── HTML — short-cache + must-revalidate so deploys go live instantly.
+# (Without this, the browser re-uses an HTML it has from a previous deploy
+# until its etag matches a 304 — fine — but cuts out the round-trip on
+# warm caches.)
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+# ── CSS / JS — these change every deploy (the build-stamp comment in the
+# CSS triggers a new file hash; index.html bumps vNNNN). Browser revalidates
+# on each visit; if etag matches → 304, no re-download. We could go fully
+# immutable here once we add cache-busting filenames, but for now the
+# revalidate-on-load pattern is the right balance.
+/styles.css
+  Cache-Control: public, max-age=300, must-revalidate
+
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+  # Service worker MUST be revalidated every load — this is how clients
+  # discover an updated SW. max-age:0 + must-revalidate forces it.
+
+# ── Icons — content-addressable, never change unless the file is replaced
+# (and if Phoebe sends a new logo we'd commit a new file). One year cache.
+/icons/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# ── Manifest — rare changes. One day cache balances "changes propagate"
+# with "don't re-fetch on every visit".
+/manifest.webmanifest
+  Cache-Control: public, max-age=86400
+
+# ── Fonts (when self-hosted later) — currently served from Google Fonts
+# CDN with their own cache headers. If we ever pull the woff2 files local,
+# uncomment:
+# /fonts/*
+#   Cache-Control: public, max-age=31536000, immutable

@@ -20,15 +20,34 @@
 <link rel="icon" type="image/svg+xml" href="/icons/peabe.svg">
 <link rel="apple-touch-icon" href="/icons/peabe.svg">
 <title>PeaBe Coaching Hub — Phoebe Blamey</title>
+<!-- Resource hints — preconnect both font hosts (the CSS lives on
+     fonts.googleapis.com, the woff2 files on fonts.gstatic.com). The
+     crossorigin attribute matters for gstatic since fonts load with
+     CORS; without it the browser opens a second connection. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<!-- Font stylesheet — loaded ASYNC via the preload+onload pattern so it
+     doesn't block first paint. The fallback in <noscript> covers users
+     with JS disabled. We trimmed the URL down to ONLY the weights the
+     CSS actually uses (500/600/700/800) and dropped italic entirely
+     (zero font-style:italic in styles.css). Saves a font file + faster
+     parse. font-display:swap means we render with system fonts first
+     and swap in Poppins when it arrives — no FOIT. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"></noscript>
+
+<!-- Our own CSS — preload hints the browser to prioritise its fetch. The
+     stylesheet link below it actually applies it; preload alone doesn't
+     attach styles to the document. -->
+<link rel="preload" as="style" href="styles.css">
 <link rel="stylesheet" href="styles.css">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v10400 — real PeaBe PNG icons in place (180/192/256/512) · iOS Home Screen + Android PWA install both light up with the pink pebble">
+<meta name="hmh-build" content="v10500 — perf: long-cache icons via _headers · async fonts (preload+onload) · trimmed font weights · SW precache expanded · idle-time SW register">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -5804,7 +5823,13 @@ function loadClientPortal(client) {
   if (!('serviceWorker' in navigator)) return;
   // Skip on local dev (file://, no SW)
   if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') return;
-  window.addEventListener('load', function() {
+  // Defer SW registration to idle time — the SW install copies files into
+  // the cache, which competes with first-paint resources if it kicks off
+  // immediately on `load`. requestIdleCallback fires when the main thread
+  // is genuinely free; falls back to a 2s setTimeout where it's not
+  // available (Safari < 16.4).
+  var schedule = window.requestIdleCallback || function (cb) { return setTimeout(cb, 2000); };
+  schedule(function() {
     navigator.serviceWorker.register('/sw.js').then(function(reg) {
       // When a new SW is found, watch for it to install
       reg.addEventListener('updatefound', function() {

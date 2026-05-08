@@ -19,9 +19,15 @@
 // vNNNN tag in index.html; we read that tag at install time so this file
 // doesn't need a separate version literal.
 
-const VERSION    = 'peabe-v1';                 // bump if SW logic changes
+const VERSION    = 'peabe-v2';                 // bump if SW logic changes
 const STATIC     = 'peabe-static-' + VERSION;
 const API        = 'peabe-api-'    + VERSION;
+// Precache the full critical-path bundle so a returning user (especially
+// installed-PWA) opens the app instantly even before any network request.
+// Includes: shell, CSS, every favicon size, the SW itself, and the
+// manifest. Skips fonts (they're cross-origin and Google Fonts handles
+// caching) — the SW will pick them up via stale-while-revalidate when
+// the user actually loads them.
 const PRECACHE   = [
   '/',
   '/index.html',
@@ -29,6 +35,10 @@ const PRECACHE   = [
   '/manifest.webmanifest',
   '/icons/peabe.svg',
   '/icons/peabe-maskable.svg',
+  '/icons/peabe-180.png',
+  '/icons/peabe-192.png',
+  '/icons/peabe-256.png',
+  '/icons/peabe-512.png',
 ];
 
 // ── Install: precache the shell ──
