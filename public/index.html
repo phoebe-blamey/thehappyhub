@@ -175,6 +175,13 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 .tag-cf { background: var(--mist); color: var(--teal); }
 .tag-sh { background: var(--mist); color: var(--teal); }
 
+/* Badge unlock toast animation */
+@keyframes badgeSlideIn {
+  0%   { opacity: 0; transform: translateY(-20px) scale(0.95); }
+  60%  { opacity: 1; transform: translateY(4px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* ========== NOTES / FORMS ========== */
 .notes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .note-block { display: flex; flex-direction: column; gap: 6px; }
@@ -393,7 +400,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 </head>
 <body>
 <div id="deploy-banner-1778146876" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#EC2C8A,#C9266B);color:white;text-align:center;padding:8px 12px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-✓ The Happy Hub — Build v7721 loaded successfully
+✓ The Happy Hub — Build v7722 loaded successfully
 <button onclick="this.parentNode.style.display='none';document.body.style.paddingTop='0'" style="margin-left:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:white;padding:2px 10px;border-radius:99px;font-size:11px;cursor:pointer">Dismiss</button>
 </div>
 <style>body{padding-top:36px}</style>
@@ -1096,6 +1103,85 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   </div>
 </div>
 
+<!-- ========== HELP BUTTON (floating, every screen) ========== -->
+<button id="help-fab" onclick="toggleHelpPanel()" aria-label="Help"
+  style="position:fixed;bottom:24px;right:24px;width:54px;height:54px;border-radius:99px;
+  background:var(--hot-pink);color:white;border:none;font-size:24px;font-weight:700;
+  cursor:pointer;box-shadow:0 6px 18px rgba(201,38,107,0.32);z-index:250;
+  display:flex;align-items:center;justify-content:center;font-family:var(--f-body);
+  transition:transform 0.15s,box-shadow 0.15s"
+  onmouseover="this.style.transform='scale(1.06)';this.style.boxShadow='0 8px 22px rgba(201,38,107,0.4)'"
+  onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 6px 18px rgba(201,38,107,0.32)'"
+  title="Need a hand? Resources, support, book a chat with Phoebe">?</button>
+
+<div id="help-panel" style="position:fixed;bottom:88px;right:24px;width:340px;max-width:calc(100vw - 48px);
+  max-height:calc(100vh - 120px);overflow-y:auto;background:white;border-radius:16px;
+  box-shadow:0 16px 48px rgba(201,38,107,0.22);z-index:251;display:none;font-family:var(--f-body)">
+  <div style="background:var(--magenta);color:white;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-radius:16px 16px 0 0">
+    <div>
+      <div style="font-family:var(--f-head);font-size:18px;font-weight:600">Need a hand?</div>
+      <div style="font-size:11px;opacity:0.85;margin-top:2px">Resources, support, and a chat with Phoebe</div>
+    </div>
+    <button onclick="toggleHelpPanel()" aria-label="Close" style="background:none;border:none;color:white;font-size:24px;cursor:pointer;line-height:1;padding:0 4px">×</button>
+  </div>
+  <div style="padding:14px">
+    <a href="https://phoebeblamey.com.au/blog/" target="_blank" rel="noopener" class="help-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
+      onmouseover="this.style.borderColor='var(--hot-pink)';this.style.background='var(--marshmallow)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.background='white'">
+      <div style="font-size:24px;line-height:1">📚</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px">Resources</div>
+        <div style="font-size:11px;color:var(--stone);margin-top:1px">Phoebe's blog — money tips, podcasts, tools</div>
+      </div>
+      <div style="color:var(--stone);font-size:14px">→</div>
+    </a>
+    <a href="mailto:phoebe@phoebeblamey.com.au" class="help-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
+      onmouseover="this.style.borderColor='var(--hot-pink)';this.style.background='var(--marshmallow)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.background='white'">
+      <div style="font-size:24px;line-height:1">📧</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px">Email Phoebe</div>
+        <div style="font-size:11px;color:var(--stone);margin-top:1px">Get in touch any time</div>
+      </div>
+      <div style="color:var(--stone);font-size:14px">→</div>
+    </a>
+    <a href="https://calendly.com/phoebe-phoebeblamey/new-meeting" target="_blank" rel="noopener" class="help-card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;text-decoration:none;color:var(--magenta);margin-bottom:8px;transition:all 0.15s"
+      onmouseover="this.style.borderColor='var(--hot-pink)';this.style.background='var(--marshmallow)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.background='white'">
+      <div style="font-size:24px;line-height:1">📅</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13px">Book a chat</div>
+        <div style="font-size:11px;color:var(--stone);margin-top:1px">Free 15-minute Clarity Call</div>
+      </div>
+      <div style="color:var(--stone);font-size:14px">→</div>
+    </a>
+
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--stone);margin-bottom:8px">❓ Quick help</div>
+      <details style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;background:white">
+        <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600;list-style:none">How do I track a win?</summary>
+        <div style="margin-top:8px;font-size:12px;color:var(--magenta);line-height:1.6">Open any client tab and look for the <strong>🏆 Wins</strong> section, then tap "+ Log a win". Phoebe sees it celebrated on her dashboard automatically.</div>
+      </details>
+      <details style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;background:white">
+        <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600;list-style:none">Where can I see my plan?</summary>
+        <div style="margin-top:8px;font-size:12px;color:var(--magenta);line-height:1.6">Your plan appears on your home page once you and Phoebe have completed your first session. If it's not there yet, you might be just before that point.</div>
+      </details>
+      <details style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;background:white">
+        <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600;list-style:none">How do I update my access code?</summary>
+        <div style="margin-top:8px;font-size:12px;color:var(--magenta);line-height:1.6">Click <strong>🔑 Change code</strong> in the top right of your portal. You'll need your current code first to confirm it's you.</div>
+      </details>
+      <details style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;background:white">
+        <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600;list-style:none">What if I forget my code?</summary>
+        <div style="margin-top:8px;font-size:12px;color:var(--magenta);line-height:1.6">Email Phoebe (button above) and she'll reset it for you. Easy.</div>
+      </details>
+      <details style="border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;background:white">
+        <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600;list-style:none">Will Phoebe see my notes?</summary>
+        <div style="margin-top:8px;font-size:12px;color:var(--magenta);line-height:1.6">Anything tagged "Client visible" or in a "Shareable" section — yes, Phoebe sees it. Tabs marked "Coach only" stay private to her notes.</div>
+      </details>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -1486,6 +1572,11 @@ async function loadClients() {
 
 async function persistClient(client) {
   client.updatedAt = new Date().toISOString();
+  // Update streak + check badges before persisting (any save = engagement)
+  try {
+    if (typeof updateClientStreak === 'function') updateClientStreak(client);
+    if (typeof checkAllBadges === 'function')     checkAllBadges(client);
+  } catch (e) { console.warn('[Badges] check failed:', e); }
   // Always save locally
   var idx = clients.findIndex(function(c) { return c.id === client.id; });
   if (idx >= 0) clients[idx] = client; else clients.push(client);
@@ -1636,6 +1727,251 @@ function stopNotificationPolling() {
 }
 
 // ========== COACH NAVIGATION ==========
+// ============================================================
+// BADGES — gamification system
+// Adapted from Duolingo (streaks), Apple Fitness (tiered), LinkedIn
+// (profile completeness), Strava (records). Celebratory not childish.
+// ============================================================
+var BADGES = {
+  // Welcome
+  'welcome':         { icon:'🎉', name:'Welcome',          desc:'Joined The Happy Hub', tier:'bronze' },
+  // Wins
+  'win-1':           { icon:'🌱', name:'First Step',       desc:'Logged your first win', tier:'bronze' },
+  'win-3':           { icon:'🌟', name:'On a Roll',        desc:'3 wins logged', tier:'silver' },
+  'win-10':          { icon:'💎', name:'Brilliant',        desc:'10 wins logged', tier:'gold' },
+  'win-25':          { icon:'🏆', name:'Hall of Fame',     desc:'25 wins logged', tier:'platinum' },
+  // Revenue
+  'revenue-first':   { icon:'💰', name:'First Dollar',     desc:'First revenue win', tier:'bronze' },
+  'revenue-3':       { icon:'📈', name:'Growth Mindset',   desc:'3 revenue wins', tier:'silver' },
+  'revenue-scaling': { icon:'🚀', name:'Scaling Up',       desc:'Revenue grew >50%', tier:'gold' },
+  // Streaks
+  'streak-3':        { icon:'⚡', name:'Showing Up',       desc:'3 day engagement streak', tier:'bronze' },
+  'streak-7':        { icon:'🔥', name:'On Fire',          desc:'7 day engagement streak', tier:'silver' },
+  'streak-30':       { icon:'💯', name:'Locked In',        desc:'30 day engagement streak', tier:'gold' },
+  'streak-90':       { icon:'⭐', name:'Unstoppable',      desc:'90 day engagement streak', tier:'platinum' },
+  // Program completion
+  'plan-crafted':    { icon:'🎯', name:'Plan Crafted',     desc:'90-day plan created', tier:'bronze' },
+  'mid-sprint':      { icon:'✨', name:'Mid-Sprint',       desc:'45 days into 90-day program', tier:'silver' },
+  '90day-champion':  { icon:'🏁', name:'90-Day Champion',  desc:'Completed your 90-day program', tier:'gold' },
+  'mdc-sprint':      { icon:'🏆', name:'Sprint Master',    desc:'Completed an MDC sprint', tier:'gold' },
+  'mdc-graduate':    { icon:'🎓', name:'MDC Graduate',     desc:'Completed the full MDC program', tier:'platinum' },
+  // Workbook engagement
+  'checkin-1':       { icon:'📚', name:'Self-Reflective',  desc:'First weekly check-in done', tier:'bronze' },
+  'checkin-3':       { icon:'📝', name:'Workbook Warrior', desc:'3 weekly check-ins done', tier:'silver' },
+  'checkin-all':     { icon:'📖', name:'Workbook Master',  desc:'Every check-in complete', tier:'gold' },
+  // Cohort
+  'cohort-member':   { icon:'🤝', name:'Cohort Member',    desc:'Joined a cohort', tier:'bronze' },
+  // Special — manually awarded by Phoebe
+  'phoebes-pick':    { icon:'⭐', name:"Phoebe's Pick",    desc:'Special recognition from Phoebe', tier:'gold', manual:true },
+};
+
+var BADGE_TIER_COLORS = {
+  bronze:   { bg:'#FFE8D8', border:'#C99A6B', text:'#A06438' },
+  silver:   { bg:'#E8E8F0', border:'#9CA3AF', text:'#4B5563' },
+  gold:     { bg:'#FFF5D6', border:'#E8A020', text:'#A07030' },
+  platinum: { bg:'#F0E8FF', border:'#A78BFA', text:'#7C3AED' },
+};
+
+// Update the rolling engagement streak. Called by persistClient on any client change.
+function updateClientStreak(client) {
+  if (!client) return;
+  var today = new Date().toISOString().split('T')[0];
+  client.streakData = client.streakData || { currentStreak:0, longestStreak:0, lastActivityDate:'' };
+  var last = client.streakData.lastActivityDate;
+  if (last === today) return; // already counted today
+  if (last) {
+    var lastDate = new Date(last);
+    var diffDays = Math.floor((new Date(today).getTime() - lastDate.getTime()) / 86400000);
+    if (diffDays === 1)      client.streakData.currentStreak++;
+    else if (diffDays > 1)   client.streakData.currentStreak = 1;
+    // If diff===0 something odd; just leave alone
+  } else {
+    client.streakData.currentStreak = 1;
+  }
+  client.streakData.lastActivityDate = today;
+  if (client.streakData.currentStreak > (client.streakData.longestStreak||0)) {
+    client.streakData.longestStreak = client.streakData.currentStreak;
+  }
+}
+
+// Award a badge (idempotent — won't double-award). Returns true if newly awarded.
+function awardBadge(client, badgeId) {
+  if (!client || !BADGES[badgeId]) return false;
+  client.badges = client.badges || [];
+  if (client.badges.some(function(b) { return b.id === badgeId; })) return false;
+  client.badges.push({ id: badgeId, earnedAt: new Date().toISOString() });
+  showBadgeToast(badgeId);
+  return true;
+}
+
+// Run all badge checks against a client. Called after any persistClient.
+function checkAllBadges(client) {
+  if (!client) return;
+  // Welcome — always award on first check
+  awardBadge(client, 'welcome');
+
+  // Count total wins across all programs + client-level
+  var allWins = (client.wins || []).slice();
+  (client.programs || []).forEach(function(p) {
+    (p.wins || []).forEach(function(w) { allWins.push(w); });
+  });
+  var revenueWins = allWins.filter(function(w) {
+    return w && (w.metric || '').toLowerCase().indexOf('revenue') >= 0
+        || w && (w.metric || '').toLowerCase().indexOf('income') >= 0
+        || w && (w.metric || '').toLowerCase().indexOf('$') >= 0
+        || w && (w.before || '').toString().indexOf('$') >= 0;
+  });
+
+  if (allWins.length >= 1)  awardBadge(client, 'win-1');
+  if (allWins.length >= 3)  awardBadge(client, 'win-3');
+  if (allWins.length >= 10) awardBadge(client, 'win-10');
+  if (allWins.length >= 25) awardBadge(client, 'win-25');
+  if (revenueWins.length >= 1) awardBadge(client, 'revenue-first');
+  if (revenueWins.length >= 3) awardBadge(client, 'revenue-3');
+
+  // Streaks
+  var s = (client.streakData && client.streakData.currentStreak) || 0;
+  if (s >= 3)  awardBadge(client, 'streak-3');
+  if (s >= 7)  awardBadge(client, 'streak-7');
+  if (s >= 30) awardBadge(client, 'streak-30');
+  if (s >= 90) awardBadge(client, 'streak-90');
+
+  // Program-level
+  (client.programs || []).forEach(function(p) {
+    if (!p) return;
+    if (Array.isArray(p.plan) && p.plan.length > 0) awardBadge(client, 'plan-crafted');
+    if (p.workbook === '90day' || p.workbook === 'audit' || p.workbook === 'accelerator') {
+      // Mid-sprint: 45+ days since session, still active
+      if (p.sessionDate && !p.locked) {
+        var days = Math.floor((Date.now() - new Date(p.sessionDate).getTime()) / 86400000);
+        if (days >= 45) awardBadge(client, 'mid-sprint');
+      }
+      if (p.status === 'complete' || p.locked) awardBadge(client, '90day-champion');
+    }
+    if (p.workbook === 'mdc') {
+      if ((p.mdcSprint || 0) >= 1 && (p.mdcWeek || 0) >= 6) awardBadge(client, 'mdc-sprint');
+      if (p.status === 'complete' || p.locked) awardBadge(client, 'mdc-graduate');
+      if (p.cohort) awardBadge(client, 'cohort-member');
+    }
+    // Workbook check-ins
+    var checkins = (p.mdcWorkbook && p.mdcWorkbook.weeklyCheckins) || {};
+    var doneCheckins = Object.keys(checkins).filter(function(k) { return checkins[k] && Object.keys(checkins[k]).length > 0; }).length;
+    if (doneCheckins >= 1) awardBadge(client, 'checkin-1');
+    if (doneCheckins >= 3) awardBadge(client, 'checkin-3');
+    if (doneCheckins >= 6) awardBadge(client, 'checkin-all');
+  });
+}
+
+// Show a celebratory toast when a badge unlocks
+function showBadgeToast(badgeId) {
+  var b = BADGES[badgeId];
+  if (!b) return;
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;top:24px;right:24px;z-index:400;background:white;' +
+    'border:2px solid var(--hot-pink);border-radius:14px;padding:14px 18px;' +
+    'box-shadow:0 12px 32px rgba(201,38,107,0.3);font-family:var(--f-body);' +
+    'min-width:260px;max-width:340px;animation:badgeSlideIn 0.4s ease-out;' +
+    'display:flex;align-items:center;gap:12px';
+  toast.innerHTML = '<div style="font-size:36px;line-height:1">' + b.icon + '</div>' +
+    '<div style="flex:1"><div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.08em">🎉 Badge unlocked</div>' +
+    '<div style="font-family:var(--f-head);font-size:16px;color:var(--magenta);font-weight:700;margin-top:2px">' + b.name + '</div>' +
+    '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + b.desc + '</div></div>';
+  document.body.appendChild(toast);
+  setTimeout(function() {
+    toast.style.transition = 'opacity 0.4s, transform 0.4s';
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(-10px)';
+    setTimeout(function() { toast.remove(); }, 400);
+  }, 4500);
+}
+
+// Render the achievements row — earned + locked badges, with progress
+function renderBadgesSection(client) {
+  if (!client) return '';
+  var earned = (client.badges || []).map(function(b) { return b.id; });
+  var streak = (client.streakData && client.streakData.currentStreak) || 0;
+  var longest = (client.streakData && client.streakData.longestStreak) || 0;
+
+  // Progress towards next milestone
+  var allWins = (client.wins || []).slice();
+  (client.programs || []).forEach(function(p) { (p.wins || []).forEach(function(w) { allWins.push(w); }); });
+  var winCount = allWins.length;
+  var nextWinTarget = winCount < 1 ? 1 : winCount < 3 ? 3 : winCount < 10 ? 10 : winCount < 25 ? 25 : null;
+  var progressHtml = '';
+  if (nextWinTarget) {
+    var pct = Math.round((winCount / nextWinTarget) * 100);
+    progressHtml =
+      '<div style="background:#FFFDFA;border:1.5px solid #F5D5E3;border-radius:12px;padding:14px;margin-bottom:14px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+      '<div style="font-size:12px;color:#C9266B;font-weight:700">Next badge: ' + winCount + ' / ' + nextWinTarget + ' wins</div>' +
+      '<div style="font-size:11px;color:#ACA495">' + pct + '%</div></div>' +
+      '<div style="background:white;border-radius:99px;height:8px;overflow:hidden">' +
+      '<div style="background:#EC2C8A;height:100%;width:' + pct + '%;transition:width 0.4s"></div></div></div>';
+  }
+
+  // Streak callout
+  var streakHtml = streak > 0
+    ? '<div style="background:linear-gradient(135deg,#FFF5E8,#FFFBE8);border:1.5px solid #E8A020;border-radius:12px;padding:14px;margin-bottom:14px;display:flex;align-items:center;gap:14px">' +
+      '<div style="font-size:36px;line-height:1">🔥</div>' +
+      '<div style="flex:1"><div style="font-family:var(--f-head);font-size:18px;color:#A07030;font-weight:700">' + streak + ' day streak</div>' +
+      '<div style="font-size:11px;color:#ACA495">Longest ever: ' + longest + ' day' + (longest === 1 ? '' : 's') + '</div></div></div>'
+    : '';
+
+  // Badge grid
+  var badgeIds = Object.keys(BADGES);
+  var grid = badgeIds.map(function(id) {
+    var b = BADGES[id];
+    if (b.manual && !earned.indexOf(id) >= 0) return ''; // hide manual-only badges if not earned
+    var got = earned.indexOf(id) >= 0;
+    var tc = BADGE_TIER_COLORS[b.tier] || BADGE_TIER_COLORS.bronze;
+    if (got) {
+      return '<div title="' + b.name + ' — ' + b.desc + '" style="background:' + tc.bg + ';border:2px solid ' + tc.border + ';border-radius:14px;padding:12px 8px;text-align:center;cursor:default">' +
+        '<div style="font-size:32px;line-height:1;margin-bottom:6px">' + b.icon + '</div>' +
+        '<div style="font-size:10px;font-weight:700;color:' + tc.text + ';line-height:1.2">' + b.name + '</div></div>';
+    }
+    return '<div title="Locked: ' + b.desc + '" style="background:#FAFAFA;border:2px dashed #DDD;border-radius:14px;padding:12px 8px;text-align:center;opacity:0.5;cursor:default">' +
+      '<div style="font-size:32px;line-height:1;margin-bottom:6px;filter:grayscale(1)">🔒</div>' +
+      '<div style="font-size:10px;font-weight:700;color:#999;line-height:1.2">' + b.name + '</div></div>';
+  }).filter(Boolean).join('');
+
+  var earnedCount = earned.length;
+  var totalCount = badgeIds.filter(function(id) { return !BADGES[id].manual || earned.indexOf(id) >= 0; }).length;
+
+  return '<div style="margin-top:24px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">' +
+    '<div style="font-family:var(--f-head);font-size:18px;color:#C9266B;font-weight:700">🏆 Your achievements</div>' +
+    '<div style="font-size:12px;color:#ACA495">' + earnedCount + ' of ' + totalCount + ' unlocked</div></div>' +
+    streakHtml +
+    progressHtml +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px">' + grid + '</div>' +
+    '</div>';
+}
+
+// ============================================================
+// HELP PANEL — floating "?" button bottom-right opens a drawer
+// with Resources / Email Phoebe / Book a chat / Quick help FAQ
+// ============================================================
+function toggleHelpPanel() {
+  var p = document.getElementById('help-panel');
+  if (!p) return;
+  var open = p.style.display === 'block';
+  p.style.display = open ? 'none' : 'block';
+}
+
+// Close the help panel when clicking outside it (or pressing Esc)
+document.addEventListener('click', function(e) {
+  var p = document.getElementById('help-panel');
+  var fab = document.getElementById('help-fab');
+  if (!p || p.style.display !== 'block') return;
+  if (p.contains(e.target) || (fab && fab.contains(e.target))) return;
+  p.style.display = 'none';
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  var p = document.getElementById('help-panel');
+  if (p && p.style.display === 'block') p.style.display = 'none';
+});
+
 function showPage(id) {
   document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
   document.querySelectorAll('.sidebar-item').forEach(function(s) { s.classList.remove('active'); });
@@ -2554,6 +2890,11 @@ function renderClientProgram(client, prog) {
   } else {
     content = lockNotice + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + resourcesSection();
     area.innerHTML = content;
+  }
+
+  // Append the achievements section (badges + streak + progress) at the bottom
+  if (typeof renderBadgesSection === 'function') {
+    area.innerHTML += renderBadgesSection(client);
   }
 
   // Update hero progress
