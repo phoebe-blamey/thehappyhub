@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11100 — theming: semantic token layer + light/dark theme variant (WCAG AA) · 🌙/☀️ toggle in coach + client topbars · OS prefers-color-scheme respected on first load · localStorage 'hmh_theme' persists choice">
+<meta name="hmh-build" content="v11200 — refactor finale: selective resource audience (all / specific cohorts / specific program types) · client portal filters resource list by audience · audience pills on coach hub cards · resource broadcast respects audience">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -4159,6 +4159,11 @@ async function openHelpResources() {
     return;
   }
   var resources = await loadHubResources();
+  // v11200: filter by audience — only show resources visible to this client
+  var thisClient = clients.find(function(c){ return c.id === currentClientId; }) || null;
+  if (thisClient && typeof isResourceVisibleToClient === 'function') {
+    resources = resources.filter(function(r){ return isResourceVisibleToClient(r, thisClient); });
+  }
   // Build a compact, lovely list
   var typeBadge = { blog:'📝 Blog', podcast:'🎙 Podcast', course:'📚 Course', tool:'🛠 Tool', booking:'📅 Booking' };
   var listHtml = resources.map(function(r) {
@@ -10747,6 +10752,16 @@ async function renderHappyHub(filterTag, searchTerm, typeFilter) {
     '<input id="res-tags" placeholder="Tags (comma-separated)" style="border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none">' +
     '</div>' +
     '<input id="res-desc" placeholder="Description" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;margin-bottom:10px">' +
+    // v11200: audience selector — who can see this resource
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
+      '<label style="font-size:11px;font-weight:700;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em">Visible to</label>' +
+      '<select id="res-audience-type" onchange="onResAudienceTypeChange(this.value)" style="border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper)">' +
+        '<option value="all">🌍 All clients</option>' +
+        '<option value="cohorts">💡 Specific cohorts</option>' +
+        '<option value="programs">📚 Specific program types</option>' +
+      '</select>' +
+      '<select id="res-audience-ids" multiple style="display:none;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);min-width:180px;max-height:80px"></select>' +
+    '</div>' +
     '<div style="display:flex;gap:8px">' +
     '<button class="btn-sm primary" onclick="addHubResource()">Add</button>' +
     '<button class="btn-sm" onclick="document.getElementById(\'add-resource-form\').style.display=\'none\'">Cancel</button>' +
@@ -10758,9 +10773,21 @@ async function renderHappyHub(filterTag, searchTerm, typeFilter) {
       var icon = typeIcons[r.type]||'📌';
       var bg   = typeColors[r.type]||'white';
       var tc   = typeText[r.type]||'var(--magenta)';
+      // v11200: audience pill — shows who can see this resource
+      var aud = r.audience;
+      var audPill = '';
+      if (aud && aud.type && aud.type !== 'all') {
+        var audLabel = aud.type === 'cohorts'
+          ? ('💡 ' + (aud.ids||[]).length + ' cohort' + ((aud.ids||[]).length===1?'':'s'))
+          : ('📚 ' + (aud.ids||[]).length + ' program type' + ((aud.ids||[]).length===1?'':'s'));
+        audPill = '<span style="background:rgba(232,160,32,0.18);color:#A07030;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px" title="Only clients in these audiences can see this resource">' + audLabel + '</span>';
+      } else {
+        audPill = '<span style="background:rgba(95,163,168,0.15);color:var(--teal);font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px" title="All your clients can see this">🌍 All</span>';
+      }
       return '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px">' +
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">' +
         '<span style="background:'+bg+';color:'+tc+';font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:2px 8px;border-radius:99px">'+icon+' '+r.type+'</span>' +
+        audPill +
         '</div>' +
         '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);line-height:1.3">'+r.title+'</div>' +
         '<div style="font-size:12px;color:var(--stone);line-height:1.5;flex:1">'+r.desc+'</div>' +
@@ -10779,6 +10806,63 @@ async function renderHappyHub(filterTag, searchTerm, typeFilter) {
 function showAddResourceForm() {
   var f = document.getElementById('add-resource-form');
   if (f) f.style.display = f.style.display==='none'?'block':'none';
+  // Default audience back to "all" each open
+  var typeSel = document.getElementById('res-audience-type');
+  if (typeSel) typeSel.value = 'all';
+  onResAudienceTypeChange('all');
+}
+
+// When audience type changes, populate the multi-select with the right
+// options (cohorts list or program types list) and show/hide it.
+function onResAudienceTypeChange(type) {
+  var ids = document.getElementById('res-audience-ids');
+  if (!ids) return;
+  if (type === 'all') { ids.style.display = 'none'; ids.innerHTML = ''; return; }
+  ids.style.display = '';
+  if (type === 'cohorts') {
+    var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
+    ids.innerHTML = cohorts.map(function(c) {
+      return '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name || 'Untitled') + '</option>';
+    }).join('') || '<option disabled>No cohorts yet</option>';
+  } else if (type === 'programs') {
+    var keys = Object.keys(PROGRAMS).filter(function(k) {
+      var p = PROGRAMS[k];
+      return p && p.workbook !== 'none' && p.workbook !== 'inquiry';
+    });
+    ids.innerHTML = keys.map(function(k) {
+      var p = PROGRAMS[k];
+      return '<option value="' + escapeHtml(k) + '">' + (p.icon||'📌') + ' ' + escapeHtml(p.label || k) + '</option>';
+    }).join('');
+  }
+}
+
+// Read the audience selectors into a structured value the resource can store.
+function readResourceAudienceFromForm() {
+  var typeSel = document.getElementById('res-audience-type');
+  var idsSel = document.getElementById('res-audience-ids');
+  var type = (typeSel && typeSel.value) || 'all';
+  if (type === 'all') return { type: 'all', ids: [] };
+  var ids = [];
+  if (idsSel) {
+    Array.from(idsSel.selectedOptions || []).forEach(function(o) { if (o.value) ids.push(o.value); });
+  }
+  return { type: type, ids: ids };
+}
+
+// Decide whether a given resource should be visible to a given client.
+// Used by the client-portal Help drawer "My resources" list.
+function isResourceVisibleToClient(resource, client) {
+  if (!resource) return false;
+  var aud = resource.audience;
+  if (!aud || !aud.type || aud.type === 'all') return true;
+  if (!client || !aud.ids || !aud.ids.length) return true; // misconfigured = show
+  if (aud.type === 'cohorts') {
+    return (client.programs || []).some(function(p) { return p && p.cohort && aud.ids.indexOf(p.cohort) >= 0; });
+  }
+  if (aud.type === 'programs') {
+    return (client.programs || []).some(function(p) { return p && aud.ids.indexOf(p.program) >= 0; });
+  }
+  return true;
 }
 
 // Remove a resource from the library. Custom resources (added via "+ Add
@@ -10820,7 +10904,8 @@ function addHubResource() {
   var desc  = document.getElementById('res-desc')?.value.trim() || '';
   if (!title||!url) { branded.alert('Title and URL are required'); return; }
   HUB_RESOURCES = HUB_RESOURCES || [];
-  var newResource = { id:'r'+Date.now(), type:type, title:title, url:url, tags:tags, date:new Date().toISOString().split('T')[0], desc:desc };
+  var audience = (typeof readResourceAudienceFromForm === 'function') ? readResourceAudienceFromForm() : { type:'all', ids:[] };
+  var newResource = { id:'r'+Date.now(), type:type, title:title, url:url, tags:tags, date:new Date().toISOString().split('T')[0], desc:desc, audience: audience };
   HUB_RESOURCES.push(newResource);
   // Persist via /api/coach-settings so the resource shows up on every device
   // AND in the client-portal "My resources" drawer.
@@ -10837,10 +10922,25 @@ function addHubResource() {
 
 // After Phoebe adds a hub resource, ask if she wants to email the cohorts
 // that have notifyOnNewResource ticked. Skips silently if no cohorts have
-// opted in.
+// opted in. v11200: also respects resource.audience — if the resource
+// targets specific cohorts only, never broadcast to OTHER cohorts even
+// if they're opted in.
 async function offerToBroadcastNewResource(resource) {
   var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
   var optedIn = cohorts.filter(function(c){ return c.notifyOnNewResource && _cohortMembers(c.id).length > 0; });
+  // Audience filter — drop cohorts that aren't in the resource's audience
+  if (resource && resource.audience && resource.audience.type === 'cohorts' && Array.isArray(resource.audience.ids) && resource.audience.ids.length) {
+    optedIn = optedIn.filter(function(c){ return resource.audience.ids.indexOf(c.id) !== -1; });
+  }
+  // For programs-audience: rebuild optedIn as the cohorts whose members
+  // include at least one program from the audience — rare case.
+  if (resource && resource.audience && resource.audience.type === 'programs' && Array.isArray(resource.audience.ids) && resource.audience.ids.length) {
+    optedIn = optedIn.filter(function(c) {
+      return _cohortMembers(c.id).some(function(m) {
+        return (m.programs||[]).some(function(p){ return resource.audience.ids.indexOf(p.program) >= 0; });
+      });
+    });
+  }
   if (!optedIn.length) return;
   var totalMembers = optedIn.reduce(function(sum, c){ return sum + _cohortMembers(c.id).length; }, 0);
   var ok = await branded.confirm(
