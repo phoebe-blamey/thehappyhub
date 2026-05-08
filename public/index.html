@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11000 — refactor phase 2: universal intake (one Q&A set per client, travels across programs) · custom program types (Phoebe-defined, no code changes) · 'Add program' dropdown surfaces custom types · client portal Settings shows 'My answers'">
+<meta name="hmh-build" content="v11100 — theming: semantic token layer + light/dark theme variant (WCAG AA) · 🌙/☀️ toggle in coach + client topbars · OS prefers-color-scheme respected on first load · localStorage 'hmh_theme' persists choice">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -110,6 +110,8 @@
       🔎 <span class="search-trigger-label">Search</span> <span style="opacity:0.7;font-size:10px;border:1px solid rgba(255,255,255,0.3);padding:1px 5px;border-radius:4px;margin-left:2px" class="search-trigger-shortcut">⌘K</span>
     </button>
     <span id="save-status-pill" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Save status — saves happen automatically as you type"></span>
+    <!-- v11100: theme toggle (sun/moon) — switches light <-> dark -->
+    <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" style="background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.22);color:white;width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.15s" onmouseover="this.style.background='rgba(255,255,255,0.24)'" onmouseout="this.style.background='rgba(255,255,255,0.14)'">🌙</button>
     <button class="btn-logout" onclick="logout()">Sign out</button>
   </div>
 
@@ -845,6 +847,9 @@
       <span id="client-next-session-text"></span>
     </a>
     <span class="save-status-pill-c" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Your work saves automatically as you go"></span>
+    <!-- v11100: theme toggle (sun/moon) — switches between light + dark.
+         Persists in localStorage as `hmh_theme`. -->
+    <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" style="background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.22);color:white;width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.15s" onmouseover="this.style.background='rgba(255,255,255,0.24)'" onmouseout="this.style.background='rgba(255,255,255,0.14)'">🌙</button>
     <!-- v10900: settings gear in the topbar — fast access to client preferences
          without making Settings a peer of Summary/Programs/To-dos in the
          primary nav. The Settings tab still exists below for discoverability. -->
@@ -1991,13 +1996,56 @@ function getCoachPhone() {
   try { return localStorage.getItem('hmh_coach_phone') || ''; } catch (e) { return ''; }
 }
 
-// Pre-fill the phone input on coach page load
+// Pre-fill the phone input on coach page load + sync theme toggle button
 document.addEventListener('DOMContentLoaded', function() {
   setTimeout(function() {
     var input = document.getElementById('coach-phone-input');
     if (input) input.value = getCoachPhone();
+    // Re-sync theme button labels now that the topbar buttons exist
+    if (typeof applyThemePreference === 'function') applyThemePreference();
   }, 200);
 });
+
+// ═════════════════════════════════════════════════════════════════════
+// THEMING — v11100
+// Reads `hmh_theme` from localStorage on boot. If absent, falls back to
+// the OS preference (prefers-color-scheme). Sets data-theme on <html>
+// so the semantic token layer in styles.css picks up the variant. The
+// toggle button can be wired anywhere via toggleTheme().
+// ═════════════════════════════════════════════════════════════════════
+function applyThemePreference() {
+  var saved = '';
+  try { saved = localStorage.getItem('hmh_theme') || ''; } catch (e) {}
+  var theme = saved === 'light' || saved === 'dark' ? saved
+    : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', theme);
+  // Update any visible toggle buttons that might already be in the DOM
+  if (document.querySelectorAll) {
+    document.querySelectorAll('[data-theme-toggle]').forEach(function(b) {
+      b.textContent = theme === 'dark' ? '☀️' : '🌙';
+      b.title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+    });
+  }
+  return theme;
+}
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme') || 'light';
+  var next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('hmh_theme', next); } catch (e) {}
+  // Update any visible toggle button labels
+  document.querySelectorAll('[data-theme-toggle]').forEach(function(b) {
+    b.textContent = next === 'dark' ? '☀️' : '🌙';
+    b.title = next === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  });
+  if (typeof branded !== 'undefined' && branded.toast) {
+    branded.toast(next === 'dark' ? 'Dark mode' : 'Light mode');
+  }
+}
+// Apply on page load BEFORE any visual paint to avoid the white flash
+(function initThemeBeforePaint() {
+  try { applyThemePreference(); } catch (e) {}
+})();
 
 async function changeCoachPin() {
   var input = document.getElementById('new-coach-pin');
