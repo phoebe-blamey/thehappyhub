@@ -173,6 +173,30 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   60%  { opacity: 1; transform: translateY(4px) scale(1.02); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
+/* New: extra-celebratory pop with overshoot, ring pulse, and icon wiggle. */
+@keyframes badgePop {
+  0%   { opacity: 0; transform: translateY(-30px) scale(0.5) rotate(-6deg); }
+  55%  { opacity: 1; transform: translateY(6px)  scale(1.08) rotate(2deg); }
+  80%  { transform: translateY(-2px) scale(0.98) rotate(-1deg); }
+  100% { opacity: 1; transform: translateY(0)    scale(1)    rotate(0); }
+}
+@keyframes badgeRing {
+  0%   { opacity: 0.85; transform: scale(0.75); }
+  100% { opacity: 0;    transform: scale(1.45); }
+}
+@keyframes badgeWiggle {
+  0%, 100% { transform: rotate(0); }
+  20%      { transform: rotate(-15deg); }
+  40%      { transform: rotate(12deg); }
+  60%      { transform: rotate(-8deg); }
+  80%      { transform: rotate(5deg); }
+}
+/* Tick row pulse — used when a task is checked off in the client portal. */
+@keyframes taskRowTickPulse {
+  0%   { background: white; }
+  30%  { background: #FFFBE8; transform: scale(1.02); }
+  100% { background: white;   transform: scale(1); }
+}
 
 /* ========== NOTES / FORMS ========== */
 .notes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
