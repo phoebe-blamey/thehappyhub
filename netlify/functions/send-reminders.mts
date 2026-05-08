@@ -166,9 +166,10 @@ export default async (req: Request) => {
   });
 };
 
-// Run every 10 minutes. The 11-minute window per tier means each client
-// hits each tier exactly once across runs.
+// HTTP-triggered for now — scheduled cron will be added via a separate
+// scheduled-function file that POSTs to this endpoint, or via Netlify's
+// dashboard schedule UI. Combining `path` + `schedule` on the same export
+// was causing Netlify's bundler to fail the deploy entirely.
 export const config: Config = {
   path: "/api/send-reminders",
-  schedule: "*/10 * * * *",
 };
