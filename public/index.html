@@ -13,7 +13,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v9200 — keep-alive heartbeat fixes 504 properly · view-as-client · archive clients · custom badges with animation picker · award-badge modal · unmatched Zoom can spawn new client · conservative next-session">
+<meta name="hmh-build" content="v9300 — Netlify Blobs everywhere · custom badges, activity log, cohorts, plan templates, hub resources, hourly rate, coach phone, notifications, knowledge-bank chat all server-shared · 60s live-sync + tab-focus refresh">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -1485,6 +1485,10 @@ async function assignZoomMeeting(meetingId) {
 // CLIENT NOTIFICATION EMAILS — global + per-client toggles
 // ============================================================
 function isNotificationsEnabled() {
+  // Server-backed via /api/coach-settings; localStorage as fallback only.
+  if (window._coachSettings && typeof window._coachSettings.notificationsEnabled === 'boolean') {
+    return window._coachSettings.notificationsEnabled;
+  }
   return localStorage.getItem('hmh_notifications_enabled') === 'true';
 }
 
@@ -1496,7 +1500,10 @@ function shouldNotifyClient(client) {
 }
 
 function toggleGlobalNotifications(on) {
-  localStorage.setItem('hmh_notifications_enabled', on ? 'true' : 'false');
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.notificationsEnabled = !!on;
+  flushCoachSettings();
+  try { localStorage.setItem('hmh_notifications_enabled', on ? 'true' : 'false'); } catch(e) {}
   var lbl = document.getElementById('notifications-status-label');
   if (lbl) lbl.textContent = 'Notifications: ' + (on ? 'ON' : 'OFF');
 }
@@ -1779,17 +1786,28 @@ function saveCoachPhone() {
   var status = document.getElementById('coach-phone-saved');
   if (!input) return;
   var v = (input.value || '').trim();
-  if (v) localStorage.setItem('hmh_coach_phone', v);
-  else localStorage.removeItem('hmh_coach_phone');
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.coachPhone = v;
+  flushCoachSettings();
+  try { if (v) localStorage.setItem('hmh_coach_phone', v); else localStorage.removeItem('hmh_coach_phone'); } catch(e) {}
   status.textContent = v ? '✓ Saved — clients will see this in their Help drawer' : '✓ Cleared — phone hidden from clients';
   setTimeout(function(){ status.textContent = ''; }, 4000);
+}
+
+function getCoachPhone() {
+  // Used by the client-portal help drawer too — has to read from the
+  // remote-state cache so the client sees Phoebe's number after she sets it.
+  if (window._coachSettings && typeof window._coachSettings.coachPhone === 'string') {
+    return window._coachSettings.coachPhone;
+  }
+  try { return localStorage.getItem('hmh_coach_phone') || ''; } catch (e) { return ''; }
 }
 
 // Pre-fill the phone input on coach page load
 document.addEventListener('DOMContentLoaded', function() {
   setTimeout(function() {
     var input = document.getElementById('coach-phone-input');
-    if (input) input.value = localStorage.getItem('hmh_coach_phone') || '';
+    if (input) input.value = getCoachPhone();
   }, 200);
 });
 
@@ -1849,6 +1867,198 @@ var MDC_COHORTS = [
   { id:'cohort-1', name:'MDC Cohort 1', dates:'Apr–Jun 2026', start:'2026-04-01', end:'2026-06-30', whatsapp:'https://chat.whatsapp.com/example1', zoomLink:'', nextSessionDate:'', nextSessionTime:'', active:true },
   { id:'cohort-2', name:'MDC Cohort 2', dates:'Jul–Sep 2026', start:'2026-07-01', end:'2026-09-30', whatsapp:'', zoomLink:'', nextSessionDate:'', nextSessionTime:'', active:false },
 ];
+
+// ════════════════════════════════════════════════════════════════════
+// REMOTE STATE — everything that's shared between Phoebe and clients
+// (or between Phoebe's own devices) lives in Netlify Blobs and is
+// hydrated into these in-memory caches at sign-in.
+//
+// Settings:    /api/coach-settings  — custom badges, plan templates,
+//                                     hub resources, hourly rate,
+//                                     coach phone, notifications flag
+// Activity:    /api/activity-log    — Phoebe-side feed of events
+// Cohorts:     /api/cohorts         — MDC cohort records
+//
+// Anything in localStorage is now a write-through cache for offline /
+// instant-render. The blob is always canonical.
+// ════════════════════════════════════════════════════════════════════
+window._coachSettings = null;
+window._activityLog = null;
+window._coachSettingsDirty = false;
+window._activityLogDirty = false;
+
+async function loadCoachSettingsRemote() {
+  // Hydrate from server. Falls back to localStorage cache if the call fails
+  // so Phoebe at least sees something on a flaky connection.
+  try {
+    var r = await fetch('/api/coach-settings');
+    if (r.ok) {
+      window._coachSettings = await r.json();
+    } else {
+      throw new Error('status ' + r.status);
+    }
+  } catch (e) {
+    console.warn('[coach-settings] remote fetch failed, using local cache', e);
+    try { window._coachSettings = JSON.parse(localStorage.getItem('hmh_coach_settings_cache') || '{}'); }
+    catch (_) { window._coachSettings = {}; }
+  }
+  if (!window._coachSettings || typeof window._coachSettings !== 'object') window._coachSettings = {};
+  // First-time migration — pull any legacy localStorage values into the
+  // fresh blob so nothing is lost on the cutover.
+  var migrated = false;
+  function pickIfMissing(field, lsKey, parser) {
+    if (window._coachSettings[field] != null) return;
+    try {
+      var raw = localStorage.getItem(lsKey);
+      if (raw == null) return;
+      var val = parser ? parser(raw) : raw;
+      window._coachSettings[field] = val;
+      migrated = true;
+    } catch (e) {}
+  }
+  pickIfMissing('customBadges',         'hmh_custom_badges',     JSON.parse);
+  pickIfMissing('planTemplates',        'hmh_plan_templates',    JSON.parse);
+  pickIfMissing('hubResources',         'hmh_hub_resources',     JSON.parse);
+  pickIfMissing('removedResources',     'hmh_resources_removed', JSON.parse);
+  pickIfMissing('hourlyRate',           'hmh_hourly_rate',       function(s){ return parseInt(s,10)||297; });
+  pickIfMissing('coachPhone',           'hmh_coach_phone');
+  pickIfMissing('notificationsEnabled', 'hmh_notifications_enabled', function(s){ return s === 'true'; });
+  if (migrated) flushCoachSettings();
+  // Mirror the up-to-date settings to localStorage for offline render
+  try { localStorage.setItem('hmh_coach_settings_cache', JSON.stringify(window._coachSettings)); } catch (e) {}
+}
+
+// Debounced server flush — settings change rarely, so a 600ms tail is plenty.
+var _coachSettingsFlushTimer = null;
+function flushCoachSettings() {
+  if (!window._coachSettings) return;
+  try { localStorage.setItem('hmh_coach_settings_cache', JSON.stringify(window._coachSettings)); } catch (e) {}
+  if (_coachSettingsFlushTimer) clearTimeout(_coachSettingsFlushTimer);
+  _coachSettingsFlushTimer = setTimeout(function() {
+    fetch('/api/coach-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(window._coachSettings),
+    }).catch(function(err) { console.warn('[coach-settings] save failed:', err); });
+  }, 600);
+}
+
+async function loadActivityLogRemote() {
+  try {
+    var r = await fetch('/api/activity-log');
+    if (r.ok) {
+      window._activityLog = await r.json();
+    } else {
+      throw new Error('status ' + r.status);
+    }
+  } catch (e) {
+    console.warn('[activity-log] remote fetch failed, using local cache', e);
+    try { window._activityLog = JSON.parse(localStorage.getItem('hmh_activity_log') || '[]'); }
+    catch (_) { window._activityLog = []; }
+  }
+  if (!Array.isArray(window._activityLog)) window._activityLog = [];
+  try { localStorage.setItem('hmh_activity_log', JSON.stringify(window._activityLog)); } catch (e) {}
+}
+
+async function loadCohortsRemote() {
+  try {
+    var r = await fetch('/api/cohorts');
+    if (r.ok) {
+      var arr = await r.json();
+      if (Array.isArray(arr) && arr.length) MDC_COHORTS = arr;
+      else {
+        // First-time: push the local default to the server so other devices see it
+        try {
+          var localRaw = localStorage.getItem('mdc_cohorts');
+          if (localRaw) MDC_COHORTS = JSON.parse(localRaw);
+        } catch (e) {}
+        flushCohorts();
+      }
+    } else {
+      throw new Error('status ' + r.status);
+    }
+  } catch (e) {
+    console.warn('[cohorts] remote fetch failed, using local cache', e);
+    try {
+      var raw = localStorage.getItem('mdc_cohorts');
+      if (raw) MDC_COHORTS = JSON.parse(raw);
+    } catch (_) {}
+  }
+  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch (e) {}
+}
+
+var _cohortsFlushTimer = null;
+function flushCohorts() {
+  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch (e) {}
+  if (_cohortsFlushTimer) clearTimeout(_cohortsFlushTimer);
+  _cohortsFlushTimer = setTimeout(function() {
+    fetch('/api/cohorts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(MDC_COHORTS),
+    }).catch(function(err) { console.warn('[cohorts] save failed:', err); });
+  }, 600);
+}
+
+// Convenience entry point — call once on sign-in for either side. Loads
+// only the slices each role needs: clients always need their own profile;
+// coach also needs settings, activity, cohorts. Background — does NOT
+// block sign-in if any single fetch errors.
+async function loadRemoteState(role) {
+  var jobs = [];
+  if (role === 'coach') {
+    jobs.push(loadCoachSettingsRemote());
+    jobs.push(loadActivityLogRemote());
+    jobs.push(loadCohortsRemote());
+  } else if (role === 'client') {
+    // Clients still need cohort metadata (so cohort lookups work) and
+    // hub resources (in the help drawer). Settings blob has the resources;
+    // cohort blob is small.
+    jobs.push(loadCoachSettingsRemote());
+    jobs.push(loadCohortsRemote());
+  }
+  await Promise.all(jobs);
+}
+
+// Lightweight refresh — pulls fresh client list + activity log so a
+// long-open tab stays in sync without a manual reload. Wired from the
+// home page on a 60s interval and on tab-focus.
+var _liveSyncTimer = null;
+async function liveSyncTick() {
+  if (typeof loadClients === 'function') {
+    try { await loadClients(); } catch (e) {}
+  }
+  if (sessionGet && sessionGet(HMH_SESSION.ROLE) === 'coach') {
+    try { await loadActivityLogRemote(); } catch (e) {}
+    if (typeof renderHome === 'function') {
+      var pg = document.getElementById('page-home');
+      if (pg && pg.classList.contains('active')) renderHome();
+    }
+  } else {
+    // Client side — re-render summary if visible, so wins/tasks Phoebe
+    // pushed from her end appear without manual refresh.
+    var client = clients.find(function(c){ return c.id === currentClientId; });
+    if (client) {
+      var sumEl = document.getElementById('client-summary-area');
+      if (sumEl && sumEl.style.display !== 'none' && typeof renderClientSummary === 'function') renderClientSummary(client);
+      var todosEl = document.getElementById('client-todos-area');
+      if (todosEl && todosEl.style.display !== 'none' && typeof renderClientTodosTab === 'function') renderClientTodosTab(client);
+      var winsEl = document.getElementById('client-wins-area');
+      if (winsEl && winsEl.style.display !== 'none' && typeof renderClientWinsTab === 'function') renderClientWinsTab(client);
+    }
+  }
+}
+function startLiveSync() {
+  stopLiveSync();
+  _liveSyncTimer = setInterval(liveSyncTick, 60000); // every minute
+}
+function stopLiveSync() {
+  if (_liveSyncTimer) { clearInterval(_liveSyncTimer); _liveSyncTimer = null; }
+}
+// Re-sync when the tab regains focus (covers the "left it open overnight" case)
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') liveSyncTick();
+});
 
 // ========== STATE ==========
 // clients = array of full client profiles (from Netlify Blobs when deployed, localStorage otherwise)
@@ -2227,7 +2437,10 @@ async function restoreSession() {
     if (role === 'coach') {
       document.getElementById('landing').style.display = 'none';
       document.getElementById('coach-hub').classList.add('active');
-      await loadClients();
+      await Promise.all([
+        loadClients(),
+        loadRemoteState('coach').catch(function(e){ console.warn('[remote-state]', e); }),
+      ]);
       try { await runWeeklyAccountabilityCheck(); } catch (e) {}
       renderClients();
       renderHome();
@@ -2243,6 +2456,7 @@ async function restoreSession() {
         showPage(savedPage);
       }
       try { startNotificationPolling(); } catch (e) {}
+      try { startLiveSync(); } catch (e) {}
       var rfab = document.getElementById('review-fab');
       if (rfab) { rfab.style.display = 'inline-flex'; if (typeof updateReviewCount === 'function') updateReviewCount(); }
       return true;
@@ -2256,6 +2470,8 @@ async function restoreSession() {
       document.getElementById('landing').style.display = 'none';
       document.getElementById('client-hub').classList.add('active');
       currentClientId = client.id;
+      loadRemoteState('client').catch(function(e){ console.warn('[remote-state]', e); });
+      try { startLiveSync(); } catch (e) {}
       loadClientPortal(client);
       // Restore the active client-portal tab (summary/programs/settings)
       var portalTab = sessionGet(HMH_SESSION.PORTAL_TAB);
@@ -2286,7 +2502,8 @@ async function enterCoach() {
     sessionSet(HMH_SESSION.ROLE, 'coach');
     document.getElementById('landing').style.display = 'none';
     document.getElementById('coach-hub').classList.add('active');
-    await loadClients();
+    // Pull all shared state from Netlify Blobs in parallel with the client list
+    await Promise.all([loadClients(), loadRemoteState('coach').catch(function(e){ console.warn('[remote-state]', e); })]);
     console.log('Clients loaded:', clients.length, clients.map(function(c){return c.name;}));
     // Run weekly accountability check (Mondays only, once per Monday)
     await runWeeklyAccountabilityCheck();
@@ -2301,6 +2518,7 @@ async function enterCoach() {
       }
     }, 300);
     startNotificationPolling();
+    try { startLiveSync(); } catch (e) {}
     // Show the testing review FAB while Phoebe's signed in as coach
     var rfab = document.getElementById('review-fab');
     if (rfab) { rfab.style.display = 'inline-flex'; updateReviewCount(); }
@@ -2321,6 +2539,10 @@ async function enterClient() {
     document.getElementById('landing').style.display = 'none';
     document.getElementById('client-hub').classList.add('active');
     currentClientId = client.id;
+    // Pull shared state (cohorts, coach phone, hub resources) so the
+    // client portal sees the latest of everything Phoebe has set up.
+    loadRemoteState('client').catch(function(e){ console.warn('[remote-state]', e); });
+    try { startLiveSync(); } catch (e) {}
     loadClientPortal(client);
   } else {
     document.getElementById('client-err').textContent = 'Access code not recognised. Check with Phoebe.';
@@ -2392,6 +2614,7 @@ function logout() {
   document.getElementById('client-err').textContent = '';
   currentClientId = null; currentProgramId = null;
   stopNotificationPolling();
+  try { stopLiveSync(); } catch (e) {}
   // Hide the testing review FAB on logout
   var rfab = document.getElementById('review-fab');
   if (rfab) rfab.style.display = 'none';
@@ -2523,12 +2746,22 @@ var BADGE_ANIMATIONS = {
 // the BADGES map. Called once at script start so awardBadge() works for
 // custom IDs the same as built-ins.
 function loadCustomBadges() {
+  // Source of truth lives on the server in /api/coach-settings.customBadges.
+  // Falls back to the local cache so we still render before the network
+  // call resolves (offline / first paint).
+  if (window._coachSettings && Array.isArray(window._coachSettings.customBadges)) {
+    return window._coachSettings.customBadges;
+  }
   try {
     var raw = localStorage.getItem('hmh_custom_badges');
     return raw ? JSON.parse(raw) : [];
   } catch (e) { return []; }
 }
 function saveCustomBadgesArr(arr) {
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.customBadges = arr;
+  flushCoachSettings();
+  // Belt-and-braces local mirror so a refresh while offline still shows them
   try { localStorage.setItem('hmh_custom_badges', JSON.stringify(arr)); } catch (e) {}
 }
 function mergeCustomBadgesIntoRegistry() {
@@ -2919,7 +3152,7 @@ function toggleHelpPanel() {
   // When opening, populate the dynamic items (phone link from settings)
   if (!open) {
     try {
-      var phone = (localStorage.getItem('hmh_coach_phone') || '').trim();
+      var phone = (getCoachPhone() || '').trim();
       var phoneLink = document.getElementById('help-phone-link');
       var phoneDisplay = document.getElementById('help-phone-display');
       if (phone && phoneLink) {
@@ -2952,16 +3185,26 @@ function toggleHelpPanel() {
 // Grounds Claude in the signed-in client's profile so answers
 // reference their actual plan, program, sessions and notes.
 // ============================================================
-function kbankStorageKey(clientId) { return 'hmh_kbank_chat_' + clientId; }
-
+// Knowledge Bank chat history now lives on the client record itself
+// (client.kbankChat) so it follows the client across devices and is
+// visible to Phoebe — she can see what they're asking and step in
+// where the AI gets it wrong. Limited to the last 20 turns to keep
+// the blob lean.
 function loadKBankHistory(clientId) {
-  try {
-    var raw = localStorage.getItem(kbankStorageKey(clientId));
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) { return []; }
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return [];
+  return Array.isArray(client.kbankChat) ? client.kbankChat : [];
 }
 function saveKBankHistory(clientId, msgs) {
-  try { localStorage.setItem(kbankStorageKey(clientId), JSON.stringify((msgs || []).slice(-20))); } catch (e) {}
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  client.kbankChat = (msgs || []).slice(-20);
+  // Persist to Netlify Blobs via the standard client save path. We don't
+  // await — the in-memory cache is enough for the UI; the network roundtrip
+  // happens in the background.
+  if (typeof persistClient === 'function') {
+    persistClient(client).catch(function(err) { console.warn('[kbank] save failed:', err); });
+  }
 }
 function renderKBankHistory() {
   var box = document.getElementById('kbank-chat');
@@ -3977,10 +4220,18 @@ async function addPlanTask() {
 var PLAN_TEMPLATES_KEY = 'hmh_plan_templates';
 
 function getPlanTemplates() {
+  // Lives on /api/coach-settings.planTemplates so Phoebe sees the same set
+  // on every device. Fallback to local cache if remote hasn't loaded yet.
+  if (window._coachSettings && Array.isArray(window._coachSettings.planTemplates)) {
+    return window._coachSettings.planTemplates;
+  }
   try { return JSON.parse(localStorage.getItem(PLAN_TEMPLATES_KEY) || '[]'); }
   catch(e) { return []; }
 }
 function savePlanTemplates(arr) {
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.planTemplates = arr;
+  flushCoachSettings();
   try { localStorage.setItem(PLAN_TEMPLATES_KEY, JSON.stringify(arr)); } catch(e) {}
 }
 
@@ -5313,6 +5564,9 @@ var ACTIVITY_KEY = 'hmh_activity_log';
 var ACTIVITY_LIMIT = 80;
 
 function getActivityLog() {
+  // Server-backed (/api/activity-log). Local cache is a fallback for
+  // first-paint and offline resilience.
+  if (Array.isArray(window._activityLog)) return window._activityLog;
   try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '[]'); }
   catch(e) { return []; }
 }
@@ -5330,10 +5584,18 @@ function logActivity(kind, title, opts) {
     icon: opts.icon || activityIconFor(kind),
     detail: opts.detail || ''
   };
-  var log = getActivityLog();
-  log.unshift(entry);
-  if (log.length > ACTIVITY_LIMIT) log = log.slice(0, ACTIVITY_LIMIT);
-  try { localStorage.setItem(ACTIVITY_KEY, JSON.stringify(log)); } catch(e) {}
+  // Push to in-memory + local mirror immediately so the UI reflects it now.
+  if (!Array.isArray(window._activityLog)) window._activityLog = [];
+  window._activityLog.unshift(entry);
+  if (window._activityLog.length > ACTIVITY_LIMIT) window._activityLog = window._activityLog.slice(0, ACTIVITY_LIMIT);
+  try { localStorage.setItem(ACTIVITY_KEY, JSON.stringify(window._activityLog)); } catch(e) {}
+  // Push to server in the background — { append } so we don't race other
+  // writers. Failure is non-fatal because we have the local copy.
+  fetch('/api/activity-log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ append: entry }),
+  }).catch(function(err) { console.warn('[activity-log] save failed:', err); });
   // If the home page is rendered, refresh the activity strip live
   if (typeof renderActivityFeed === 'function') {
     var feed = document.getElementById('home-activity-feed');
@@ -7329,17 +7591,25 @@ async function loadHubResources() {
     { id:'r13', type:'booking', title:'Book a Happy Hour', url:'https://calendly.com/phoebe-phoebeblamey/happy-hour', tags:['coaching','booking','happyhour'], date:'2026-01-01', desc:'90-minute strategy session — bring your questions.' },
     { id:'r14', type:'booking', title:'Book a Clarity Call', url:'https://calendly.com/phoebe-phoebeblamey/new-meeting', tags:['coaching','booking','free'], date:'2026-01-01', desc:'Free 15-minute call to see if we are a good fit.' },
   ];
-  // Merge with anything Phoebe added via the "+ Add resource" form
+  // Merge with anything Phoebe added via the "+ Add resource" form. Custom
+  // resources + removed-ids both live on /api/coach-settings now so they
+  // sync across devices and the client-portal "My resources" drawer sees
+  // exactly what Phoebe sees.
   var custom = [];
-  try { custom = JSON.parse(localStorage.getItem('hmh_hub_resources') || '[]') || []; } catch(e) {}
+  if (window._coachSettings && Array.isArray(window._coachSettings.hubResources)) {
+    custom = window._coachSettings.hubResources;
+  } else {
+    try { custom = JSON.parse(localStorage.getItem('hmh_hub_resources') || '[]') || []; } catch(e) {}
+  }
   var resources = defaults.concat(custom.filter(function(r){
-    // Custom array might have been used as the full list in older versions;
-    // de-dup against defaults by id
     return !defaults.some(function(d){ return d.id === r.id; });
   }));
-  // Filter out anything Phoebe has marked as removed
   var removed = [];
-  try { removed = JSON.parse(localStorage.getItem('hmh_resources_removed') || '[]') || []; } catch(e) {}
+  if (window._coachSettings && Array.isArray(window._coachSettings.removedResources)) {
+    removed = window._coachSettings.removedResources;
+  } else {
+    try { removed = JSON.parse(localStorage.getItem('hmh_resources_removed') || '[]') || []; } catch(e) {}
+  }
   if (removed.length) {
     resources = resources.filter(function(r){ return removed.indexOf(r.id) === -1; });
   }
@@ -7443,15 +7713,21 @@ async function removeHubResource(resourceId) {
     var idx = HUB_RESOURCES.findIndex(function(r){ return r.id === resourceId; });
     if (idx >= 0) HUB_RESOURCES.splice(idx, 1);
   }
-  // Also persist a "removed" set so default-list resources stay removed
-  // across page reloads (they re-appear in HUB_RESOURCES otherwise).
-  try {
-    var removed = JSON.parse(localStorage.getItem('hmh_resources_removed') || '[]');
-    if (removed.indexOf(resourceId) === -1) removed.push(resourceId);
-    localStorage.setItem('hmh_resources_removed', JSON.stringify(removed));
-  } catch(e) {}
-  // Save the in-memory custom additions too
-  try { localStorage.setItem('hmh_hub_resources', JSON.stringify(HUB_RESOURCES || [])); } catch(e) {}
+  // Persist via /api/coach-settings — both the "removed" id list and the
+  // current custom-resources array. Mirrors to localStorage for offline.
+  if (!window._coachSettings) window._coachSettings = {};
+  var removed = Array.isArray(window._coachSettings.removedResources) ? window._coachSettings.removedResources.slice() : [];
+  if (removed.indexOf(resourceId) === -1) removed.push(resourceId);
+  window._coachSettings.removedResources = removed;
+  // Custom additions = HUB_RESOURCES minus the default ids (we'll let the
+  // loader merge defaults back in next time)
+  window._coachSettings.hubResources = (HUB_RESOURCES || []).filter(function(r) {
+    // Defaults have ids r1..r14 — anything else is a custom add Phoebe made
+    return !/^r\d+$/.test(r.id);
+  });
+  flushCoachSettings();
+  try { localStorage.setItem('hmh_resources_removed', JSON.stringify(removed)); } catch(e) {}
+  try { localStorage.setItem('hmh_hub_resources', JSON.stringify(window._coachSettings.hubResources)); } catch(e) {}
   branded.toast('Removed');
   renderHappyHub('','','');
 }
@@ -7464,9 +7740,14 @@ function addHubResource() {
   var desc  = document.getElementById('res-desc')?.value.trim() || '';
   if (!title||!url) { branded.alert('Title and URL are required'); return; }
   HUB_RESOURCES = HUB_RESOURCES || [];
-  HUB_RESOURCES.push({ id:'r'+Date.now(), type:type, title:title, url:url, tags:tags, date:new Date().toISOString().split('T')[0], desc:desc });
-  // Save to localStorage for persistence
-  localStorage.setItem('hmh_hub_resources', JSON.stringify(HUB_RESOURCES));
+  var newResource = { id:'r'+Date.now(), type:type, title:title, url:url, tags:tags, date:new Date().toISOString().split('T')[0], desc:desc };
+  HUB_RESOURCES.push(newResource);
+  // Persist via /api/coach-settings so the resource shows up on every device
+  // AND in the client-portal "My resources" drawer.
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.hubResources = (window._coachSettings.hubResources || []).concat([newResource]);
+  flushCoachSettings();
+  try { localStorage.setItem('hmh_hub_resources', JSON.stringify(window._coachSettings.hubResources)); } catch(e) {}
   document.getElementById('add-resource-form').style.display='none';
   ['res-title','res-url','res-tags','res-desc'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   renderHappyHub('','','');
@@ -8177,7 +8458,17 @@ function renderClientActions(client, prog) {
 // Note: PROGRAM_VALUES is defined once earlier in the file (above the revenue
 // dashboard). Don't redeclare it here — the duplicate was missing 'mdc-cohort'
 // and was overwriting the earlier complete map at runtime.
-var HOURLY_RATE = parseInt(localStorage.getItem('hmh_hourly_rate')||'297');
+// HOURLY_RATE is read on each calc so changes Phoebe makes from another
+// device land immediately after the next remote sync. The getter prefers
+// the server-backed setting and falls back to localStorage if it hasn't
+// hydrated yet.
+function getHourlyRate() {
+  if (window._coachSettings && typeof window._coachSettings.hourlyRate === 'number') {
+    return window._coachSettings.hourlyRate;
+  }
+  return parseInt(localStorage.getItem('hmh_hourly_rate') || '297', 10) || 297;
+}
+var HOURLY_RATE = getHourlyRate(); // legacy reference — keep for backward compat
 var SESSION_TIMES = { '90day':120,'accelerator':120,'happyhour':90,'adhoc':60,'audit':90,'mdc':60,'inquiry':30 };
 
 function calcClientValue(client) {
@@ -8191,7 +8482,7 @@ function calcClientValue(client) {
   });
   totalMins += (client.timeEntries||[]).reduce(function(s,e){return s+(e.minutes||0);},0);
   var hours = totalMins/60;
-  var timeValue = Math.round(hours * HOURLY_RATE);
+  var timeValue = Math.round(hours * getHourlyRate());
   var profit = programRevenue - timeValue;
   var profitPct = programRevenue > 0 ? Math.round(profit/programRevenue*100) : -100;
   var hourlyEarned = hours > 0 ? Math.round(programRevenue/hours) : 0;
@@ -8212,7 +8503,10 @@ function saveHourlyRate() {
   var rate = parseInt(document.getElementById('hourly-rate-input')?.value||'297');
   if (rate>0) {
     HOURLY_RATE = rate;
-    localStorage.setItem('hmh_hourly_rate', rate);
+    if (!window._coachSettings) window._coachSettings = {};
+    window._coachSettings.hourlyRate = rate;
+    flushCoachSettings();
+    try { localStorage.setItem('hmh_hourly_rate', rate); } catch(e) {}
     var saved = document.getElementById('rate-saved');
     if (saved){saved.style.display='inline';setTimeout(function(){saved.style.display='none';},2000);}
   }
@@ -9195,7 +9489,9 @@ function renderTaskSheet() {
 window._expandedCohorts = window._expandedCohorts || {};
 
 function _saveCohorts() {
-  try { localStorage.setItem('mdc_cohorts', JSON.stringify(MDC_COHORTS)); } catch(e) {}
+  // Cohorts now live in /api/cohorts. flushCohorts handles both the local
+  // mirror (so the UI stays instant) and the debounced server push.
+  flushCohorts();
 }
 function _findCohort(id) {
   if (!Array.isArray(MDC_COHORTS)) return null;
