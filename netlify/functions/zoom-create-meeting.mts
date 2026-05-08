@@ -262,6 +262,19 @@ export default async (req: Request) => {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400 });
   }
 
+  // Guard against accidental empty-POST meeting creation. Public-facing
+  // endpoint with no auth — without this, anyone hitting it (or my own
+  // smoke tests) silently creates real Zoom meetings on Phoebe's account.
+  // Require at least ONE meaningful field: a template name, an explicit
+  // topic, or a client/cohort context to inject into the topic.
+  const hasContext = !!(body.templateName || body.topic || body.clientName || body.cohortName || body.custom);
+  if (!hasContext) {
+    return new Response(JSON.stringify({
+      error: "Refusing to create a blank meeting.",
+      hint: "Provide at least templateName ('mdc' | 'happy-hour' | '90day' | 'audit' | 'discovery' | 'session'), topic, clientName, or cohortName.",
+    }), { status: 400, headers: { "Content-Type": "application/json" } });
+  }
+
   // Pick a built-in template if requested. Falls through to a sensible
   // default ("session") if the name is unknown.
   const templateName: TemplateKey | "" = (body.templateName || "") as any;

@@ -96,11 +96,15 @@ Scopes:
 |---|---|
 | `meeting:write:meeting:master` | Creating cohort + per-client Zoom meetings (`/api/zoom-create-meeting`, `/api/zoom-create-template`) |
 | `meeting:read:meeting:master` | Looking up meetings during webhook auto-pull and template verification |
-| `account:write:meeting_template:master` | Saving meetings as templates (`/api/zoom-create-template`) |
+| **`meeting:write:template:master`** | **Saving a meeting as a user template (POST `/users/me/meeting_templates`).** This is the scope that returned `4711 Invalid access token, does not contain scopes` during the v10000 smoke test. Add this BEFORE running zoom-create-template. |
+| **`meeting:write:template:admin`** | Same as above for admin context. Belt-and-braces — Zoom's docs aren't crystal-clear which one their endpoint actually checks, so enable both. |
+| `account:write:meeting_template:master` | Account-level meeting templates (different from user templates above; both should be enabled). |
+| `meeting:write:meeting:admin` | (optional but recommended) Admin variant of the create-meeting scope. |
 | `cloud_recording:read:list_user_recordings:master` | Listing recent recordings on the Settings page |
 | `cloud_recording:read:recording:master` | Fetching a specific recording's files (`/api/zoom-transcript`, webhook) |
 | `cloud_recording:read:content:master` | Reading transcript file contents |
 | `meeting:write:invite_links:master` | (optional) Creating invite links |
+| `meeting:write:meeting:master` (delete) | Implied — also lets us roll back a seed meeting if a template-save fails halfway through |
 
 Webhook event subscriptions (Marketplace → Happy Hub → Feature):
 

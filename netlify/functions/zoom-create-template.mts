@@ -244,7 +244,16 @@ export default async (req: Request) => {
   try { body = await req.json(); } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400 });
   }
-  const templateName: string = (body.templateName || "mdc").toString();
+  // Guard against accidental empty-POST template creation. Without this,
+  // a smoke test with `{}` would create a real seed meeting in Phoebe's
+  // account every time. Require an explicit templateName.
+  if (!body || !body.templateName) {
+    return new Response(JSON.stringify({
+      error: "templateName required.",
+      hint: "Pass one of: 'mdc' | 'happy-hour' | '90day' | 'audit' | 'discovery' | 'session'.",
+    }), { status: 400, headers: { "Content-Type": "application/json" } });
+  }
+  const templateName: string = body.templateName.toString();
   const branded = brandedFor(templateName);
   const templateLabel = `${templateName.toUpperCase()} master · Phoebe-branded · ${new Date().toISOString().split("T")[0]}`;
 
@@ -322,13 +331,20 @@ export default async (req: Request) => {
     });
     const tplData: any = await tplResp.json();
     if (!tplResp.ok) {
+      // Roll back the seed meeting so we don't leave junk in Phoebe's
+      // account when the template save fails (typically a missing scope).
+      // Best-effort — log but don't fail the response if delete itself errors.
+      try {
+        await fetch(`https://api.zoom.us/v2/meetings/${encodeURIComponent(seedMeeting.id)}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${accessToken}` },
+        });
+      } catch (delErr) { /* ignore */ }
       return new Response(JSON.stringify({
-        error: "Seed meeting created but couldn't be saved as a template.",
-        seedMeetingId: seedMeeting.id,
-        seedMeetingJoinUrl: seedMeeting.join_url,
+        error: "Seed meeting was created but couldn't be saved as a template — rolled back.",
         zoomStatus: tplResp.status,
         zoomDetails: tplData,
-        hint: "Most likely a missing scope. The Server-to-Server OAuth app needs: account:write:meeting_template:master.",
+        hint: "Most likely a missing scope. Add BOTH 'meeting:write:template:master' AND 'meeting:write:template:admin' to your Server-to-Server OAuth app's scopes (they're under the Meetings group). Save and re-activate the app, then try again.",
       }), { status: tplResp.status, headers: { "Content-Type": "application/json" } });
     }
     templateId = String(tplData.id || tplData.template_id || "");
