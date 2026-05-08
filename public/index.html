@@ -19,7 +19,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v9400 — multi-device hardening · live-sync skips mid-edit, pauses when hidden, fingerprint dedupe · subtle sync dot · PWA manifest for add-to-home-screen · phone topbar reflow · iPhone notch safe-area">
+<meta name="hmh-build" content="v9500 — pulse feed (since-last-visit) · per-client status strip (where we're at + outstanding) · client→Phoebe review requests · my-journey timeline · KBank message timestamps · coach lastSeenAt">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -175,6 +175,8 @@
           </div>
           <!-- Social + contact links -->
           <div style="margin-bottom:12px" id="social-panel"></div>
+          <!-- Status strip — where we're at + what's outstanding for this client -->
+          <div id="client-status-strip"></div>
           <!-- Client quick actions -->
           <div id="client-actions-panel"></div>
           <!-- Program tabs within this client -->
@@ -3385,10 +3387,10 @@ async function askKnowledgeBank(presetQuestion) {
   var client = clients.find(function(c){ return c.id === currentClientId; });
   if (!client) return;
   var history = loadKBankHistory(currentClientId);
-  history.push({ role: 'user', content: q });
+  history.push({ role: 'user', content: q, ts: new Date().toISOString() });
   saveKBankHistory(currentClientId, history);
   // Insert a placeholder assistant bubble we'll stream into
-  history.push({ role: 'assistant', content: '…' });
+  history.push({ role: 'assistant', content: '…', ts: new Date().toISOString() });
   saveKBankHistory(currentClientId, history);
   renderKBankHistory();
 
@@ -5341,8 +5343,13 @@ function renderClientSummary(client) {
   // through. Saves to client.todayCommit; shows yesterday's if today is blank.
   html += renderTodayOneThing(client);
   // Quick "share a win" CTA so it never feels far away. Full wins page lives
-  // on the Wins tab.
-  html += '<div style="margin-top:12px;text-align:center"><button onclick="openShareWinModal()" class="btn-sm primary" style="font-size:12px;padding:8px 18px">🏆 Share a win</button></div>';
+  // on the Wins tab. Plus a "Get Phoebe's eyes on this" button — clients can
+  // flag something they want her to review (a question, an idea, a worry)
+  // and it lands on her home page as "asking for your eyes".
+  html += '<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' +
+    '<button onclick="openShareWinModal()" class="btn-sm primary" style="font-size:12px;padding:8px 18px">🏆 Share a win</button>' +
+    '<button onclick="openReviewRequestModal()" class="btn-sm" style="font-size:12px;padding:8px 18px;background:white;color:var(--magenta);border:1.5px solid var(--hot-pink)">🙋 Ask Phoebe to look</button>' +
+    '</div>';
   html += '</div>';
 
   // ── Between-session nudge (only if 3+ days since last session) ───────
@@ -5360,6 +5367,28 @@ function renderClientSummary(client) {
     '</div>';
   }
 
+  // ── Outstanding review requests (so client sees what they've asked) ──
+  var openRRs = (client.reviewRequests || []).filter(function(rr){ return rr && !rr.addressed; });
+  if (openRRs.length) {
+    html += '<div class="client-section" style="background:linear-gradient(135deg,#FFFBE8,#FFFCFD);border-color:var(--hot-pink)">' +
+      '<h3 style="font-size:14px;letter-spacing:0.04em">🙋 Asked Phoebe to look at</h3>';
+    openRRs.slice(0, 3).forEach(function(rr) {
+      var when = rr.ts ? new Date(rr.ts).toLocaleDateString('en-AU', { day:'numeric', month:'short' }) : '';
+      html += '<div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:white;margin-bottom:6px">' +
+        '<div style="font-size:11px;color:var(--stone);margin-bottom:4px">Sent ' + when + '</div>' +
+        '<div style="font-size:13px;color:var(--magenta);line-height:1.5;white-space:pre-wrap">' + escapeHtml(rr.text || '') + '</div>' +
+        '</div>';
+    });
+    if (openRRs.length > 3) html += '<div style="font-size:11px;color:var(--stone);text-align:center;margin-top:4px">+' + (openRRs.length - 3) + ' more</div>';
+    html += '</div>';
+  }
+
+  // ── My journey — high-level timeline of milestones so the client
+  // can see the arc of their work. Shows: signed-up date, first session,
+  // sessions completed, plan items done, wins logged, badges earned.
+  // Auto-built from existing data — no new fields required.
+  html += renderClientJourneyStrip(client);
+
   // ── Achievements badges (clickable for confetti) ─────────────────────
   if (typeof renderBadgesSection === 'function') {
     var ach = renderBadgesSection(client);
@@ -5369,6 +5398,77 @@ function renderClientSummary(client) {
   el.innerHTML = html;
   // Attach confetti handler to every earned badge
   if (typeof attachBadgeConfetti === 'function') attachBadgeConfetti();
+}
+
+// "My journey" — high-level timeline showing the arc of the client's work.
+// Auto-built from existing data: signed-up date, first session date,
+// number of sessions, plan progress, wins logged, badges earned. Helps the
+// client see how far they've come (combats the "nothing's changing" feeling
+// that creeps in mid-program).
+function renderClientJourneyStrip(client) {
+  if (!client) return '';
+  // Gather milestones
+  var startDate = client.createdAt || '';
+  var firstSession = '';
+  var lastSession = '';
+  var sessionCount = 0;
+  var planTotal = 0, planDone = 0;
+  (client.programs || []).forEach(function(p) {
+    if (p.sessionDate && (!firstSession || p.sessionDate < firstSession)) firstSession = p.sessionDate;
+    (p.sessionNotes || []).forEach(function(n) {
+      if (!n) return;
+      sessionCount++;
+      if (n.date && (!lastSession || n.date > lastSession)) lastSession = n.date;
+    });
+    (p.plan || []).forEach(function(s) {
+      (s.tasks || []).forEach(function(t, i) {
+        planTotal++;
+        var sectionId = (s.month != null) ? String(s.month) : ('s' + (p.plan || []).indexOf(s));
+        var key = sectionId + '-' + i;
+        if (p.taskDone && p.taskDone[key]) planDone++;
+      });
+    });
+  });
+  var winsCount = (client.wins || []).length +
+    (client.programs || []).reduce(function(s, p) { return s + ((p.wins || []).length); }, 0);
+  var badgesCount = (client.badges || []).length;
+  var weeksIn = '';
+  if (startDate) {
+    var w = Math.max(1, Math.floor((Date.now() - new Date(startDate).getTime()) / (7 * 86400000)) + 1);
+    weeksIn = 'Week ' + w;
+  }
+  // Skip if there's nothing meaningful yet
+  if (!firstSession && sessionCount === 0 && planTotal === 0 && winsCount === 0) return '';
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleDateString('en-AU', { day:'numeric', month:'short', year:'numeric' }); }
+    catch (e) { return iso; }
+  }
+  function milestone(icon, label, value, done) {
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:' + (done ? '#FFFCF6' : 'white') + ';border:1px solid ' + (done ? 'rgba(236,44,138,0.2)' : 'var(--border-soft)') + ';border-radius:10px;flex:1;min-width:120px">' +
+      '<div style="font-size:20px;line-height:1">' + icon + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:11px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:600">' + label + '</div>' +
+        '<div style="font-size:13px;color:var(--magenta);font-weight:700;margin-top:1px">' + value + '</div>' +
+      '</div></div>';
+  }
+
+  var html = '<div class="client-section">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+      '<h3 style="font-size:14px;letter-spacing:0.04em;margin:0">🌱 My journey so far</h3>' +
+      (weeksIn ? '<span style="font-size:11px;color:var(--hot-pink);font-weight:700;background:#FDEFF5;padding:3px 10px;border-radius:99px">' + weeksIn + '</span>' : '') +
+    '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
+      milestone('🎬', 'Started', fmtDate(startDate), !!startDate) +
+      milestone('🤝', 'First session', fmtDate(firstSession), !!firstSession) +
+      milestone('📚', 'Sessions done', sessionCount, sessionCount > 0) +
+      (planTotal ? milestone('✅', 'Plan progress', planDone + '/' + planTotal, planDone > 0) : '') +
+      milestone('🏆', 'Wins logged', winsCount, winsCount > 0) +
+      (badgesCount ? milestone('🎖', 'Badges', badgesCount, true) : '') +
+    '</div>' +
+  '</div>';
+  return html;
 }
 
 // Compact, inline version of "Phoebe says…" — fits inside the greeting strip
@@ -6255,6 +6355,66 @@ function renderClientWinsTab(client) {
   area.innerHTML = html;
 }
 
+// Client-side review request — they type a question or what they want
+// Phoebe to look at, it lands on Phoebe's home page as "asking for your
+// eyes" with the client's name and the message. She marks it addressed
+// from there. Persists on the client record so it survives reloads.
+async function openReviewRequestModal() {
+  if (!currentClientId) return;
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '🙋';
+  document.getElementById('branded-modal-title').textContent = 'Get Phoebe\'s eyes on this';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="font-size:13px;color:var(--stone);margin-bottom:12px;line-height:1.5">' +
+      'Type what you want her to look at — a question, an idea, a worry, anything. She\'ll see it on her home page next time she logs in and reply via your portal or by email.' +
+    '</div>' +
+    '<textarea id="rr-text" rows="5" placeholder="e.g. Could you check my landing page copy before I publish? Link below…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"></textarea>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var cancel = document.createElement('button'); cancel.className = 'btn-sm'; cancel.textContent = 'Not yet';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  var submit = document.createElement('button'); submit.className = 'btn-sm primary'; submit.textContent = 'Send to Phoebe';
+  submit.onclick = async function() {
+    var text = (document.getElementById('rr-text').value || '').trim();
+    if (!text) { branded.alert('Type something first — even a couple of lines.'); return; }
+    client.reviewRequests = client.reviewRequests || [];
+    client.reviewRequests.unshift({
+      id: 'rr-' + Date.now(),
+      text: text,
+      ts: new Date().toISOString(),
+      addressed: false,
+    });
+    await persistClient(client);
+    host.style.display = 'none';
+    branded.success('Sent — Phoebe will see this on her side. Expect a reply soon. 💛');
+    if (typeof logActivity === 'function') {
+      logActivity('review-request', client.name + ' is asking for your eyes',
+        { clientId: client.id, clientName: client.name, detail: text.slice(0, 100) });
+    }
+  };
+  actions.appendChild(cancel);
+  actions.appendChild(submit);
+  host.style.display = 'flex';
+}
+
+// Coach-side: mark a client's review request as addressed.
+async function markReviewRequestAddressed(clientId, requestId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var rr = (client.reviewRequests || []).find(function(r){ return r.id === requestId; });
+  if (!rr) return;
+  rr.addressed = true;
+  rr.addressedAt = new Date().toISOString();
+  await persistClient(client);
+  if (typeof renderHome === 'function') renderHome();
+  branded.toast('Marked addressed');
+}
+
 // Open the share-a-win prompt — both client and coach can call this. We
 // detect role via the URL / DOM (client-hub active). Posts to client.wins
 // with shareSource so the wins feed can label posts correctly.
@@ -6365,6 +6525,7 @@ async function saveTodayOneThing(value) {
   var today = new Date().toISOString().split('T')[0];
   client.dailyCommits = client.dailyCommits || {};
   client.dailyCommits[today] = (value || '').trim();
+  client.dailyCommitsSetAt = new Date().toISOString(); // for pulse feed
   await persistClient(client);
 }
 
@@ -6376,6 +6537,7 @@ async function markTodayOneThingDone() {
   var v = (client.dailyCommits[today] || '').trim();
   if (!v) return;
   client.dailyCommits[today] = '✓ ' + v.replace(/^✓\s*/, '');
+  client.dailyCommitsSetAt = new Date().toISOString();
   if (typeof checkAllBadges === 'function') checkAllBadges(client);
   await persistClient(client);
   if (typeof fireConfetti === 'function') fireConfetti(50);
@@ -7588,6 +7750,12 @@ openProgram = function(client, progId) {
   if (!prog) return;
   // 3. Render all panels — deferred slightly to ensure DOM is ready
   setTimeout(function() {
+    // Status strip — "where we're at" + "what's outstanding" — first thing
+    // Phoebe sees when she opens a client. Re-renders on every openClient.
+    var statusEl = document.getElementById('client-status-strip');
+    if (statusEl && typeof renderClientStatusStrip === 'function') {
+      statusEl.innerHTML = renderClientStatusStrip(client);
+    }
     // Social + quick actions (in detail header)
     renderSocialPanel(client);
     renderClientActions(client, prog);
@@ -9990,6 +10158,205 @@ function openTranscriptReview(clientId, progId, noteId) {
   host.style.display = 'flex';
 }
 
+// ============================================================
+// PULSE FEED — "since you last visited" digest for the coach.
+// Walks every client and pulls things that happened after the
+// stored coachLastSeenAt timestamp: tasks ticked, wins logged,
+// daily commits set, KBank questions, review-requests flagged
+// by the client, between-session notes typed.
+// ============================================================
+function gatherPulseSinceLastVisit(clientArr, lastSeenIso) {
+  // First-ever visit → cap the lookback to 7 days so we don't dump
+  // the entire history on Phoebe.
+  var since = lastSeenIso ? new Date(lastSeenIso).getTime() : (Date.now() - 7 * 86400000);
+  var entries = [];
+  function age(ts) {
+    if (!ts) return '';
+    var t = new Date(ts).getTime();
+    var mins = Math.floor((Date.now() - t) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    var days = Math.floor(hrs / 24);
+    return days + 'd ago';
+  }
+  (clientArr || []).forEach(function(c) {
+    if (!c || c.archived) return;
+    // Tasks ticked since last seen
+    (c.tasks || []).forEach(function(t) {
+      if (t && t.done && t.completedAt && new Date(t.completedAt).getTime() > since) {
+        entries.push({
+          client: c, clientId: c.id, ts: t.completedAt,
+          icon: '✅', label: 'Ticked: ' + (t.text || 'a task'),
+          when: age(t.completedAt), kind: 'task'
+        });
+      }
+    });
+    // Wins logged
+    (c.wins || []).forEach(function(w) {
+      if (w && (w.createdAt || w.date) && new Date(w.createdAt || w.date).getTime() > since) {
+        entries.push({
+          client: c, clientId: c.id, ts: w.createdAt || w.date,
+          icon: '🏆', label: 'Logged a win: ' + (w.metric || w.title || 'untitled'),
+          when: age(w.createdAt || w.date), kind: 'win',
+          extra: w.shareSource === 'coach' ? '(by you)' : ''
+        });
+      }
+    });
+    // Per-program wins too
+    (c.programs || []).forEach(function(p) {
+      (p.wins || []).forEach(function(w) {
+        if (w && (w.createdAt || w.date) && new Date(w.createdAt || w.date).getTime() > since) {
+          entries.push({
+            client: c, clientId: c.id, ts: w.createdAt || w.date,
+            icon: '🏆', label: 'Win in ' + (p.label || p.program) + ': ' + (w.metric || w.title || 'untitled'),
+            when: age(w.createdAt || w.date), kind: 'win'
+          });
+        }
+      });
+    });
+    // KBank questions asked
+    (c.kbankChat || []).forEach(function(m) {
+      if (m && m.role === 'user' && m.ts && new Date(m.ts).getTime() > since) {
+        entries.push({
+          client: c, clientId: c.id, ts: m.ts,
+          icon: '💡', label: 'Asked: "' + String(m.content || '').slice(0, 70) + (String(m.content||'').length > 70 ? '…' : '') + '"',
+          when: age(m.ts), kind: 'kbank'
+        });
+      }
+    });
+    // Review requests they flagged on session notes
+    (c.programs || []).forEach(function(p) {
+      (p.sessionNotes || []).forEach(function(n) {
+        if (n && n.reviewRequested && n.reviewRequestedAt && new Date(n.reviewRequestedAt).getTime() > since) {
+          entries.push({
+            client: c, clientId: c.id, ts: n.reviewRequestedAt,
+            icon: '🙋', label: 'Asked you to review: "' + String(n.text || 'a session note').slice(0, 60) + '"',
+            when: age(n.reviewRequestedAt), kind: 'review-request'
+          });
+        }
+      });
+    });
+    // Top-level review requests via the "Ask Phoebe to look" button on Summary
+    (c.reviewRequests || []).forEach(function(rr) {
+      if (rr && !rr.addressed && rr.ts && new Date(rr.ts).getTime() > since) {
+        entries.push({
+          client: c, clientId: c.id, ts: rr.ts,
+          icon: '🙋', label: 'Asking for your eyes: "' + String(rr.text || '').slice(0, 80) + (String(rr.text||'').length > 80 ? '…' : '') + '"',
+          when: age(rr.ts), kind: 'review-request'
+        });
+      }
+    });
+    // Between-session note (single per client) - we don't have a timestamp
+    // for changes here, so skip; covered by the "Suggested check-ins" panel.
+    // Today's-one-thing commits
+    var today = new Date().toISOString().split('T')[0];
+    var commit = c.dailyCommits && c.dailyCommits[today];
+    if (commit && c.dailyCommitsSetAt && new Date(c.dailyCommitsSetAt).getTime() > since) {
+      entries.push({
+        client: c, clientId: c.id, ts: c.dailyCommitsSetAt,
+        icon: '🐔', label: 'Today: "' + commit.replace(/^✓\s*/, '') + '"' + (commit.indexOf('✓') === 0 ? ' (done)' : ''),
+        when: age(c.dailyCommitsSetAt), kind: 'commit'
+      });
+    }
+  });
+  // Newest first
+  entries.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+  return entries;
+}
+
+// "Mark all seen" — bumps the lastSeenAt timestamp so the pulse panel goes
+// quiet until something new comes in. Saves to coach-settings (server side)
+// so it follows Phoebe across devices.
+function markPulseSeen() {
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.coachLastSeenAt = new Date().toISOString();
+  flushCoachSettings();
+  if (typeof renderHome === 'function') renderHome();
+}
+
+// Per-client status strip — used at the top of the client detail page.
+// Shows "where we're at" (sessions done / weeks elapsed / plan progress
+// / wins) and "what's outstanding" (open tasks, awaiting review,
+// awaiting your approval). One glance answers "what's the state of
+// this client right now?".
+function renderClientStatusStrip(client) {
+  if (!client) return '';
+  // ── WHERE WE'RE AT ──
+  var firstSession = '';
+  var lastSession = '';
+  var plansTotal = 0, plansDone = 0;
+  var sessionsCount = 0;
+  (client.programs || []).forEach(function(p) {
+    if (p.sessionDate) {
+      if (!firstSession || p.sessionDate < firstSession) firstSession = p.sessionDate;
+    }
+    (p.sessionNotes || []).forEach(function(n) {
+      if (!n) return;
+      sessionsCount++;
+      if (n.date && (!lastSession || n.date > lastSession)) lastSession = n.date;
+    });
+    (p.plan || []).forEach(function(s) {
+      (s.tasks || []).forEach(function(t, i) {
+        plansTotal++;
+        var sectionId = (s.month != null) ? String(s.month) : ('s' + (p.plan || []).indexOf(s));
+        var key = sectionId + '-' + i;
+        if (p.taskDone && p.taskDone[key]) plansDone++;
+      });
+    });
+  });
+  var winsCount = (client.wins || []).length +
+    (client.programs || []).reduce(function(s, p){ return s + ((p.wins || []).length); }, 0);
+  var weeksWith = '';
+  if (firstSession) {
+    var w = Math.max(0, Math.floor((Date.now() - new Date(firstSession).getTime()) / (7 * 86400000)));
+    weeksWith = w + 'w';
+  }
+  var planPct = plansTotal ? Math.round(plansDone / plansTotal * 100) : 0;
+
+  // ── WHAT'S OUTSTANDING ──
+  var openTasks = (client.tasks || []).filter(function(t){ return t && t.text && !t.done; });
+  var pendingReviewCount = (client.programs || []).reduce(function(sum, p) {
+    return sum + ((p.sessionNotes || []).filter(function(n){ return n && n.aiSummaryStatus === 'pending-review'; }).length);
+  }, 0);
+  var reviewRequests = (client.programs || []).reduce(function(sum, p) {
+    return sum + ((p.sessionNotes || []).filter(function(n){ return n && n.reviewRequested; }).length);
+  }, 0);
+  var lastTouch = client.lastTouched || lastSession || firstSession || '';
+  var daysQuiet = '';
+  if (lastTouch) {
+    var d = Math.floor((Date.now() - new Date(lastTouch).getTime()) / 86400000);
+    if (d >= 7) daysQuiet = d + ' days quiet';
+  }
+
+  function pill(label, value, color) {
+    return '<div style="background:white;border:1px solid var(--border);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:2px">' +
+      '<div style="font-size:18px;font-weight:700;color:' + (color || 'var(--magenta)') + ';line-height:1">' + value + '</div>' +
+      '<div style="font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:600">' + label + '</div>' +
+      '</div>';
+  }
+  var leftPills = [
+    weeksWith ? pill('Coaching', weeksWith) : '',
+    pill('Sessions', sessionsCount, 'var(--teal)'),
+    pill('Plan done', planPct + '%', planPct >= 50 ? 'var(--teal)' : '#E8A020'),
+    pill('Wins', winsCount, 'var(--hot-pink)'),
+  ].filter(Boolean).join('');
+
+  var rightItems = [];
+  if (pendingReviewCount) rightItems.push('<span style="background:#FFF5D6;color:#A07030;border:1px solid #E8A020;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:700">✨ ' + pendingReviewCount + ' AI summary to review</span>');
+  if (reviewRequests)     rightItems.push('<span style="background:#FDEFF5;color:var(--magenta);border:1px solid var(--hot-pink);padding:5px 10px;border-radius:99px;font-size:11px;font-weight:700">🙋 ' + reviewRequests + ' asking for your eyes</span>');
+  if (openTasks.length)   rightItems.push('<span style="background:white;color:var(--magenta);border:1px solid var(--border);padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600">' + openTasks.length + ' open task' + (openTasks.length === 1 ? '' : 's') + '</span>');
+  if (daysQuiet)          rightItems.push('<span style="background:#FFFBE8;color:#A07030;border:1px solid #E8A020;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600">⏰ ' + daysQuiet + '</span>');
+  if (!rightItems.length) rightItems.push('<span style="color:var(--teal);font-size:12px;font-style:italic">All caught up ✓</span>');
+
+  return '<div style="background:linear-gradient(135deg,#FFFDFA,#FDEFF5);border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px">' +
+    '<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center">' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' + leftPills + '</div>' +
+      '<div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">' + rightItems.join('') + '</div>' +
+    '</div></div>';
+}
+
 function renderHome() {
   console.log('[Home] render called');
   var el = document.getElementById('home-content');
@@ -10085,6 +10452,102 @@ function renderHome() {
   }
 
   var html = '';
+
+  // ── PULSE: what's changed since you last visited ───────────────────────
+  // The two-way share platform produces noise. Phoebe needs ONE place to
+  // glance at and immediately know "what did clients do, what needs me".
+  // This panel collects everything new since the last lastSeenAt timestamp
+  // (stored in coach-settings) and groups it per client.
+  try {
+    var lastSeen = (window._coachSettings && window._coachSettings.coachLastSeenAt) || '';
+    var pulseEntries = gatherPulseSinceLastVisit(clientArr, lastSeen);
+    if (pulseEntries.length) {
+      html += '<div style="background:linear-gradient(135deg,#F5F0FF,#FDEFF5);border:2px solid var(--hot-pink);border-radius:14px;padding:18px;margin-bottom:14px">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<div style="font-size:20px">💓</div>' +
+          '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700">' +
+            'Since you last looked · ' + pulseEntries.length + ' update' + (pulseEntries.length === 1 ? '' : 's') +
+          '</div>' +
+        '</div>' +
+        '<button onclick="markPulseSeen()" class="btn-sm" style="font-size:11px">Mark all seen</button>' +
+        '</div>';
+      // Group by client
+      var byClient = {};
+      pulseEntries.forEach(function(e) {
+        var key = e.clientId || '_';
+        if (!byClient[key]) byClient[key] = { client: e.client, items: [] };
+        byClient[key].items.push(e);
+      });
+      Object.keys(byClient).slice(0, 8).forEach(function(k) {
+        var grp = byClient[k];
+        var initials = (grp.client && grp.client.name || '?').split(' ').map(function(n){return n[0];}).join('').slice(0,2);
+        html += '<div style="background:white;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:6px">' +
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+            '<div onclick="openClient(\'' + (grp.client && grp.client.id || '') + '\')" style="width:28px;height:28px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#C9266B;cursor:pointer">' + initials + '</div>' +
+            '<div onclick="openClient(\'' + (grp.client && grp.client.id || '') + '\')" style="font-size:13px;color:var(--magenta);font-weight:700;cursor:pointer">' + (grp.client && grp.client.name || 'Unknown') + '</div>' +
+            '<div style="margin-left:auto;font-size:10px;color:var(--stone)">' + grp.items.length + ' update' + (grp.items.length === 1 ? '' : 's') + '</div>' +
+          '</div>';
+        grp.items.slice(0, 4).forEach(function(it) {
+          html += '<div style="font-size:12px;color:var(--magenta);padding:3px 0 3px 38px;line-height:1.5">' +
+            '<span style="margin-right:6px">' + it.icon + '</span>' + escapeHtml(it.label) +
+            (it.when ? ' <span style="color:var(--stone);font-size:10px">· ' + it.when + '</span>' : '') +
+            '</div>';
+        });
+        if (grp.items.length > 4) html += '<div style="font-size:11px;color:var(--stone);padding-left:38px">+' + (grp.items.length - 4) + ' more</div>';
+        html += '</div>';
+      });
+      if (Object.keys(byClient).length > 8) {
+        html += '<div style="font-size:11px;color:var(--magenta);text-align:center;margin-top:6px">+' + (Object.keys(byClient).length - 8) + ' more clients with updates</div>';
+      }
+      html += '</div>';
+    }
+  } catch (e) { console.warn('[Home] pulse render', e); }
+
+  // ── REVIEW REQUESTS — clients asking for Phoebe's eyes ──
+  // These come from the "🙋 Ask Phoebe to look" button on the client Summary.
+  // They sit between the pulse and the AI summaries because they need a
+  // human reply, not an approval-stamp.
+  try {
+    var openReviewRequests = [];
+    clientArr.forEach(function(c) {
+      (c.reviewRequests || []).forEach(function(rr) {
+        if (rr && !rr.addressed) openReviewRequests.push({ client: c, rr: rr });
+      });
+    });
+    openReviewRequests.sort(function(a, b) { return (b.rr.ts || '').localeCompare(a.rr.ts || ''); });
+    if (openReviewRequests.length) {
+      html += '<div style="background:linear-gradient(135deg,#FDEFF5,#FFFBE8);border:2px solid var(--hot-pink);border-radius:14px;padding:18px;margin-bottom:14px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">' +
+        '<div style="font-size:20px">🙋</div>' +
+        '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700">' +
+        openReviewRequests.length + ' client' + (openReviewRequests.length === 1 ? '' : 's') + ' asking for your eyes' +
+        '</div></div>';
+      openReviewRequests.slice(0, 6).forEach(function(item) {
+        var initials = item.client.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2);
+        var when = '';
+        if (item.rr.ts) {
+          var hrs = Math.floor((Date.now() - new Date(item.rr.ts).getTime()) / 3600000);
+          when = hrs < 1 ? 'just now' : hrs < 24 ? hrs + 'h ago' : Math.floor(hrs/24) + 'd ago';
+        }
+        html += '<div style="background:white;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:6px">' +
+          '<div style="display:flex;align-items:flex-start;gap:10px">' +
+            '<div style="width:30px;height:30px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#C9266B;flex-shrink:0">' + initials + '</div>' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-size:13px;color:var(--magenta);font-weight:700">' + item.client.name + ' <span style="font-size:11px;color:var(--stone);font-weight:500;margin-left:6px">' + when + '</span></div>' +
+              '<div style="font-size:13px;color:var(--magenta);margin-top:4px;line-height:1.5;white-space:pre-wrap">' + escapeHtml(item.rr.text || '') + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">' +
+            '<button class="btn-sm" onclick="openClient(\'' + item.client.id + '\')" style="font-size:11px">Open client</button>' +
+            '<button class="btn-sm primary" onclick="markReviewRequestAddressed(\'' + item.client.id + '\',\'' + item.rr.id + '\')" style="font-size:11px">✓ Mark addressed</button>' +
+          '</div>' +
+          '</div>';
+      });
+      if (openReviewRequests.length > 6) html += '<div style="font-size:11px;color:var(--magenta);text-align:center;margin-top:6px">+' + (openReviewRequests.length - 6) + ' more</div>';
+      html += '</div>';
+    }
+  } catch (e) { console.warn('[Home] review requests', e); }
 
   // ── AI session summaries waiting for your approval ──
   // Top-of-page so they don't get lost. Each card lets you review/edit/approve
