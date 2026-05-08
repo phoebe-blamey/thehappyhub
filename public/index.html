@@ -13,7 +13,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v8300 — Phase C, plan templates, uncategorised Zooms, activity feed">
+<meta name="hmh-build" content="v8400 — DATA SAFETY: safe merge, optimistic concurrency, save indicator, queued retries">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -60,6 +60,7 @@
   <div class="topbar">
     <div class="topbar-logo">The Happy <span>Hub</span></div>
     <span class="topbar-badge badge-coach">Coach View</span>
+    <span id="save-status-pill" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Save status — saves happen automatically as you type"></span>
     <button class="btn-logout" onclick="logout()">Sign out</button>
   </div>
   <div class="coach-layout">
@@ -602,6 +603,7 @@
   <div class="topbar">
     <div class="topbar-logo">The Happy <span>Hub</span></div>
     <span class="topbar-badge badge-client" id="client-topbar-prog">My Hub</span>
+    <span class="save-status-pill-c" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Your work saves automatically as you go"></span>
     <button class="btn-logout" onclick="logout()">Sign out</button>
   </div>
   <div class="client-layout">
@@ -1349,18 +1351,95 @@ var activeFilter = 'all';
 var isDeployed = window.location.hostname !== 'null' && !window.location.hostname.includes('localhost') && window.location.hostname !== '';
 
 // ========== DATA LAYER — works local OR server ==========
+// ═════════════════════════════════════════════════════════════════════
+// CLIENT DATA PERSISTENCE
+// ─────────────────────────────────────────────────────────────────────
+// Source of truth: Netlify Blobs (server-side), with localStorage as a
+// per-device cache + offline buffer. Save semantics:
+//
+//   1. persistClient() ALWAYS writes locally (synchronous, instant) AND
+//      to the server. If the server save fails it's queued for retry,
+//      and Phoebe sees a "Save pending" toast — never silent.
+//
+//   2. loadClients() does a SAFE MERGE — never blind-replaces the
+//      in-memory `clients` array. For each client:
+//        - If local doesn't have it → take server version
+//        - If both have it, prefer the one with the newer `updatedAt`
+//        - If timestamps tie or are missing → keep local (be conservative,
+//          so any unsaved local edits survive a refresh-mid-edit)
+//      This means a Calendly webhook arriving during an edit will add
+//      the new client without wiping Phoebe's in-progress changes.
+//
+//   3. Demo data fallback ONLY runs on a fresh install where neither
+//      localStorage nor the server has anything. Once Phoebe has saved
+//      a real client (the `hmh_real_clients_seen` flag flips to true),
+//      demo data NEVER replaces real data — even if the server is
+//      temporarily empty/broken on a future load.
+// ═════════════════════════════════════════════════════════════════════
+
+var REAL_DATA_FLAG = 'hmh_real_clients_seen';
+var SAVE_QUEUE_KEY = 'hmh_save_queue';
+
+function safeMergeClients(serverClients) {
+  if (!Array.isArray(serverClients) || !serverClients.length) return clients;
+  var localById = {};
+  (clients || []).forEach(function(c) { if (c && c.id) localById[c.id] = c; });
+  var merged = (clients || []).slice();
+  serverClients.forEach(function(srv) {
+    if (!srv || !srv.id) return;
+    var local = localById[srv.id];
+    if (!local) {
+      merged.push(srv);
+      return;
+    }
+    var srvTs = srv.updatedAt ? new Date(srv.updatedAt).getTime() : 0;
+    var locTs = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
+    if (srvTs > locTs) {
+      // Server is strictly newer — replace local entry
+      var idx = merged.findIndex(function(c){ return c.id === srv.id; });
+      if (idx >= 0) merged[idx] = srv;
+    }
+    // else: keep local (it's newer or equal — never let server overwrite
+    // an in-progress edit that Phoebe hasn't yet hit save on)
+  });
+  return merged;
+}
+
 async function loadClients() {
+  var hasRealData = localStorage.getItem(REAL_DATA_FLAG) === '1';
+
   if (isDeployed) {
     try {
       var resp = await fetch('/api/get-clients');
       if (resp.ok) {
         var data = await resp.json();
-        clients = data.clients || [];
-        if (clients.length) return;
+        var serverClients = data.clients || [];
+        if (serverClients.length) {
+          // Real data exists on server — merge with local, prefer newer
+          clients = safeMergeClients(serverClients);
+          localStorage.setItem(REAL_DATA_FLAG, '1');
+          localStorage.setItem('hmh_clients_v2', JSON.stringify(clients));
+          // Also flush any queued saves now that we're online
+          flushSaveQueue();
+          return;
+        }
+        // Server returned empty. If we've ever had real data before,
+        // DON'T fall back to demo — that would be alarming. Use whatever
+        // we have locally instead (could be empty too, that's fine).
+        if (hasRealData) {
+          var savedReal = localStorage.getItem('hmh_clients_v2');
+          if (savedReal) {
+            try { clients = JSON.parse(savedReal) || []; return; } catch(e) {}
+          }
+          clients = [];
+          console.warn('[loadClients] Server returned empty but real data flag is set — refusing to load demo data');
+          return;
+        }
       }
-    } catch(e) { console.log('Server fetch failed, using localStorage'); }
+    } catch(e) { console.log('Server fetch failed, falling back to localStorage'); }
   }
-  // Try localStorage first
+
+  // Offline path — try localStorage
   try {
     var saved = localStorage.getItem('hmh_clients_v2');
     if (saved) {
@@ -1371,31 +1450,200 @@ async function loadClients() {
       }
     }
   } catch(e) { console.log('localStorage failed:', e.message); }
-  // Always fall back to demo clients
-  clients = getDemoClients();
-  console.log('Using demo clients:', clients.length);
+
+  // Truly nothing — only THEN load demo data, and only if we've never
+  // seen real data on this device.
+  if (!hasRealData) {
+    clients = getDemoClients();
+    console.log('Fresh install — using demo clients:', clients.length);
+  } else {
+    clients = [];
+    console.warn('[loadClients] No data anywhere but real data flag is set — leaving clients empty rather than loading demo');
+  }
 }
 
 async function persistClient(client) {
+  // Capture what we believe the server's version is BEFORE we bump updatedAt,
+  // so we can pass it as expectedVersion for optimistic concurrency. If the
+  // server has a newer version (e.g. a webhook touched this client mid-edit)
+  // the save is rejected with 409 and we offer Phoebe a clean recovery path.
+  var expectedVersion = client.updatedAt || null;
   client.updatedAt = new Date().toISOString();
-  // Update streak + check badges before persisting (any save = engagement)
   try {
     if (typeof updateClientStreak === 'function') updateClientStreak(client);
     if (typeof checkAllBadges === 'function')     checkAllBadges(client);
   } catch (e) { console.warn('[Badges] check failed:', e); }
-  // Always save locally
+
+  // Local save — always succeeds
   var idx = clients.findIndex(function(c) { return c.id === client.id; });
   if (idx >= 0) clients[idx] = client; else clients.push(client);
-  localStorage.setItem('hmh_clients_v2', JSON.stringify(clients));
-  // If deployed, also save to server
+  try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch(e) { console.error('localStorage full?', e); }
+  localStorage.setItem(REAL_DATA_FLAG, '1');
+
+  // Visible "saving..." indicator so Phoebe can SEE saves go through
+  setSaveStatus('saving');
+
   if (isDeployed) {
     try {
-      await fetch('/api/save-client', {
+      var resp = await fetch('/api/save-client', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId: client.id, data: client })
+        body: JSON.stringify({
+          clientId: client.id,
+          data: client,
+          expectedVersion: expectedVersion
+        })
       });
-    } catch(e) { console.log('Server save failed:', e); }
+      if (resp.status === 409) {
+        // Concurrent edit detected — server has a newer version
+        var conflict = await resp.json();
+        setSaveStatus('conflict');
+        await handleSaveConflict(client, conflict);
+        return;
+      }
+      if (!resp.ok) {
+        queueFailedSave(client);
+        setSaveStatus('queued');
+        if (typeof branded !== 'undefined') {
+          branded.toast('⚠ Save queued — server returned ' + resp.status + '. Will retry.', 'warn', 3500);
+        }
+        return;
+      }
+      // Success — sync our local timestamp to the server's confirmed value
+      try {
+        var savedData = await resp.json();
+        if (savedData.updatedAt) client.updatedAt = savedData.updatedAt;
+      } catch(_) {}
+      setSaveStatus('saved');
+    } catch(e) {
+      queueFailedSave(client);
+      setSaveStatus('queued');
+      if (typeof branded !== 'undefined') {
+        branded.toast('⚠ Saved locally — server unreachable. Will retry when connection returns.', 'warn', 3500);
+      }
+    }
+  } else {
+    setSaveStatus('saved'); // local-only env (no Netlify) — local IS the truth
+  }
+}
+
+// Handle a 409 from save-client: someone else (typically a Calendly webhook)
+// updated this client between our load and our save. Offer Phoebe a clear
+// recovery path rather than silently overwriting.
+async function handleSaveConflict(localClient, conflict) {
+  var serverClient = conflict.current;
+  if (!serverClient) {
+    branded.error('Couldn\'t save — and the server\'s response was unclear. Try refreshing the page.');
+    return;
+  }
+  var keepLocal = await branded.confirm(
+    'This client was updated by something else (probably a Calendly booking) while you were editing.\n\n' +
+    'Keep your changes (overwriting the other update) or discard your changes and use the latest version?',
+    { title:'Conflicting update', okLabel:'Keep my changes', cancelLabel:'Discard mine, use latest' }
+  );
+  if (keepLocal) {
+    // Force-save with the new server version as the expected baseline
+    localClient.updatedAt = new Date().toISOString();
+    try {
+      var resp = await fetch('/api/save-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: localClient.id,
+          data: localClient,
+          expectedVersion: serverClient.updatedAt // we now expect what the server has
+        })
+      });
+      if (resp.ok) {
+        var d = await resp.json();
+        if (d.updatedAt) localClient.updatedAt = d.updatedAt;
+        setSaveStatus('saved');
+        branded.toast('✓ Your changes saved (other update overwritten)');
+      } else {
+        queueFailedSave(localClient);
+        setSaveStatus('queued');
+      }
+    } catch(e) {
+      queueFailedSave(localClient);
+      setSaveStatus('queued');
+    }
+  } else {
+    // Discard local — replace in-memory with server version
+    var idx2 = clients.findIndex(function(c){ return c.id === localClient.id; });
+    if (idx2 >= 0) clients[idx2] = serverClient;
+    try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch(e) {}
+    setSaveStatus('saved');
+    branded.toast('Your changes were discarded — showing the latest version');
+    // Re-render whatever's currently open
+    if (typeof renderClients === 'function') renderClients();
+    if (currentClientId === localClient.id && typeof openClient === 'function') openClient(localClient.id);
+  }
+}
+
+// ─── Save status indicator (live in both topbars) ────────────────────
+function setSaveStatus(state) {
+  var presets = {
+    'saving':   { text: '⏳ Saving…',    bg: 'rgba(255,255,255,0.18)', color: 'white' },
+    'saved':    { text: '✓ Saved',      bg: 'rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.9)' },
+    'queued':   { text: '⚠ Save pending', bg: 'rgba(232,160,32,0.9)', color: 'white' },
+    'conflict': { text: '⚠ Conflict',    bg: 'rgba(192,57,43,0.9)',   color: 'white' }
+  };
+  var p = presets[state] || presets.saved;
+  // Coach topbar uses an id; client uses a class so we can have one in each
+  // hub without an id collision (only one hub is .active at a time but
+  // both pills exist in the DOM).
+  var pills = [];
+  var coachPill = document.getElementById('save-status-pill');
+  if (coachPill) pills.push(coachPill);
+  document.querySelectorAll('.save-status-pill-c').forEach(function(el){ pills.push(el); });
+  pills.forEach(function(el) {
+    el.textContent = p.text;
+    el.style.background = p.bg;
+    el.style.color = p.color;
+    el.style.opacity = '1';
+  });
+  if (state === 'saved') {
+    setTimeout(function() {
+      pills.forEach(function(el) {
+        if (el.textContent === '✓ Saved') el.style.opacity = '0';
+      });
+    }, 1800);
+  }
+}
+
+function queueFailedSave(client) {
+  try {
+    var queue = JSON.parse(localStorage.getItem(SAVE_QUEUE_KEY) || '[]');
+    // De-dup: replace any existing queued entry for this client with the latest snapshot
+    queue = queue.filter(function(q) { return q.clientId !== client.id; });
+    queue.push({ clientId: client.id, data: client, queuedAt: new Date().toISOString() });
+    localStorage.setItem(SAVE_QUEUE_KEY, JSON.stringify(queue));
+  } catch(e) { console.error('Could not queue save:', e); }
+}
+
+async function flushSaveQueue() {
+  if (!isDeployed) return;
+  var queue;
+  try { queue = JSON.parse(localStorage.getItem(SAVE_QUEUE_KEY) || '[]'); } catch(e) { return; }
+  if (!queue.length) return;
+  var remaining = [];
+  for (var i = 0; i < queue.length; i++) {
+    var item = queue[i];
+    try {
+      var resp = await fetch('/api/save-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: item.clientId, data: item.data })
+      });
+      if (!resp.ok) remaining.push(item);
+    } catch(e) {
+      remaining.push(item);
+    }
+  }
+  try { localStorage.setItem(SAVE_QUEUE_KEY, JSON.stringify(remaining)); } catch(e) {}
+  if (queue.length > remaining.length && typeof branded !== 'undefined') {
+    var flushed = queue.length - remaining.length;
+    branded.toast('✓ ' + flushed + ' queued save' + (flushed===1?'':'s') + ' synced to server');
   }
 }
 
@@ -1479,6 +1727,10 @@ window.addEventListener('load', async function() {
     document.getElementById('client-code').value = code;
     enterClient();
   }
+  // If we had any saves that failed to reach the server last time (offline,
+  // server hiccup, etc.) flush them now that the page is loading and we
+  // hopefully have connectivity again. Silent if the queue is empty.
+  if (typeof flushSaveQueue === 'function') flushSaveQueue();
 });
 
 function logout() {
@@ -1511,12 +1763,45 @@ function startNotificationPolling() {
       if (data.notifications && data.notifications.length) {
         for (var notif of data.notifications) {
           showWebhookAlert({ name: notif.clientName, biz: notif.program, id: notif.clientId, isNew: notif.isNew });
-          await loadClients(); // refresh client list
+          // CRITICAL: do NOT call loadClients() here. That used to blind-replace
+          // the in-memory `clients` array, wiping any unsaved edits Phoebe was
+          // making in another tab/section. The booking is on the server already
+          // — we just need to MERGE the new client in, preserving local state.
+          await mergeNewClientFromServer(notif.clientId);
           renderClients();
+          // Log to activity feed so Phoebe can see what arrived automatically
+          if (typeof logActivity === 'function') {
+            logActivity('calendly', 'New booking · ' + (notif.clientName || 'client'), {
+              clientId: notif.clientId,
+              clientName: notif.clientName,
+              detail: notif.program || ''
+            });
+          }
         }
       }
     } catch(e) {}
   }, 15000); // poll every 15s
+}
+
+// Fetches a single client from the server and inserts it into the in-memory
+// `clients` array if not already present. Never overwrites an existing
+// in-memory client (that would be a data-loss vector during active editing).
+async function mergeNewClientFromServer(clientId) {
+  if (!clientId) return;
+  // If we already have this client in memory, leave it alone — Phoebe might
+  // be editing it. The server version will be picked up on the next natural
+  // page load via safeMergeClients.
+  if ((clients||[]).some(function(c){ return c && c.id === clientId; })) return;
+  try {
+    var resp = await fetch('/api/get-clients');
+    if (!resp.ok) return;
+    var data = await resp.json();
+    var found = (data.clients || []).find(function(c){ return c && c.id === clientId; });
+    if (found) {
+      clients.push(found);
+      try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch(e) {}
+    }
+  } catch(e) { console.log('[mergeNewClient] failed:', e.message); }
 }
 
 function stopNotificationPolling() {
