@@ -19,7 +19,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v9600 — click-to-edit tasks · coach can tick client tasks · special notes · send welcome/credentials · merge clients · ⌘K search · cohort manager fixed + auto-Zoom · Zoom→program/resource/new client · PHOEBE_VOICE everywhere">
+<meta name="hmh-build" content="v9700 — Zoom templates: 6 Phoebe-branded built-ins (MDC, Happy Hour, 90-Day, Audit, Discovery, Session) · template picker modal · Zoom-saved templates list · per-client +Zoom button · cohort uses MDC template">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== LANDING ========== -->
@@ -9304,7 +9304,9 @@ function renderClientActions(client, prog) {
     '<button class="btn-sm" onclick="sendCredentialsEmail(\''+cid+'\')" title="Re-send their portal link + access code — for when they\'ve forgotten">🔑 Send code</button>' +
     '<button class="btn-sm" onclick="openMergeClientModal(\''+cid+'\')" title="Merge this client with a duplicate record">🔀 Merge</button>' +
     '<button class="btn-sm" onclick="switchTab(\'intake\')">📋 Intake</button>' +
-    (prog.zoomJoin ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm primary">🎬 Zoom</a>' : '') +
+    (prog.zoomJoin
+      ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm primary">🎬 Zoom</a>'
+      : '<button class="btn-sm" onclick="openCreateClientZoom(\''+cid+'\',\''+pid+'\')" title="Create a Zoom meeting from a Phoebe-branded template">🎬 + Zoom</button>') +
     '<div style="margin-left:auto;display:flex;align-items:center;gap:8px">' +
     '<span style="font-size:11px;color:var(--stone)">Health:</span>' +
     '<select onchange="setClientHealth(\''+cid+'\',this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:4px 10px;font-family:var(--f-body);font-size:12px;cursor:pointer;background:var(--paper)">' +
@@ -10647,16 +10649,15 @@ async function addNewCohort() {
   window._expandedCohorts[newCo.id] = true;
   renderCohortManager();
   if (autoZoom) {
-    branded.toast('Creating Zoom meeting…');
+    branded.toast('Creating Zoom meeting from MDC template…');
     try {
       var resp = await fetch('/api/zoom-create-meeting', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic: name.trim() + ' · MDC',
-          durationMinutes: 90,
+          templateName: 'mdc',          // Phoebe-branded MDC preset
+          cohortName: name.trim(),       // injects into the topic + agenda
           recurring: true,
-          agenda: 'Recurring MDC cohort session — set up by Phoebe via the hub.',
         })
       });
       var data = await resp.json();
@@ -10665,6 +10666,7 @@ async function addNewCohort() {
         newCo.zoomStartUrl = data.startUrl || '';
         newCo.zoomMeetingId = String(data.meetingId || '');
         newCo.zoomPasscode = data.passcode || '';
+        newCo.zoomTemplate = data.templateUsed || 'mdc';
         _saveCohorts();
         renderCohortManager();
         branded.success('Cohort + Zoom created. Share the join link with members or copy from the cohort card.');
@@ -10679,38 +10681,183 @@ async function addNewCohort() {
   }
 }
 
+// Map a program type to the most appropriate Phoebe-branded Zoom template.
+function defaultZoomTemplateForProgram(programKey) {
+  var k = (programKey || '').toLowerCase();
+  if (k === 'mdc' || k === 'mdc-cohort') return 'mdc';
+  if (k === 'happyhour') return 'happy-hour';
+  if (k === '90day' || k === 'accelerator' || k === 'broker' || k === 'builder-6m') return '90day';
+  if (k === 'audit') return 'audit';
+  if (k === 'inquiry' || k === 'mdc-inquiry') return 'discovery';
+  return 'session';
+}
+
+// Open the template picker for a specific client + program, then attach the
+// resulting Zoom meeting to the program (zoomJoin / zoomMeetingId / passcode).
+function openCreateClientZoom(clientId, progId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var prog = (client.programs || []).find(function(p){ return p.id === progId; });
+  if (!prog) return;
+  openZoomTemplatePicker({
+    title: 'Create Zoom for ' + client.name + ' · ' + (prog.label || prog.program),
+    defaultTemplate: defaultZoomTemplateForProgram(prog.program),
+    extraBody: { clientName: client.name, recurring: false, custom: prog.label || prog.program },
+    onCreated: async function(data) {
+      prog.zoomJoin = data.joinUrl || '';
+      prog.zoomStartUrl = data.startUrl || '';
+      prog.zoomMeetingId = String(data.meetingId || '');
+      prog.zoomPasscode = data.passcode || '';
+      prog.zoomTemplate = data.templateUsed || '';
+      try { await persistClient(client); } catch (e) {}
+      if (typeof openClient === 'function') openClient(clientId);
+    }
+  });
+}
+
 // Spin up a Zoom meeting for an existing cohort that doesn't have one yet
 // (Phoebe said "no" earlier, or the meeting was deleted on Zoom's side).
+// Uses the MDC built-in template by default; offers a picker if she wants
+// a different one or a saved Zoom template.
 async function createCohortZoomMeeting(cohortId) {
   var co = _findCohort(cohortId);
   if (!co) return;
-  branded.toast('Creating Zoom meeting…');
-  try {
-    var resp = await fetch('/api/zoom-create-meeting', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        topic: (co.name || 'Cohort') + ' · MDC',
-        durationMinutes: 90,
-        recurring: true,
-        agenda: 'Recurring MDC cohort session.',
-      })
-    });
-    var data = await resp.json();
-    if (resp.ok && data.success) {
+  openZoomTemplatePicker({
+    title: 'Create Zoom for ' + (co.name || 'cohort'),
+    defaultTemplate: 'mdc',
+    extraBody: { cohortName: co.name, recurring: true },
+    onCreated: function(data) {
       co.zoomLink = data.joinUrl || '';
       co.zoomStartUrl = data.startUrl || '';
       co.zoomMeetingId = String(data.meetingId || '');
       co.zoomPasscode = data.passcode || '';
+      co.zoomTemplate = data.templateUsed || '';
       _saveCohorts();
       renderCohortManager();
-      branded.success('Zoom meeting linked to ' + co.name);
-    } else {
-      branded.error('Zoom create failed: ' + (data.error || 'unknown'));
     }
-  } catch (err) {
-    branded.error('Zoom create failed: ' + (err.message || err));
+  });
+}
+
+// ============================================================
+// ZOOM TEMPLATE PICKER — branded modal that lists built-in
+// Phoebe-themed templates plus any saved Zoom templates.
+// Used by the cohort manager AND per-client program rows.
+//
+// opts: {
+//   title: string,
+//   defaultTemplate: 'mdc' | 'happy-hour' | etc — preselected
+//   extraBody: { cohortName?, clientName?, weekLabel?, recurring? } — passed to /api/zoom-create-meeting
+//   onCreated: function(zoomData) — called with the API result on success
+// }
+// ============================================================
+async function openZoomTemplatePicker(opts) {
+  opts = opts || {};
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '🎬';
+  document.getElementById('branded-modal-title').textContent = opts.title || 'Create Zoom meeting';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="font-size:13px;color:var(--stone);margin-bottom:12px;line-height:1.5">' +
+      'Pick a template. Built-in ones are pre-loaded with your branding (topic, agenda, captions, recording, waiting-room rules). Saved Zoom templates come straight from your Zoom account.' +
+    '</div>' +
+    '<div id="zoom-tpl-list" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">' +
+      '<div style="text-align:center;color:var(--stone);font-size:12px;padding:14px">Loading templates…</div>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--stone);margin-top:10px;padding:10px;background:var(--marshmallow);border-radius:8px">' +
+      '💡 Want a custom recurring meeting that\'s not in the list? Tick "Recurring" then create — Zoom will set up 24 weekly slots automatically. You can extend or edit in your Zoom dashboard any time.' +
+    '</div>' +
+    '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--magenta)">' +
+      '<input type="checkbox" id="zoom-tpl-recurring"' + (opts.extraBody && opts.extraBody.recurring ? ' checked' : '') + '> Recurring (weekly)' +
+    '</label>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var cancel = document.createElement('button');
+  cancel.className = 'btn-sm';
+  cancel.textContent = 'Cancel';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(cancel);
+  host.style.display = 'flex';
+
+  // Load templates (built-in + Zoom-saved)
+  var templates = { builtIn: [], zoomSaved: [] };
+  try {
+    var resp = await fetch('/api/zoom-list-templates');
+    if (resp.ok) templates = await resp.json();
+  } catch (e) {
+    console.warn('[zoom-tpl] list failed', e);
   }
+
+  // Render template list
+  function renderList() {
+    var listEl = document.getElementById('zoom-tpl-list');
+    if (!listEl) return;
+    var html = '';
+    // Built-in templates
+    html += '<div style="font-size:10px;color:var(--hot-pink);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin:2px 0 4px">Phoebe-branded templates</div>';
+    (templates.builtIn || []).forEach(function(t) {
+      var selected = t.key === (opts.defaultTemplate || 'mdc');
+      html += '<button onclick="(window._zoomTplPick=\'' + t.key + '\');document.getElementById(\'zoom-tpl-create-btn\').click()" style="' +
+        'display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid ' + (selected ? 'var(--hot-pink)' : 'var(--border)') + ';border-radius:10px;background:' + (selected ? '#FFF5FA' : 'white') + ';cursor:pointer;text-align:left;font-family:var(--f-body);width:100%">' +
+        '<div style="font-size:13px;color:var(--magenta);font-weight:700">' + t.label + '</div>' +
+        '<span style="margin-left:auto;font-size:11px;color:var(--stone);white-space:nowrap;flex-shrink:0">' + t.durationMin + ' min</span>' +
+        '<div style="flex-basis:100%;font-size:11px;color:var(--stone);line-height:1.5;margin-top:2px">' + t.description + '</div>' +
+      '</button>';
+    });
+    // Zoom-saved templates
+    if (templates.zoomSaved && templates.zoomSaved.length) {
+      html += '<div style="font-size:10px;color:var(--teal);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin:10px 0 4px">From your Zoom account</div>';
+      templates.zoomSaved.forEach(function(t) {
+        html += '<button onclick="(window._zoomTplPickSaved=\'' + t.id + '\');document.getElementById(\'zoom-tpl-create-btn\').click()" style="' +
+          'display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:white;cursor:pointer;text-align:left;font-family:var(--f-body);width:100%">' +
+          '<div style="font-size:13px;color:var(--magenta);font-weight:600">' + (t.name || 'Untitled template') + '</div>' +
+          '<span style="margin-left:auto;font-size:10px;color:var(--teal);background:var(--mist);padding:2px 8px;border-radius:99px">Zoom</span>' +
+        '</button>';
+      });
+    }
+    if (templates.note) {
+      html += '<div style="font-size:11px;color:var(--stone);font-style:italic;padding:10px;text-align:center">' + templates.note + '</div>';
+    }
+    listEl.innerHTML = html;
+  }
+  renderList();
+
+  // Hidden create-button — fires after a template is clicked
+  var createBtn = document.createElement('button');
+  createBtn.id = 'zoom-tpl-create-btn';
+  createBtn.style.display = 'none';
+  document.body.appendChild(createBtn);
+  createBtn.onclick = async function() {
+    createBtn.disabled = true;
+    var pickKey = window._zoomTplPick;
+    var pickSaved = window._zoomTplPickSaved;
+    window._zoomTplPick = null;
+    window._zoomTplPickSaved = null;
+    var recurring = !!document.getElementById('zoom-tpl-recurring').checked;
+    branded.toast('Creating Zoom meeting…');
+    try {
+      var bodyJson = Object.assign({}, opts.extraBody || {}, { recurring: recurring });
+      if (pickKey)  bodyJson.templateName = pickKey;
+      if (pickSaved) bodyJson.templateId = pickSaved;
+      var resp = await fetch('/api/zoom-create-meeting', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyJson)
+      });
+      var data = await resp.json();
+      if (resp.ok && data.success) {
+        host.style.display = 'none';
+        branded.success('Zoom created · ' + (data.topic || 'meeting'));
+        if (typeof opts.onCreated === 'function') opts.onCreated(data);
+      } else {
+        branded.error('Zoom create failed: ' + (data.error || 'unknown'));
+      }
+    } catch (err) {
+      branded.error('Zoom create failed: ' + (err.message || err));
+    }
+    if (createBtn.parentNode) createBtn.parentNode.removeChild(createBtn);
+  };
 }
 
 // Generic clipboard copy used by the cohort row + anywhere else that needs it
