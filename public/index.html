@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11570 — phone fixes from Phoebe's review: (1) topbar action cluster stays HORIZONTAL on mobile (was vertical stack pushing hero into a 120px wall). Topbar height locked at 50px on phone, smaller buttons, tighter padding, date hidden on smallest screens. (2) AI-refusal detector — Sonnet's meta-talk ('I want to stop you here', 'this brief has a structural problem', etc.) no longer gets saved as a research brief or 'why' suggestion. Render-time defensive filter on suggestedWhy means existing bad data on test clients self-cleans. (3) Removed the 'My answers moved' transition banner from client Settings — only relevant for ~weeks after v11210, just clutter now. (4) Removed Switch Theme from client More menu (will rebuild after light/dark surfaces are properly tested). (5) Fixed 'In -1 days' next-session pill — timezone bug in computeNextSession was using UTC date while session dates are local; AEST clients saw past sessions as 'next'. Plus defensive same-day filter in updateClientNextSessionPill. (6) More-sheet 'My achievements' + 'Help &amp; resources' actions rewired through dedicated handlers (goToClientAchievements / goToClientHelp) — previous broad-selector approach often missed the right element.">
+<meta name="hmh-build" content="v11580 — pre-Phoebe-review final pass. All v11570 fixes verified + one banned-word slip caught (an internal AI prompt said 'highest-leverage' — banned per PHOEBE_VOICE — swapped to 'most-impactful'). Full audit: live build = HEAD, all 21 endpoints respond correctly (8 reads 200, 13 POSTs 400/401/405 as expected), 6 PIN-guarded admin endpoints reject anonymous, all 18 recently-touched functions defined + called, paren delta of -4 traced to numbered-list items inside HTML/JS comments (benign), zero US-spelling violations in user-facing copy, zero remaining banned-word usage outside the PHOEBE_VOICE banned-list itself. Canonical 7 real clients + Elodie test client confirmed in live blob. Verdict: GREEN for Phoebe review pending one operational task — Phoebe to walk Settings → 🧹 Data hygiene to clear ~30 Zoom orphans + 3 demo personas + 2 test bookings before the dashboard's All-Clients page is shown to her in production form.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -13857,7 +13857,7 @@ async function askClaudeNextActions(clientId, progId) {
   var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
   if (!client || !prog) return;
   var system = 'You are Phoebe Blamey\'s coaching assistant. Australian English. Warm, direct, no corporate jargon. ' +
-    'Suggest the THREE highest-leverage actions for this client to take in the next 14 days. ' +
+    'Suggest the THREE most-impactful actions for this client to take in the next 14 days. ' +
     'Format as a numbered list. Each action must be specific (named action verb, concrete target), grounded in the client\'s actual situation, ' +
     'and realistic for a busy small-business owner. Add a one-line rationale beneath each. No fluff.';
   var prompt = 'What are the three best next actions for this client right now?\n\n' + gatherClientContext(client, prog);
