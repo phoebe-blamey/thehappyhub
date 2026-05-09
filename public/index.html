@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11540 — MDC community feed now renders even when the cohort has zero active members (was hidden entirely after data hygiene deletes — Phoebe lost visibility of past wins/shoutouts/milestones plus couldn't seed the feed for a fresh cohort). Empty state explains the situation + offers a 'Write a welcome / first shoutout' CTA. Member-count pill on the feed header (e.g. 'No members yet' in amber when 0). Insights panel + progress overview still legitimately hide when no members (can't compute averages on no data). Audited every MDC v11330–v11370 function: all 11 features present (cohort lifecycle close-out, messaging, broadcast, AI insights, member grid, progress overview, community feed, attendance, missed-session auto-flag, Zoom-link reuse, sprint/week format).">
+<meta name="hmh-build" content="v11550 — 🌟 Community is now its own dedicated client-portal tab (top + bottom navs), shown ONLY to clients who are members of an MDC cohort. Each cohort member sees only their own cohort(s)'s feed — never anyone else's. Tab auto-labels with the cohort name when there's just one. Inline cohort-feed block removed from the MDC program render to avoid duplication; replaced by a pointer card that says 'Your community lives in its own tab now → Open community'. Three-layer visibility gate: tab hidden in nav, switchClientTab redirects non-members to summary, renderClientCommunityTab shows a friendly fallback. _clientHasCohort + _clientCohorts helpers route everything through the same membership check.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -1184,6 +1184,9 @@
       <button class="client-tab active" data-ctab="summary"  onclick="switchClientTab('summary')"  style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:600;color:var(--magenta);border-bottom:3px solid var(--hot-pink);cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">🏠 Summary</button>
       <button class="client-tab"        data-ctab="programs" onclick="switchClientTab('programs')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">📚 My Programs</button>
       <button class="client-tab"        data-ctab="todos"    onclick="switchClientTab('todos')"    style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">✅ My to-dos <span id="client-tab-todos-count" style="display:none;font-size:10px;font-weight:700;background:var(--hot-pink);color:white;padding:1px 7px;border-radius:99px;line-height:1.4"></span></button>
+      <!-- v11550: Community tab — only shown when client has an MDC program with a cohort.
+           updateClientCommunityTabVisibility() un-hides this on portal load for cohort members. -->
+      <button class="client-tab" id="client-tab-community" data-ctab="community" onclick="switchClientTab('community')" style="display:none;padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;align-items:center;gap:6px">🌟 <span id="client-tab-community-label">Community</span></button>
       <button class="client-tab"        data-ctab="settings" onclick="switchClientTab('settings')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;margin-left:auto">⚙️ Settings</button>
     </div>
     <!-- Sub-nav for the Programs tab — list of all programs the client is in -->
@@ -1196,6 +1199,8 @@
     <div class="client-content" id="client-summary-area" style="display:none"></div>
     <div class="client-content" id="client-todos-area" style="display:none"></div>
     <div class="client-content" id="client-wins-area" style="display:none"></div>
+    <!-- v11550: Community tab content area — populated by renderClientCommunityTab(). -->
+    <div class="client-content" id="client-community-area" style="display:none"></div>
     <div class="client-content" id="client-settings-area" style="display:none"></div>
     <!-- Bottom tab bar — phone-only via CSS media query. Drives the same
          switchClientTab function as the top tabs so state stays unified. -->
@@ -1203,6 +1208,8 @@
       <button data-ctab="summary"  onclick="switchClientTab('summary')"  class="active" aria-label="Summary"><span class="bt-icon">🏠</span><span>Summary</span></button>
       <button data-ctab="programs" onclick="switchClientTab('programs')" aria-label="My Programs"><span class="bt-icon">📚</span><span>Programs</span></button>
       <button data-ctab="todos"    onclick="switchClientTab('todos')"    aria-label="My to-dos"><span class="bt-icon">✅</span><span>To-dos</span><span class="bt-badge" id="bt-todos-badge" style="display:none"></span></button>
+      <!-- v11550: Community bottom-tab — mirrors the top-nav button. Hidden by default; shown for MDC cohort members only. -->
+      <button data-ctab="community" id="bt-community" onclick="switchClientTab('community')" aria-label="Community" style="display:none"><span class="bt-icon">🌟</span><span>Community</span></button>
       <button data-ctab="settings" onclick="switchClientTab('settings')" aria-label="Settings"><span class="bt-icon">⚙️</span><span>Settings</span></button>
       <!-- v11210: More overflow — opens a sheet with secondary actions
            (achievements, help, theme toggle, sign out). Elodie's review §11. -->
@@ -7045,6 +7052,10 @@ function loadClientPortal(client) {
   // them. The modal points at the three places we want them to look first.
   try { maybeShowFirstVisitWelcome(client); } catch(e) { console.warn('[Welcome modal]', e); }
 
+  // v11550: show / hide the Community tab based on cohort membership.
+  // Only MDC cohort members get the tab in their nav.
+  try { if (typeof updateClientCommunityTabVisibility === 'function') updateClientCommunityTabVisibility(client); } catch(e) { console.warn('[Community tab]', e); }
+
   // Build program nav — show all unlocked + completed programs
   var progs = (client.programs||[]).filter(function(p){ return p.workbook!=='none' && p.workbook!=='inquiry'; });
   var nav = document.getElementById('client-prog-nav');
@@ -7939,6 +7950,15 @@ window.addEventListener('popstate', function(ev) {
 
 // Switches between the three top-level client tabs: Summary / Programs / Settings
 function switchClientTab(which, opts) {
+  // v11550: 'community' is gated — non-cohort clients hitting it (e.g. via
+  // a stale URL hash like #community after they leave the cohort) silently
+  // bounce to summary. Visible cohort members never see this redirect.
+  if (which === 'community') {
+    var checkClient = clients.find(function(c){ return c.id === currentClientId; });
+    if (!checkClient || !_clientHasCohort(checkClient)) {
+      which = 'summary';
+    }
+  }
   // Update tab pill styling
   document.querySelectorAll('.client-tab').forEach(function(t) {
     var active = t.dataset.ctab === which;
@@ -7948,18 +7968,20 @@ function switchClientTab(which, opts) {
     t.style.borderBottomColor = active ? 'var(--hot-pink)' : 'transparent';
   });
   // Show/hide the panes (only Programs tab shows the program nav strip)
-  var summary  = document.getElementById('client-summary-area');
-  var todos    = document.getElementById('client-todos-area');
-  var wins     = document.getElementById('client-wins-area');
-  var programs = document.getElementById('client-content-area');
-  var settings = document.getElementById('client-settings-area');
-  var navWrap  = document.getElementById('client-prog-nav-wrap');
-  if (summary)  summary.style.display  = (which === 'summary')  ? 'block' : 'none';
-  if (todos)    todos.style.display    = (which === 'todos')    ? 'block' : 'none';
-  if (wins)     wins.style.display     = (which === 'wins')     ? 'block' : 'none';
-  if (programs) programs.style.display = (which === 'programs') ? 'block' : 'none';
-  if (settings) settings.style.display = (which === 'settings') ? 'block' : 'none';
-  if (navWrap)  navWrap.style.display  = (which === 'programs') ? 'flex' : 'none';
+  var summary   = document.getElementById('client-summary-area');
+  var todos     = document.getElementById('client-todos-area');
+  var wins      = document.getElementById('client-wins-area');
+  var programs  = document.getElementById('client-content-area');
+  var community = document.getElementById('client-community-area');
+  var settings  = document.getElementById('client-settings-area');
+  var navWrap   = document.getElementById('client-prog-nav-wrap');
+  if (summary)   summary.style.display   = (which === 'summary')   ? 'block' : 'none';
+  if (todos)     todos.style.display     = (which === 'todos')     ? 'block' : 'none';
+  if (wins)      wins.style.display      = (which === 'wins')      ? 'block' : 'none';
+  if (programs)  programs.style.display  = (which === 'programs')  ? 'block' : 'none';
+  if (community) community.style.display = (which === 'community') ? 'block' : 'none';
+  if (settings)  settings.style.display  = (which === 'settings')  ? 'block' : 'none';
+  if (navWrap)   navWrap.style.display   = (which === 'programs') ? 'flex' : 'none';
   // Bottom tab bar — keep its active state in sync with the top tabs
   document.querySelectorAll('.client-bottom-tabs > button').forEach(function(b) {
     b.classList.toggle('active', b.dataset.ctab === which);
@@ -7968,10 +7990,11 @@ function switchClientTab(which, opts) {
   // Render contents for the active tab
   var client = clients.find(function(c){ return c.id === currentClientId; });
   if (!client) return;
-  if (which === 'summary')  renderClientSummary(client);
-  if (which === 'todos')    renderClientTodosTab(client);
-  if (which === 'wins')     renderClientWinsTab(client);
-  if (which === 'settings') renderClientSettings(client);
+  if (which === 'summary')   renderClientSummary(client);
+  if (which === 'todos')     renderClientTodosTab(client);
+  if (which === 'wins')      renderClientWinsTab(client);
+  if (which === 'community') renderClientCommunityTab(client);
+  if (which === 'settings')  renderClientSettings(client);
   if (typeof sessionSet === 'function') {
     sessionSet(HMH_SESSION.PORTAL_TAB, which);
     sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
@@ -8237,9 +8260,22 @@ function renderClientProgram(client, prog) {
       '</div>';
     var clientNotesMdc = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
     var customSectionsMdc = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
-    // v11370: cohort community feed for MDC clients
-    var cohortFeedMdc = (typeof renderClientCohortFeed === 'function') ? renderClientCohortFeed(client, prog) : '';
-    content = lockNotice + recCard + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + customSectionsMdc + cohortFeedMdc + fullAchievementsAccordion;
+    // v11550: cohort community feed moved to its own dedicated 🌟 Community
+    // tab (only visible to cohort members) — no longer duplicated inline
+    // here. A small "your community lives here →" pointer card replaces
+    // it so MDC clients know where to find the feed.
+    var cohortPointer = (isLocked || !prog.cohort) ? '' :
+      '<div class="client-section">' +
+        '<div style="background:linear-gradient(135deg,#FFFCF8,#FDEFF5);border:1px solid rgba(229,4,139,0.18);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+          '<div style="font-size:24px">🌟</div>' +
+          '<div style="flex:1;min-width:200px">' +
+            '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700">Your cohort community lives in its own tab now</div>' +
+            '<div style="font-size:12px;color:var(--stone);line-height:1.5;margin-top:2px">Wins · shoutouts · session highlights · resources from Phoebe — all in one place, just for your cohort.</div>' +
+          '</div>' +
+          '<button onclick="switchClientTab(\'community\')" class="btn-sm primary" style="font-size:12px">Open community →</button>' +
+        '</div>' +
+      '</div>';
+    content = lockNotice + recCard + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + customSectionsMdc + cohortPointer + fullAchievementsAccordion;
     area.innerHTML = content;
     // Auto-scroll the active week pill into the centre of the strip so
     // clients always land on the right week without having to scroll.
@@ -17922,6 +17958,96 @@ async function deleteFeedEntry(cohortId, entryId) {
   co.feedEntries = (co.feedEntries || []).filter(function(e){ return e.id !== entryId; });
   _saveCohorts();
   if (typeof renderCohortManager === 'function') renderCohortManager();
+}
+
+// v11550: helpers for the dedicated Community tab.
+// _clientHasCohort returns true iff this client has any program with a
+// cohort assigned AND that cohort still exists in MDC_COHORTS. Used to
+// gate the Community tab's visibility — only cohort members see it.
+function _clientHasCohort(client) {
+  if (!client) return false;
+  var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
+  if (!cohorts.length) return false;
+  var cohortIds = new Set(cohorts.map(function(c){ return c.id; }));
+  return (client.programs || []).some(function(p) {
+    return p && p.cohort && cohortIds.has(p.cohort);
+  });
+}
+
+// _clientCohorts returns the array of cohort objects this client is a
+// member of. Each member always sees ONLY their own cohort(s) — never
+// any other cohort's feed. Most clients are in exactly one cohort, but
+// the structure supports multiples (e.g. MDC alumni who join a new round).
+function _clientCohorts(client) {
+  if (!client) return [];
+  var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
+  var memberOf = new Set();
+  (client.programs || []).forEach(function(p) {
+    if (p && p.cohort) memberOf.add(p.cohort);
+  });
+  return cohorts.filter(function(c) { return memberOf.has(c.id); });
+}
+
+// v11550: show / hide the Community tab in both the top nav AND the
+// bottom tab bar based on cohort membership. Called from loadClientPortal
+// after the client is loaded. Safe to call repeatedly — idempotent.
+function updateClientCommunityTabVisibility(client) {
+  var hasCohort = _clientHasCohort(client);
+  var topBtn = document.getElementById('client-tab-community');
+  var btmBtn = document.getElementById('bt-community');
+  if (topBtn) topBtn.style.display = hasCohort ? 'flex' : 'none';
+  if (btmBtn) btmBtn.style.display = hasCohort ? '' : 'none';
+  // Label the tab with the cohort name when there's exactly one
+  if (hasCohort) {
+    var cos = _clientCohorts(client);
+    var label = document.getElementById('client-tab-community-label');
+    if (label) {
+      if (cos.length === 1 && cos[0].name) label.textContent = cos[0].name;
+      else label.textContent = 'Community';
+    }
+  }
+}
+
+// v11550: full Community tab content. Each cohort the client belongs to
+// gets its own feed section. Member sees ONLY their own cohort(s) —
+// never a different cohort's feed (gated server-side by what
+// MDC_COHORTS contains, plus the membership check here). One tab,
+// per-cohort sections inside.
+function renderClientCommunityTab(client) {
+  var area = document.getElementById('client-community-area');
+  if (!area || !client) return;
+  // Defence in depth — if a non-member somehow reaches this code path,
+  // bounce them with a friendly message. The tab visibility helper
+  // already hides the entry point but a stale URL hash could land here.
+  if (!_clientHasCohort(client)) {
+    area.innerHTML =
+      '<div class="client-section">' +
+        '<h3>🌟 Community</h3>' +
+        '<div style="font-size:13px;color:var(--magenta);line-height:1.6">The Community space is for MDC cohort members. You\'ll see your cohort\'s feed here once you join one.</div>' +
+      '</div>';
+    return;
+  }
+  var firstName = ((client.name || '').split(' ')[0]) || 'there';
+  var cos = _clientCohorts(client);
+  var sections = cos.map(function(co) {
+    // Each section uses the same client-side feed renderer that previously
+    // sat inline inside the MDC program tab — so behaviour, reactions,
+    // posting all stay identical, just relocated.
+    var prog = (client.programs || []).find(function(p) { return p && p.cohort === co.id; });
+    if (!prog) return '';
+    var feedHtml = (typeof renderClientCohortFeed === 'function') ? renderClientCohortFeed(client, prog) : '';
+    return feedHtml;
+  }).join('');
+
+  area.innerHTML =
+    '<div class="client-section">' +
+      '<h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<span>🌟 Your community</span>' +
+        '<span style="font-size:11px;color:var(--stone);font-weight:500">· ' + cos.length + ' cohort' + (cos.length === 1 ? '' : 's') + '</span>' +
+      '</h3>' +
+      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">Hey ' + escapeHtml(firstName) + ' — this is private to your cohort. Wins, shoutouts, session highlights and resources Phoebe shares all land here. Add a shoutout when someone\'s done something brilliant.</p>' +
+    '</div>' +
+    sections;
 }
 
 // v11370 §10: client-side cohort feed renderer — for the MDC client portal
