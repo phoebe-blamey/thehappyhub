@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11400 — conflict modal eliminated · freshest-wins per-field merge always. Save-conflict prompt no longer pops; instead the latest data on each field wins (manual / Calendly / Zoom / webhook — all merged transparently). Append-only arrays (tasks, wins, sessionNotes, customSections, badges, reviewRequests, checkIns) union by id with newest entries kept on collision.">
+<meta name="hmh-build" content="v11410 — message templates (Use + Save) on Message tab · Tasks: 📦 Archive + × Delete (Phoebe-only delete, with confirm) and Show-archived toggle · Tasks tab now Shareable · Why suggestion always returns something (12 standard Phoebe-style starters when no profile data) · Universal popup close: corner-X on every branded modal + Esc dismisses onboarding / more-sheet / search overlay too · For Phoebe's Attention panel now has reply box + Regenerate button (feeds her clarifications back into the brief and rewrites it).">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -490,6 +490,20 @@
                   <option value="sms">💬 SMS/Text</option>
                 </select>
               </div>
+            </div>
+            <!-- v11410: message templates — Use template (load saved one,
+                 supports {firstName} placeholder) + Save as template (after
+                 composing). Templates persist to coach-settings.messageTemplates. -->
+            <div class="form-group" style="margin-bottom:10px">
+              <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span>Templates</span>
+                <select id="msg-template-picker" onchange="loadMessageTemplate(this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:5px 12px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);min-width:180px">
+                  <option value="">— Pick a template —</option>
+                </select>
+                <button class="btn-sm" type="button" onclick="saveCurrentMessageAsTemplate()" style="font-size:11px">💾 Save as template</button>
+                <button class="btn-sm" type="button" onclick="manageMessageTemplates()" style="font-size:11px">📋 Manage</button>
+              </label>
+              <div style="font-size:11px;color:var(--stone);margin-top:4px;font-style:italic">Templates support {firstName} and {clientName} placeholders — auto-replaced when loaded.</div>
             </div>
             <div class="form-group" style="margin-bottom:12px">
               <label>Subject (email only)</label>
@@ -1410,6 +1424,7 @@
      so we never trigger an unstyled native popup on Phoebe's screen. -->
 <div id="branded-modal-host" style="position:fixed;inset:0;background:rgba(201,38,107,0.18);backdrop-filter:blur(4px);z-index:9000;display:none;align-items:center;justify-content:center;font-family:var(--f-body)">
   <div id="branded-modal-card" style="background:white;border-radius:18px;padding:24px 26px;width:100%;max-width:440px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 64px rgba(201,38,107,0.22);position:relative">
+    <button id="branded-modal-close" type="button" aria-label="Close" title="Close (Esc)" onclick="brandedModalClose()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border:none;background:rgba(229,4,139,0.08);color:var(--magenta);border-radius:50%;font-size:18px;line-height:1;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;padding:0;z-index:1">×</button>
     <div id="branded-modal-icon" style="font-size:36px;line-height:1;margin-bottom:8px"></div>
     <div id="branded-modal-title" style="font-family:var(--f-head);font-size:20px;color:var(--magenta);margin-bottom:6px;line-height:1.2"></div>
     <div id="branded-modal-body" style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:16px;white-space:pre-wrap"></div>
@@ -1442,6 +1457,7 @@ var branded = (function() {
   function close() {
     var h = host(); if (!h) return;
     h.style.display = 'none';
+    h._cancel = null; // v11410: clear handler so the corner-X does the right thing on next open
   }
   function build(opts) {
     return new Promise(function(resolve) {
@@ -1466,6 +1482,8 @@ var branded = (function() {
         }
       }
       document.addEventListener('keydown', onKey);
+      // v11410: route the corner X-button to the same cancel path as Esc.
+      h._cancel = function() { done(opts.kind === 'confirm' ? false : null); };
 
       if (opts.kind === 'confirm') {
         var cancel = document.createElement('button');
@@ -1564,6 +1582,55 @@ var branded = (function() {
   s.textContent = '@keyframes brandedToastIn { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }';
   document.head.appendChild(s);
 })();
+
+// v11410: universal modal-close hook. Wired to the corner X-button on the
+// shared modal card. When in branded.alert/confirm/prompt mode, calls the
+// stored cancel resolver so the awaiting Promise resolves correctly. For
+// custom usages (badge award, resources, merge, etc.) that show the modal
+// without going through build(), it just hides the host. Either way, the
+// user always has a visible way out.
+function brandedModalClose() {
+  var h = document.getElementById('branded-modal-host');
+  if (!h) return;
+  if (typeof h._cancel === 'function') {
+    var fn = h._cancel; h._cancel = null;
+    try { fn(); } catch(e) { h.style.display = 'none'; }
+  } else {
+    h.style.display = 'none';
+  }
+}
+// Universal Esc handler — even custom-content modals dismiss on Escape now.
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  var h = document.getElementById('branded-modal-host');
+  if (h && h.style.display === 'flex') {
+    // If branded.* registered its own keydown listener, that one will fire
+    // first and hide the modal — by the time we get here display will be
+    // 'none' and we no-op. This branch only catches custom-content modals.
+    brandedModalClose();
+    return;
+  }
+  // Onboarding flow has its own host but should also bail on Esc.
+  var onb = document.getElementById('onboarding-flow-host');
+  if (onb && onb.style.display === 'flex') {
+    if (typeof skipOnboarding === 'function') skipOnboarding();
+    else onb.style.display = 'none';
+    return;
+  }
+  // Bottom-sheet (mobile More menu)
+  var more = document.getElementById('client-more-sheet');
+  if (more && (more.style.display === 'flex' || more.style.display === 'block')) {
+    if (typeof closeClientMoreSheet === 'function') closeClientMoreSheet();
+    else more.style.display = 'none';
+    return;
+  }
+  // Coach search overlay
+  var srch = document.getElementById('coach-search-overlay');
+  if (srch && srch.style.display === 'flex') {
+    srch.style.display = 'none';
+    return;
+  }
+});
 
 // ============================================================
 // AI FETCH INTERCEPTOR
@@ -4905,9 +4972,11 @@ function switchTab(id) {
   // v11390: update breadcrumb tab name
   var bcTab = document.getElementById('detail-breadcrumb-tab');
   if (bcTab) {
-    var labels = { intake:'Intake', 'session-notes':'Notes', plan:'Plan', tools:'Tools', tasks:'Tasks', message:'Message', 'client-settings':'Settings', wins:'Wins', profitability:'Value', coaching:'Coaching notes', 'mdc-sprint':'Sprint', 'mdc-workbook':'Workbook', 'happyhour-summary':'Session summary' };
+    var labels = { intake:'Summary', 'session-notes':'Notes', plan:'Plan', tools:'Tools', tasks:'Tasks', message:'Message', 'client-settings':'Settings', wins:'Wins', profitability:'Value', coaching:'Coaching notes', 'mdc-sprint':'Sprint', 'mdc-workbook':'Workbook', 'happyhour-summary':'Session summary' };
     bcTab.textContent = labels[id] || id;
   }
+  // v11410: refresh template picker when message tab opens
+  if (id === 'message' && typeof refreshMessageTemplatePicker === 'function') refreshMessageTemplatePicker();
   // Lazy-render the per-client settings panel only when its tab is opened
   if (id === 'client-settings' && typeof renderPerClientSettingsTab === 'function') {
     var c = clients.find(function(c){ return c.id === currentClientId; });
@@ -5678,7 +5747,7 @@ function buildProgramTabs(client, prog) {
   // still exist (#tab-wins, #tab-profitability) and are reachable via the
   // Tools panel buttons, so no data is lost.
   tabDefs.push({ id:'tools', label:'🛠 Tools', tag:'co' });
-  tabDefs.push({ id:'tasks', label:'Tasks', tag:'co' });
+  tabDefs.push({ id:'tasks', label:'Tasks', tag:'sh' });
   tabDefs.push({ id:'message', label:'Message client', tag:'co' });
   tabDefs.push({ id:'client-settings', label:'⚙️ Settings', tag:'co' });
 
@@ -9563,9 +9632,37 @@ async function suggestClientWhy(targetClientId, opts) {
     if (p.notes && p.notes.research) ctx.push('Research summary: ' + p.notes.research.slice(0, 1500));
   });
   var hasContext = ctx.length > 0;
+  // v11410: when there's no profile context yet, don't bail with "not enough data".
+  // Fall back to one of Phoebe's standard "why" prompts — these are seeds her
+  // clients can reshape, drawn from the language she uses in her workbook +
+  // on phoebeblamey.com.au. Better to give them something to react to than
+  // a dead-end message.
+  var STANDARD_WHY_SEEDS = [
+    'So I can be home for school pickup and still hit the months I want.',
+    'To stop trading hours for dollars and finally rest properly.',
+    'So my partner can leave their job and we build something together.',
+    'To prove to myself I can run a real business — not a side hustle that drains me.',
+    'So I can take a holiday without my income falling off a cliff.',
+    'To buy back my time — fewer client hours, more space to live.',
+    'So my kids see what it looks like to back yourself.',
+    'To stop apologising for what I charge and run a profitable business.',
+    'So I can pay myself a proper wage every month, not just when it\'s busy.',
+    'To replace my old salary with work I actually love — and then double it.',
+    'So I\'m not the bottleneck anymore — I want a business that runs without me in every job.',
+    'To finally feel calm about money instead of bracing for the next quiet month.'
+  ];
   if (!hasContext) {
-    if (silent) return;
-    branded.alert('Not enough info yet to suggest a why — once you\'ve had your first session with Phoebe, this will work better.');
+    var seed = STANDARD_WHY_SEEDS[Math.floor(Math.random() * STANDARD_WHY_SEEDS.length)];
+    client.suggestedWhy = seed;
+    try { await persistClient(client); } catch(e) {}
+    if (currentClientId === client.id) {
+      if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
+      if (typeof renderClientSummary === 'function') {
+        var sumEl0 = document.getElementById('client-summary-area');
+        if (sumEl0 && sumEl0.style.display !== 'none') renderClientSummary(client);
+      }
+    }
+    if (!silent) branded.toast('Here\'s a starter — reshape it to fit you.');
     return;
   }
   if (!silent && typeof branded !== 'undefined') branded.toast('Drafting a suggestion…');
@@ -11226,9 +11323,37 @@ function refreshTaskRender(client) {
   }
 }
 
+// v11410: archive (soft) before delete (hard) — Phoebe can recover archived
+// tasks from the "Show archived" toggle on the panel; only "Delete forever"
+// actually removes them. Matches the client-archive pattern.
+async function archiveTask(clientId, taskId) {
+  var client = clients.find(function(c) { return c.id === clientId; });
+  if (!client) return;
+  var t = (client.tasks || []).find(function(x){ return x.id === taskId; });
+  if (!t) return;
+  t.archived = true;
+  t.archivedAt = new Date().toISOString();
+  await persistClient(client);
+  renderTasksPanel(client, currentProgramId);
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('Archived · undo via Show archived');
+}
+
+async function unarchiveTask(clientId, taskId) {
+  var client = clients.find(function(c) { return c.id === clientId; });
+  if (!client) return;
+  var t = (client.tasks || []).find(function(x){ return x.id === taskId; });
+  if (!t) return;
+  t.archived = false;
+  delete t.archivedAt;
+  await persistClient(client);
+  renderTasksPanel(client, currentProgramId);
+}
+
 async function deleteTask(clientId, taskId) {
   var client = clients.find(function(c) { return c.id === clientId; });
   if (!client) return;
+  var ok = await branded.confirm('Delete this task forever? This can\'t be undone.\n\nIf you might want it back, use Archive instead (📦 button).', { title: 'Delete forever?', okLabel: 'Delete', danger: true, cancelLabel: 'Cancel' });
+  if (!ok) return;
   client.tasks = (client.tasks||[]).filter(function(t) { return t.id !== taskId; });
   await persistClient(client);
   renderTasksPanel(client, currentProgramId);
@@ -11242,7 +11367,9 @@ function renderTask(t, clientId) {
     '<div style="font-size:13px;color:var(--magenta);' + (t.done ? 'text-decoration:line-through;opacity:0.5' : '') + '">' + t.text + '</div>' +
     '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + (t.isAuto ? '⚡ Auto · ' : '') + dueStr + '</div>' +
     '</div>' +
-    '<button onclick="deleteTask(\'' + clientId + '\',\'' + t.id + '\')" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--stone);padding:0">×</button>' +
+    // v11410: archive (soft) + delete forever (hard, with confirm)
+    '<button onclick="archiveTask(\'' + clientId + '\',\'' + t.id + '\')" title="Archive · removes from view, can be restored" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--stone);padding:2px 6px">📦</button>' +
+    '<button onclick="deleteTask(\'' + clientId + '\',\'' + t.id + '\')" title="Delete forever" style="background:none;border:none;cursor:pointer;font-size:14px;color:#C0392B;padding:2px 6px">×</button>' +
     '</div>';
 }
 
@@ -11303,6 +11430,88 @@ function renderCoachNotes(client) {
       '<div style="font-size:11px;color:var(--stone)">' + d + (n.visibleToClient ? ' · <span style="color:var(--teal)">Visible to client</span>' : ' · Coach only') + '</div>' +
       '</div>';
   }).join('') : '<div style="color:var(--stone);font-size:13px;padding:8px 0">No notes yet for this client.</div>';
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// v11410 — Message templates
+// Saved on coachSettings.messageTemplates as { id, name, subject, body }.
+// Picker auto-renders + interpolates {firstName}/{clientName} on load.
+// ═════════════════════════════════════════════════════════════════════
+function getMessageTemplates() {
+  return (window._coachSettings && Array.isArray(window._coachSettings.messageTemplates))
+    ? window._coachSettings.messageTemplates : [];
+}
+
+function refreshMessageTemplatePicker() {
+  var sel = document.getElementById('msg-template-picker');
+  if (!sel) return;
+  var templates = getMessageTemplates();
+  sel.innerHTML = '<option value="">— Pick a template —</option>' +
+    templates.map(function(t) { return '<option value="' + t.id + '">' + escapeHtml(t.name || 'Untitled') + '</option>'; }).join('');
+}
+
+function loadMessageTemplate(templateId) {
+  if (!templateId) return;
+  var t = getMessageTemplates().find(function(x){ return x.id === templateId; });
+  if (!t) return;
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  var firstName = client ? ((client.name || '').split(' ')[0] || 'there') : 'there';
+  var clientName = client ? (client.name || '') : '';
+  function interp(s) {
+    return (s || '').replace(/\{firstName\}/g, firstName).replace(/\{clientName\}/g, clientName);
+  }
+  var subj = document.getElementById('msg-subject');
+  var body = document.getElementById('msg-body');
+  if (subj) subj.value = interp(t.subject || '');
+  if (body) body.value = interp(t.body || '');
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('✓ Template loaded — edit anything before sending');
+}
+
+async function saveCurrentMessageAsTemplate() {
+  var subject = (document.getElementById('msg-subject')?.value || '').trim();
+  var bodyText = (document.getElementById('msg-body')?.value || '').trim();
+  if (!subject && !bodyText) { branded.alert('Write something first.'); return; }
+  var name = await branded.prompt('Save this message as a template — name it so you can find it later:', '', 'e.g. Welcome message · Session reminder', { title: '💾 Save template', okLabel: 'Save' });
+  if (!name || !name.trim()) return;
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.messageTemplates = window._coachSettings.messageTemplates || [];
+  // De-dupe by name — overwrite if exists
+  var existing = window._coachSettings.messageTemplates.find(function(t){ return t.name === name.trim(); });
+  if (existing) {
+    var ok = await branded.confirm('A template called "' + name.trim() + '" already exists. Overwrite it?', { title: 'Overwrite?', okLabel: 'Overwrite' });
+    if (!ok) return;
+    existing.subject = subject;
+    existing.body = bodyText;
+    existing.updatedAt = new Date().toISOString();
+  } else {
+    window._coachSettings.messageTemplates.push({
+      id: 'mtpl-' + Date.now(),
+      name: name.trim(),
+      subject: subject,
+      body: bodyText,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  flushCoachSettings();
+  refreshMessageTemplatePicker();
+  branded.success('Template saved');
+}
+
+async function manageMessageTemplates() {
+  var templates = getMessageTemplates();
+  if (!templates.length) { branded.alert('No templates yet. Compose a message and click "💾 Save as template" to start.'); return; }
+  var menu = templates.map(function(t, i) { return (i + 1) + '. ' + t.name; }).join('\n');
+  var pick = await branded.prompt('Templates:\n\n' + menu + '\n\nType a number to delete, or close to cancel.', '', '', { title: '📋 Manage templates', okLabel: 'Delete' });
+  if (pick == null) return;
+  var idx = parseInt(pick, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= templates.length) return;
+  var t = templates[idx];
+  var ok = await branded.confirm('Delete template "' + t.name + '"?', { title: 'Confirm', okLabel: 'Delete', danger: true });
+  if (!ok) return;
+  window._coachSettings.messageTemplates = templates.filter(function(x){ return x.id !== t.id; });
+  flushCoachSettings();
+  refreshMessageTemplatePicker();
+  branded.toast('Deleted');
 }
 
 async function sendMessageToClient() {
@@ -12771,7 +12980,12 @@ function renderToolsPanel(client, prog) {
 function renderTasksPanel(client, progId) {
   var el = document.getElementById('tasks-panel');
   if (!el) return;
-  var tasks = (client.tasks || []).filter(function(t) { return !t.progId || t.progId === progId; });
+  // v11410: filter archived tasks unless "Show archived" toggle is on.
+  // Stored as window flag so it survives renders within the session.
+  window._tasksShowArchived = window._tasksShowArchived || false;
+  var allTasks = (client.tasks || []).filter(function(t) { return !t.progId || t.progId === progId; });
+  var archivedTasks = allTasks.filter(function(t){ return t.archived; });
+  var tasks = window._tasksShowArchived ? allTasks : allTasks.filter(function(t){ return !t.archived; });
   var pending = tasks.filter(function(t) { return !t.done; });
   var done    = tasks.filter(function(t) { return t.done; });
   var cid = client.id;
@@ -12806,8 +13020,9 @@ function renderTasksPanel(client, progId) {
     weekPanelHtml +
 
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">' +
-    '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta)">' + pending.length + ' pending tasks</div>' +
+    '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta)">' + pending.length + ' pending tasks' + (archivedTasks.length ? ' <span style="font-size:11px;color:var(--stone);font-weight:500">· ' + archivedTasks.length + ' archived</span>' : '') + '</div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+    (archivedTasks.length ? '<button class="btn-sm" onclick="window._tasksShowArchived=' + (!window._tasksShowArchived) + ';renderTasksPanel(clients.find(function(c){return c.id===\''+cid+'\'}), \''+progId+'\')" style="font-size:11px">📦 ' + (window._tasksShowArchived ? 'Hide' : 'Show') + ' archived</button>' : '') +
     '<button class="btn-sm primary" onclick="showAddTaskForm(\''+cid+'\',\''+progId+'\')">+ Add task</button>' +
     '</div></div>' +
 
@@ -14155,6 +14370,13 @@ function renderResearchAttentionPanel(briefText) {
   // Wrap any sequence of <li> in a <ul>
   bodyHtml = bodyHtml.replace(/(<li>[\s\S]+?<\/li>)(?!<li>)/g, '<ul style="margin:0;padding-left:20px;line-height:1.6">$1</ul>');
 
+  // v11410: detect open questions in the AI's attention block. Anything
+  // ending in "?" — or sentences starting with "Did/Was/Has/Have/Is/Are/
+  // Could/Should/Would/Do/Does" + "?" — counts. Even if no questions,
+  // Phoebe might still want to clarify, so the reply box is always shown
+  // when there's a real concern (i.e. not the all-clear case).
+  var hasQuestions = /\?\s*(\n|$|<)/.test(body);
+
   var panel = document.createElement('div');
   panel.id = hostId;
   if (allClear) {
@@ -14167,17 +14389,120 @@ function renderResearchAttentionPanel(briefText) {
       '<div style="font-size:12px;color:#3F6B3F;line-height:1.5">' + bodyHtml + '</div>';
   } else {
     panel.style.cssText = 'background:linear-gradient(135deg,#FFF8F0,#FFEFE0);border:1.5px solid #E08020;border-radius:12px;padding:14px 16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(224,128,32,0.15)';
+    var replyPlaceholder = hasQuestions
+      ? 'Answer Claude\'s questions or add context — then tap Regenerate so the brief uses what you know.'
+      : 'Add anything Claude got wrong, missing context, or your read on the situation — then Regenerate to update the brief.';
     panel.innerHTML =
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
         '<div style="font-size:22px">⚠️</div>' +
         '<div style="font-family:var(--f-head);font-size:14px;color:#A05010;font-weight:700">For Phoebe\'s attention</div>' +
         '<span style="font-size:11px;color:#A05010;background:rgba(224,128,32,0.18);padding:2px 8px;border-radius:99px;font-weight:600;margin-left:auto">Read before the call</span>' +
       '</div>' +
-      '<div style="font-size:13px;color:#5A2D08;line-height:1.55">' + bodyHtml + '</div>';
+      '<div style="font-size:13px;color:#5A2D08;line-height:1.55">' + bodyHtml + '</div>' +
+      // v11410: reply + regenerate. Phoebe responds to Claude's questions /
+      // clarifies anything off-base, then taps Regenerate to feed her input
+      // back into the brief.
+      '<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(224,128,32,0.4)">' +
+        '<label style="display:block;font-family:var(--f-head);font-size:12px;color:#A05010;font-weight:700;margin-bottom:6px">' +
+          (hasQuestions ? '💬 Reply to Claude\'s questions' : '💬 Clarify or correct') +
+        '</label>' +
+        '<textarea id="phoebe-attention-reply" placeholder="' + escapeHtml(replyPlaceholder) + '" style="width:100%;min-height:64px;border:1.5px solid #E8B080;border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:12px;color:#5A2D08;background:white;outline:none;resize:vertical;line-height:1.5"></textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">' +
+          '<button onclick="regenerateBriefWithPhoebeReply()" id="phoebe-attention-regen" class="btn-sm primary" style="font-size:12px;padding:7px 14px">↻ Regenerate brief with my reply</button>' +
+          '<span id="phoebe-attention-status" style="font-size:11px;color:#A05010;font-style:italic"></span>' +
+        '</div>' +
+      '</div>';
   }
   // Insert above the textarea
   var parent = noteResearch.parentElement;
   if (parent) parent.insertBefore(panel, noteResearch);
+}
+
+// v11410: regenerate the research brief incorporating Phoebe's reply to the
+// "For Phoebe's attention" panel. Sends the existing brief PLUS her reply
+// to Claude and asks for an updated brief that uses her input. Replaces the
+// textarea contents on success and re-renders the attention panel + preview.
+async function regenerateBriefWithPhoebeReply() {
+  var replyEl = document.getElementById('phoebe-attention-reply');
+  var btn = document.getElementById('phoebe-attention-regen');
+  var status = document.getElementById('phoebe-attention-status');
+  var noteResearch = document.getElementById('note-research');
+  if (!replyEl || !noteResearch) return;
+  var reply = (replyEl.value || '').trim();
+  if (!reply) {
+    if (typeof branded !== 'undefined' && branded.toast) branded.toast('Type your reply first', 'warn');
+    return;
+  }
+  var existingBrief = (noteResearch.value || '').trim();
+  if (!existingBrief) {
+    if (typeof branded !== 'undefined' && branded.alert) branded.alert('No brief to update yet — generate one first.');
+    return;
+  }
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p){return p.id===currentProgramId;}) || (client.programs||[])[0] || {};
+
+  if (btn) { btn.disabled = true; btn.textContent = '↻ Regenerating…'; }
+  if (status) status.textContent = 'Updating brief with your reply…';
+
+  var prompt = phoebeVoice(
+    'You previously generated this research brief for Phoebe (an experienced Australian business coach):\n\n' +
+    '──── EXISTING BRIEF ────\n' +
+    existingBrief + '\n' +
+    '──── END BRIEF ────\n\n' +
+    'Phoebe has now replied with clarifications, corrections, or answers to questions you raised in the "FOR PHOEBE\'S ATTENTION" section:\n\n' +
+    '──── PHOEBE\'S REPLY ────\n' +
+    reply + '\n' +
+    '──── END REPLY ────\n\n' +
+    'Regenerate the FULL brief, keeping the same structure and headings, but:\n' +
+    '1. Update the "FOR PHOEBE\'S ATTENTION" section to reflect what Phoebe just told you. If she answered a question, fold the answer in and remove the question. If she corrected something, fix it and don\'t reintroduce the error. If she said "all clear on X", drop X from the concerns.\n' +
+    '2. Adjust other sections (DIGITAL PRESENCE, COACHING FOCUS AREAS, COMPETITOR LANDSCAPE, etc.) where Phoebe\'s reply changes the picture.\n' +
+    '3. Keep everything she didn\'t challenge — don\'t rewrite for the sake of it.\n' +
+    '4. If after her reply there are NO remaining concerns, set the FOR PHOEBE\'S ATTENTION section to: "Nothing flagged — all clear after Phoebe\'s clarifications."\n\n' +
+    'Return ONLY the updated brief in markdown. Same heading structure as before. No preamble, no commentary, no JSON block.'
+  );
+
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8000,
+        messages: [{ role:'user', content: prompt }],
+      })
+    });
+    if (!resp.ok) {
+      var errBody = '';
+      try { errBody = await resp.text(); } catch(e) {}
+      throw new Error('AI returned ' + resp.status + (errBody ? ': ' + errBody.slice(0, 200) : ''));
+    }
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) {
+      data.content.forEach(function(block) { if (block && block.type === 'text' && block.text) text += block.text; });
+    }
+    if (!text) throw new Error('Empty response');
+    noteResearch.value = text.trim();
+    if (prog) {
+      prog.notes = prog.notes || {};
+      prog.notes.research = noteResearch.value;
+      prog.notes.researchGeneratedAt = new Date().toISOString();
+      // Log the reply against the brief for audit / future re-runs
+      prog.notes.researchPhoebeReplies = prog.notes.researchPhoebeReplies || [];
+      prog.notes.researchPhoebeReplies.push({ at: new Date().toISOString(), reply: reply });
+      try { await persistClient(client); } catch(e) {}
+    }
+    if (typeof renderResearchPreview === 'function') renderResearchPreview();
+    if (typeof renderResearchAttentionPanel === 'function') renderResearchAttentionPanel(noteResearch.value);
+    if (status) status.textContent = '';
+    if (typeof branded !== 'undefined' && branded.success) branded.success('Brief updated with your reply ✨');
+  } catch (err) {
+    console.warn('[regenerateBriefWithPhoebeReply]', err);
+    if (status) status.textContent = '';
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Regenerate brief with my reply'; }
+    if (typeof branded !== 'undefined' && branded.error) branded.error('Couldn\'t regenerate just now: ' + (err && err.message || 'unknown error'));
+  }
 }
 
 // Renders a "looks like we need more to work with" panel under the deep dive
