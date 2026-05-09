@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11590 — wisdom card now LINKS. Each daily Phoebe-says quote gets a 'More on [topic] →' pill CTA below it, routed to the matching section on phoebeblamey.com.au (Pricing → The Pricing Episode podcast, Money → Money Foundations course, Mindset → podcasts, Action/Growth/Sales/Strategy/Positioning → /blog, Boundaries → Happy Money Society). Per-quote override slot (link + linkLabel) so Phoebe can wire any quote to a specific blog post or podcast episode any time. Always-on footer link to phoebeblamey.com.au on every card so even an unlinked quote has a 'more wisdom →' path. Zero hardcoded blog-post URLs — destinations are the section pages clients can navigate from.">
+<meta name="hmh-build" content="v11600 — community engagement + resource viewability + data cleanup. (1) MDC Community tab gets a 📈 momentum banner ('4 wins this week · 6 of 8 posting'), a 👥 member directory (mini-cards with initials, business, recent-win indicator, self highlighted), and threaded 💬 replies on every feed entry (reply count badge, collapsed by default, mobile-keyboard-friendly composer). (2) Save-as-resource flow now prompts for full audience visibility ('private' / 'all' / 'mdc' / cohort-id / program key) — same model the Hub library uses. New 'recording' type wired into Happy Hub (icon, type filter, audience pill). (3) Live data cleaned: Sarah Chen + Ann Dettori demo personas deleted; Lou Syphers / Jenn Donovan / Samantha Zoom + stub records merged into their canonical clients (66 → 62 records, all 7 canonical real clients + Elodie intact). Skipped Amelia ×3 (3 different bizs — Phoebe to review manually). 26 topic-only Zoom orphans left for Phoebe to assign via Settings → Unmatched Zoom Recordings (recordings inside may be valuable). Wisdom card links from v11590 unchanged.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -12863,9 +12863,12 @@ async function renderHappyHub(filterTag, searchTerm, typeFilter) {
     return matchTag && matchType && matchSearch;
   });
 
-  var typeIcons = { blog:'📝', podcast:'🎙', course:'📚', tool:'🛠', booking:'📅' };
-  var typeColors = { blog:'var(--marshmallow)', podcast:'var(--mist)', course:'#FFF5E8', tool:'#F5F0FF', booking:'var(--mist)' };
-  var typeText   = { blog:'var(--hot-pink)', podcast:'var(--teal)', course:'#A07030', tool:'#6040A0', booking:'var(--teal)' };
+  // v11600: 'recording' type added — Zoom recordings saved via Settings →
+  // Data hygiene → "💛 Save as resource" land here. Same UI affordances
+  // (icon, colour, type pill) as the other types.
+  var typeIcons = { blog:'📝', podcast:'🎙', course:'📚', tool:'🛠', booking:'📅', recording:'🎬' };
+  var typeColors = { blog:'var(--marshmallow)', podcast:'var(--mist)', course:'#FFF5E8', tool:'#F5F0FF', booking:'var(--mist)', recording:'#FFFBE8' };
+  var typeText   = { blog:'var(--hot-pink)', podcast:'var(--teal)', course:'#A07030', tool:'#6040A0', booking:'var(--teal)', recording:'#A07030' };
 
   el.innerHTML =
     // Header + search
@@ -12874,7 +12877,7 @@ async function renderHappyHub(filterTag, searchTerm, typeFilter) {
     'style="flex:1;min-width:180px;border:1.5px solid var(--border);border-radius:99px;padding:9px 16px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none">' +
     '<select id="hub-type" onchange="renderHappyHub(\'\',document.getElementById(\'hub-search\').value,this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:8px 14px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);cursor:pointer">' +
     '<option value="">All types</option>' +
-    ['blog','podcast','course','tool','booking'].map(function(t) { return '<option value="'+t+'">'+(typeIcons[t]||'')+' '+t.charAt(0).toUpperCase()+t.slice(1)+'s</option>'; }).join('') +
+    ['blog','podcast','course','tool','booking','recording'].map(function(t) { return '<option value="'+t+'">'+(typeIcons[t]||'')+' '+t.charAt(0).toUpperCase()+t.slice(1)+'s</option>'; }).join('') +
     '</select>' +
     '<button class="btn-sm primary" onclick="showAddResourceForm()">+ Add resource</button>' +
     '</div>' +
@@ -14834,8 +14837,38 @@ async function dataHygieneSaveAsResource(orphanId) {
     });
   });
   if (!noteUrls.length) { branded.alert('No Zoom URL found on this record — nothing to save as a resource.'); return; }
+
+  // v11600: audience picker — same model the regular Hub library uses.
+  // {type: 'all'|'cohorts'|'programs', ids: [...]}. Default is 'private'
+  // (coach-only) for Zoom recordings since Phoebe didn't intend to share
+  // them when she clicked Save-as-resource — they're often personal-room
+  // recordings or cohort retrospectives that need a deliberate "share to
+  // MDC cohort" decision.
+  var audChoice = await branded.prompt(
+    'Who can see this resource?\n\n' +
+    '• "private" — coach only (default)\n' +
+    '• "all" — every client can see it\n' +
+    '• "mdc" — every MDC cohort member\n' +
+    '• A cohort id (e.g. "cohort-1") — just that cohort\n' +
+    '• A program key (e.g. "90day", "audit") — clients on that program\n\n' +
+    'Type one of those:',
+    'private',
+    'private',
+    { title: 'Resource visibility', okLabel: 'Save' }
+  );
+  if (audChoice == null) return; // user cancelled
+  var aud = (audChoice || 'private').trim().toLowerCase();
+  var audience;
+  if (aud === 'all')           audience = { type: 'all' };
+  else if (aud === 'private')  audience = { type: 'private' };
+  else if (aud === 'mdc')      audience = { type: 'programs', ids: ['mdc'] };
+  else if (aud.indexOf('cohort-') === 0) audience = { type: 'cohorts', ids: [aud] };
+  else                         audience = { type: 'programs', ids: [aud] };
+
   var ok = await branded.confirm(
-    'Add ' + noteUrls.length + ' Zoom recording link' + (noteUrls.length === 1 ? '' : 's') + ' to your Happy Hub library, then delete this orphan record?',
+    'Add ' + noteUrls.length + ' Zoom recording link' + (noteUrls.length === 1 ? '' : 's') + ' to your Happy Hub library' +
+    ' (visible to: ' + (audience.type === 'all' ? 'everyone' : audience.type === 'private' ? 'coach only' : audience.ids.join(', ')) + ')' +
+    ', then delete this orphan record?',
     { title: '💛 Save as resource?', okLabel: 'Save + delete' }
   );
   if (!ok) return;
@@ -14846,11 +14879,15 @@ async function dataHygieneSaveAsResource(orphanId) {
     window._coachSettings.hubResources.push({
       id: 'res-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
       title: n.title,
+      // v11600: schema-correct fields so the Happy Hub renderer picks
+      // these up cleanly. Was `kind: 'video'` (renderer ignored it).
+      type: 'recording',
       url: n.url,
-      kind: 'video',
+      desc: 'Zoom recording from ' + (n.date ? new Date(n.date).toLocaleDateString('en-AU', { day:'numeric', month:'short', year:'numeric' }) : 'an earlier session') + ' · saved from Settings → Data hygiene.',
       tags: ['Zoom recording', n.date].filter(Boolean),
+      date: n.date || new Date().toISOString().split('T')[0],
       addedAt: new Date().toISOString(),
-      audience: 'private', // Phoebe-only by default; she can share to clients later
+      audience: audience,
     });
   });
   flushCoachSettings();
@@ -18047,6 +18084,23 @@ function renderCohortFeed(co, members) {
           '<button onclick="deleteFeedEntry(\'' + co.id + '\',\'' + e.id + '\')" title="Delete" style="background:transparent;border:none;color:var(--stone);font-size:14px;cursor:pointer;padding:2px 6px">×</button>' +
         '</div>'
       : '';
+    // v11600: same threaded-reply UI as the client-side feed, so Phoebe
+    // sees + can post replies from the cohort manager too.
+    var replies = Array.isArray(e.replies) ? e.replies : [];
+    var replyCount = replies.length;
+    var replyToggleId = 'coach-feed-replies-' + e.id;
+    var replyComposerId = 'coach-feed-reply-composer-' + e.id;
+    var repliesHtml = replies.map(function(r) {
+      var rWhen = '';
+      try { rWhen = new Date(r.ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); } catch (er) {}
+      return '<div style="background:white;border:1px solid var(--border-soft);border-radius:8px;padding:7px 10px;margin-top:4px">' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap">' +
+          '<span style="font-size:11px;font-weight:700;color:var(--magenta)">' + escapeHtml(r.authorName || 'Member') + '</span>' +
+          (rWhen ? '<span style="font-size:10px;color:var(--stone)">' + rWhen + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--magenta);line-height:1.5">' + escapeHtml(r.text || '') + '</div>' +
+      '</div>';
+    }).join('');
     return '<div style="background:' + (bgMap[e.kind] || 'white') + ';border:1px solid var(--border-soft);border-radius:10px;padding:10px 12px;margin-bottom:6px">' +
       '<div style="display:flex;align-items:flex-start;gap:10px">' +
         '<div style="font-size:20px;line-height:1">' + icon + '</div>' +
@@ -18058,7 +18112,19 @@ function renderCohortFeed(co, members) {
         '</div>' +
         coachControls +
       '</div>' +
-      '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft)">' + reactionRow + '</div>' +
+      '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft);align-items:center;flex-wrap:wrap">' + reactionRow +
+        '<button onclick="toggleFeedReplies(\'' + replyToggleId + '\',\'' + replyComposerId + '\')" style="background:transparent;border:1px solid var(--border-soft);padding:3px 10px;border-radius:99px;font-size:11px;cursor:pointer;color:var(--stone);font-family:var(--f-body);margin-left:6px">💬 ' + (replyCount ? replyCount + ' repl' + (replyCount === 1 ? 'y' : 'ies') : 'Reply') + '</button>' +
+      '</div>' +
+      '<div id="' + replyToggleId + '" style="display:' + (replyCount ? 'block' : 'none') + ';margin-top:8px;padding-left:30px">' +
+        repliesHtml +
+        '<div id="' + replyComposerId + '" style="display:none;margin-top:6px">' +
+          '<input id="' + replyComposerId + '-input" placeholder="Reply as Phoebe…" maxlength="400" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);outline:none">' +
+          '<div style="display:flex;gap:6px;margin-top:4px">' +
+            '<button onclick="postFeedReply(\'' + co.id + '\',\'' + e.id + '\',\'' + replyComposerId + '\')" class="btn-sm primary" style="font-size:11px;padding:4px 12px">Post reply</button>' +
+            '<button onclick="document.getElementById(\'' + replyComposerId + '\').style.display=\'none\'" class="btn-sm" style="font-size:11px;padding:4px 12px">Cancel</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
     '</div>';
   }
 
@@ -18169,9 +18235,6 @@ function updateClientCommunityTabVisibility(client) {
 function renderClientCommunityTab(client) {
   var area = document.getElementById('client-community-area');
   if (!area || !client) return;
-  // Defence in depth — if a non-member somehow reaches this code path,
-  // bounce them with a friendly message. The tab visibility helper
-  // already hides the entry point but a stale URL hash could land here.
   if (!_clientHasCohort(client)) {
     area.innerHTML =
       '<div class="client-section">' +
@@ -18183,13 +18246,16 @@ function renderClientCommunityTab(client) {
   var firstName = ((client.name || '').split(' ')[0]) || 'there';
   var cos = _clientCohorts(client);
   var sections = cos.map(function(co) {
-    // Each section uses the same client-side feed renderer that previously
-    // sat inline inside the MDC program tab — so behaviour, reactions,
-    // posting all stay identical, just relocated.
     var prog = (client.programs || []).find(function(p) { return p && p.cohort === co.id; });
     if (!prog) return '';
+    // v11600: per-cohort container — momentum banner + member directory + feed
+    var members  = (clients || []).filter(function(c) {
+      return (c.programs || []).some(function(p) { return p && p.cohort === co.id; });
+    });
+    var momentumHtml = _renderCohortMomentumBanner(co, members);
+    var memberDirHtml = _renderCohortMemberDirectory(co, members, client);
     var feedHtml = (typeof renderClientCohortFeed === 'function') ? renderClientCohortFeed(client, prog) : '';
-    return feedHtml;
+    return momentumHtml + memberDirHtml + feedHtml;
   }).join('');
 
   area.innerHTML =
@@ -18198,9 +18264,88 @@ function renderClientCommunityTab(client) {
         '<span>🌟 Your community</span>' +
         '<span style="font-size:11px;color:var(--stone);font-weight:500">· ' + cos.length + ' cohort' + (cos.length === 1 ? '' : 's') + '</span>' +
       '</h3>' +
-      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">Hey ' + escapeHtml(firstName) + ' — this is private to your cohort. Wins, shoutouts, session highlights and resources Phoebe shares all land here. Add a shoutout when someone\'s done something brilliant.</p>' +
+      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">Hey ' + escapeHtml(firstName) + ' — this is private to your cohort. Wins, shoutouts and session highlights all land here. Add a shoutout when someone\'s done something brilliant. 👇</p>' +
     '</div>' +
     sections;
+}
+
+// v11600: cohort momentum banner — auto-derived stats from the last 7 days
+// of cohort feed activity. Acts as social proof ("4 wins this week — your
+// cohort is moving"). Suppresses entirely when the cohort has been quiet
+// (no recent activity at all) so it never feels like a guilt trip.
+function _renderCohortMomentumBanner(co, members) {
+  if (!co || !members || !members.length) return '';
+  var now = Date.now();
+  var SEVEN_DAYS = 7 * 86400000;
+  var recent = (co.feedEntries || []).filter(function(e) {
+    if (!e || !e.ts) return false;
+    try { return (now - new Date(e.ts).getTime()) < SEVEN_DAYS; } catch (err) { return false; }
+  });
+  if (!recent.length) return '';
+  var counts = { win: 0, shoutout: 0, milestone: 0, resource: 0, highlight: 0 };
+  var contributors = new Set();
+  recent.forEach(function(e) {
+    if (counts[e.kind] != null) counts[e.kind]++;
+    if (e.authorId) contributors.add(e.authorId);
+  });
+  var stats = [];
+  if (counts.win)       stats.push('<span title="Wins logged in the last 7 days">🏆 <strong>' + counts.win + '</strong> win' + (counts.win === 1 ? '' : 's') + ' this week</span>');
+  if (counts.shoutout)  stats.push('<span title="Shoutouts in the last 7 days">👏 <strong>' + counts.shoutout + '</strong> shoutout' + (counts.shoutout === 1 ? '' : 's') + '</span>');
+  if (counts.milestone) stats.push('<span title="Milestones in the last 7 days">🎖 <strong>' + counts.milestone + '</strong> milestone' + (counts.milestone === 1 ? '' : 's') + '</span>');
+  if (counts.resource)  stats.push('<span title="Resources Phoebe shared this week">📚 <strong>' + counts.resource + '</strong> shared</span>');
+  if (contributors.size) stats.push('<span title="Cohort members who posted in the last 7 days">💬 <strong>' + contributors.size + ' of ' + members.length + '</strong> posting</span>');
+  if (!stats.length) return '';
+  return '<div class="client-section" style="background:linear-gradient(135deg,#FFFBE8 0%,#FDEFF5 100%);border-color:rgba(232,160,32,0.35);padding:14px 18px">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">' +
+      '<div style="font-size:18px">📈</div>' +
+      '<div style="font-family:var(--f-head);font-size:13px;color:var(--magenta);font-weight:700;flex:1">Your cohort this week</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--magenta);line-height:1.5">' + stats.join('<span style="color:var(--stone)">·</span>') + '</div>' +
+  '</div>';
+}
+
+// v11600: member directory — "who else is in my cohort?". Mini-cards with
+// initials, name, business, recent-win indicator. Self-card highlighted.
+// Drives the "I'm not alone in this" feeling that makes communities sticky.
+function _renderCohortMemberDirectory(co, members, viewer) {
+  if (!co || !members || !members.length) return '';
+  // Sort: self first, then alphabetical
+  var sorted = members.slice().sort(function(a, b) {
+    if (a.id === viewer.id) return -1;
+    if (b.id === viewer.id) return 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+  var cards = sorted.map(function(m) {
+    var isSelf = m.id === viewer.id;
+    var firstName = (m.name || '').split(' ')[0] || '?';
+    var initials = (m.name || '').split(' ').map(function(n){ return n[0] || ''; }).join('').slice(0, 2).toUpperCase();
+    var biz = (m.biz || '').replace(/^MDC member$/i, '').trim();
+    // Has the member logged a win in the last 14 days?
+    var FOURTEEN_DAYS = 14 * 86400000;
+    var hasRecentWin = false;
+    (m.programs || []).forEach(function(p) {
+      (p.wins || []).forEach(function(w) {
+        if (!w.date) return;
+        try { if ((Date.now() - new Date(w.date).getTime()) < FOURTEEN_DAYS) hasRecentWin = true; } catch(e) {}
+      });
+    });
+    var winPill = hasRecentWin
+      ? '<span style="position:absolute;top:6px;right:6px;font-size:11px" title="Logged a win in the last 14 days">🏆</span>'
+      : '';
+    return '<div style="position:relative;background:' + (isSelf ? 'linear-gradient(135deg,#FFFBE8,#FDEFF5)' : 'white') + ';border:1.5px solid ' + (isSelf ? 'var(--hot-pink)' : 'var(--border)') + ';border-radius:14px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:120px;text-align:center">' +
+      winPill +
+      '<div style="width:42px;height:42px;border-radius:99px;background:' + (isSelf ? 'var(--hot-pink)' : 'var(--marshmallow)') + ';color:' + (isSelf ? 'white' : 'var(--magenta)') + ';display:flex;align-items:center;justify-content:center;font-family:var(--f-head);font-size:14px;font-weight:700">' + escapeHtml(initials) + '</div>' +
+      '<div style="font-size:13px;font-weight:700;color:var(--magenta);line-height:1.2">' + escapeHtml(firstName) + (isSelf ? ' <span style="font-size:9px;color:var(--hot-pink);background:rgba(229,4,139,0.12);padding:1px 6px;border-radius:99px;font-weight:700">YOU</span>' : '') + '</div>' +
+      (biz ? '<div style="font-size:11px;color:var(--stone);line-height:1.3">' + escapeHtml(biz.length > 32 ? biz.slice(0, 30) + '…' : biz) + '</div>' : '') +
+    '</div>';
+  }).join('');
+  return '<div class="client-section">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
+      '<h3 style="margin:0">👥 In your cohort</h3>' +
+      '<span style="font-size:11px;color:var(--stone);font-weight:500">· ' + members.length + ' member' + (members.length === 1 ? '' : 's') + '</span>' +
+    '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:8px">' + cards + '</div>' +
+  '</div>';
 }
 
 // v11370 §10: client-side cohort feed renderer — for the MDC client portal
@@ -18232,6 +18377,23 @@ function renderClientCohortFeed(client, prog) {
           '</button>';
         }).join('');
         var pinPill = e.pinned ? '<span style="font-size:10px;background:rgba(229,4,139,0.15);color:var(--magenta);padding:2px 8px;border-radius:99px;font-weight:700">📌 Pinned</span>' : '';
+        // v11600: threaded replies — collapsed by default, expand on click.
+        // Replies live on e.replies as { id, text, authorId, authorName, ts }
+        var replies = Array.isArray(e.replies) ? e.replies : [];
+        var replyCount = replies.length;
+        var replyToggleId = 'feed-replies-' + e.id;
+        var replyComposerId = 'feed-reply-composer-' + e.id;
+        var repliesHtml = replies.map(function(r) {
+          var rWhen = '';
+          try { rWhen = new Date(r.ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); } catch (er) {}
+          return '<div style="background:white;border:1px solid var(--border-soft);border-radius:8px;padding:7px 10px;margin-top:4px">' +
+            '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap">' +
+              '<span style="font-size:11px;font-weight:700;color:var(--magenta)">' + escapeHtml(r.authorName || 'Member') + '</span>' +
+              (rWhen ? '<span style="font-size:10px;color:var(--stone)">' + rWhen + '</span>' : '') +
+            '</div>' +
+            '<div style="font-size:12px;color:var(--magenta);line-height:1.5">' + escapeHtml(r.text || '') + '</div>' +
+          '</div>';
+        }).join('');
         return '<div style="background:' + (bgMap[e.kind] || 'white') + ';border:1px solid var(--border-soft);border-radius:10px;padding:10px 12px;margin-bottom:6px">' +
           '<div style="display:flex;align-items:flex-start;gap:10px">' +
             '<div style="font-size:20px;line-height:1">' + icon + '</div>' +
@@ -18242,7 +18404,20 @@ function renderClientCohortFeed(client, prog) {
               (e.author && e.authorId !== client.id ? '<div style="font-size:11px;color:var(--stone);margin-top:4px;font-style:italic">— ' + escapeHtml(e.author) + '</div>' : '') +
             '</div>' +
           '</div>' +
-          '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft)">' + reactionRow + '</div>' +
+          '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft);align-items:center;flex-wrap:wrap">' + reactionRow +
+            '<button onclick="toggleFeedReplies(\'' + replyToggleId + '\',\'' + replyComposerId + '\')" style="background:transparent;border:1px solid var(--border-soft);padding:3px 10px;border-radius:99px;font-size:11px;cursor:pointer;color:var(--stone);font-family:var(--f-body);margin-left:6px">💬 ' + (replyCount ? replyCount + ' repl' + (replyCount === 1 ? 'y' : 'ies') : 'Reply') + '</button>' +
+          '</div>' +
+          // Replies + composer — hidden by default, shown when 💬 is tapped
+          '<div id="' + replyToggleId + '" style="display:' + (replyCount ? 'block' : 'none') + ';margin-top:8px;padding-left:30px">' +
+            repliesHtml +
+            '<div id="' + replyComposerId + '" style="display:none;margin-top:6px">' +
+              '<input id="' + replyComposerId + '-input" placeholder="Write a reply…" maxlength="400" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);outline:none">' +
+              '<div style="display:flex;gap:6px;margin-top:4px">' +
+                '<button onclick="postFeedReply(\'' + co.id + '\',\'' + e.id + '\',\'' + replyComposerId + '\')" class="btn-sm primary" style="font-size:11px;padding:4px 12px">Post reply</button>' +
+                '<button onclick="document.getElementById(\'' + replyComposerId + '\').style.display=\'none\'" class="btn-sm" style="font-size:11px;padding:4px 12px">Cancel</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
         '</div>';
       }).join('')
     : '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:10px 0;text-align:center">Quiet for now. Wins, shoutouts and session highlights will land here.</div>';
@@ -18253,6 +18428,61 @@ function renderClientCohortFeed(client, prog) {
     '</div>' +
     entriesHtml +
   '</div>';
+}
+
+// v11600: feed reply system. Replies are stored on each feed entry as
+// `e.replies = [{id, text, authorId, authorName, ts}]`. The composer is
+// hidden by default; tapping the 💬 button surfaces it AND any existing
+// replies (which auto-show when there are some). Posts go through the
+// same _saveCohorts() debounced flush as the rest of the cohort feed.
+function toggleFeedReplies(replyContainerId, composerId) {
+  var container = document.getElementById(replyContainerId);
+  var composer = document.getElementById(composerId);
+  if (!container || !composer) return;
+  // If the container is hidden, show it; either way always show composer
+  if (container.style.display === 'none') container.style.display = 'block';
+  composer.style.display = 'block';
+  // Focus the input on next paint so the keyboard pops on mobile
+  setTimeout(function() {
+    var input = document.getElementById(composerId + '-input');
+    if (input) input.focus();
+  }, 60);
+}
+
+async function postFeedReply(cohortId, entryId, composerId) {
+  var input = document.getElementById(composerId + '-input');
+  if (!input) return;
+  var text = (input.value || '').trim();
+  if (!text) { branded.toast('Type a reply first', 'warn'); return; }
+  if (text.length > 400) { branded.alert('Replies are capped at 400 characters.'); return; }
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var entry = (co.feedEntries || []).find(function(x){ return x.id === entryId; });
+  if (!entry) return;
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  // If posted from the coach view, fall back to "Phoebe"
+  var authorName = client ? (client.name || 'Member') : 'Phoebe';
+  var authorId   = client ? client.id : 'phoebe';
+  entry.replies = entry.replies || [];
+  entry.replies.push({
+    id: 'reply-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+    text: text,
+    authorId: authorId,
+    authorName: authorName,
+    ts: new Date().toISOString(),
+  });
+  _saveCohorts();
+  input.value = '';
+  branded.toast('Reply posted ✨');
+  // Re-render whichever surface is showing
+  if (typeof renderClientCommunityTab === 'function' && currentClientId) {
+    var c = clients.find(function(x){ return x.id === currentClientId; });
+    if (c) renderClientCommunityTab(c);
+  }
+  if (typeof renderCohortManager === 'function') {
+    var cm = document.getElementById('cohort-manager-content');
+    if (cm && cm.offsetParent !== null) renderCohortManager();
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════
