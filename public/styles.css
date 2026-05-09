@@ -2328,3 +2328,38 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 body.printing-workbook .workbook-print-area .workbook-screen-only { display: none !important; }
 body.printing-workbook .workbook-print-area .workbook-print-only  { display: block !important; }
 
+
+/* v11530 — Settings page section tabs */
+.settings-tab-btn {
+  background: white;
+  color: var(--magenta);
+  border: 1.5px solid var(--border);
+  padding: 6px 14px;
+  border-radius: 99px;
+  font-family: var(--f-body);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.settings-tab-btn:hover {
+  border-color: var(--hot-pink);
+  color: var(--hot-pink);
+  transform: translateY(-1px);
+}
+.settings-tab-btn.active {
+  background: var(--hot-pink);
+  color: white;
+  border-color: var(--hot-pink);
+}
+@media (max-width: 600px) {
+  #settings-section-nav {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .settings-tab-btn {
+    flex-shrink: 0;
+  }
+}

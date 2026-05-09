@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11520 — HOTFIX: removed orphan clientPostShoutout function body that was sitting at module scope without its declaration line, causing 'Illegal return statement' SyntaxError + breaking every function definition below it (incl. enterClient + enterCoach). Both logins were dead. Working copy of clientPostShoutout still lives at line ~14700 (was restored in v11399) — only the corrupt duplicate body is gone. Brace/paren balance now perfect (was -1 in the v11440 review).">
+<meta name="hmh-build" content="v11530 — fixes the deleted-clients-keep-coming-back bug (server is now canonical for client existence in safeMergeClients; local cache + localStorage are pruned after data hygiene delete + merge). Stale Zoom setup card replaced with a 'Live ✓' card + collapsible setup notes. Task archive/delete/restore now work identically on the home page, Task Sheet, AND per-client Tasks tab — single _refreshTaskSurfaces helper keeps every visible surface in sync. Settings page reorganised: 6 tabs at the top (All / 👤 Account / 🔌 Integrations / 📚 Content / 🔄 Sync &amp; tools / 🛡 Maintenance) auto-tag every card by heading or id; choice persists per device. Data hygiene panel: each orphan/dup row gets a '⋯ Choose action' button that opens a per-row picker — merge into a chosen client (any client, not just name-matched), 💛 save Zoom recordings as Happy Hub resources, or × delete forever.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -653,6 +653,20 @@
         <h1 class="page-title">Settings & Setup</h1>
         <p class="page-sub">Configure integrations and test your automations</p>
 
+        <!-- v11530: section nav. Each settings card is auto-tagged into one
+             of these groups by groupSettingsCards() on page load. Click a
+             tab to filter; "All" shows everything. Choice persists in
+             localStorage so refresh keeps the selected tab. -->
+        <div id="settings-section-nav" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;padding:10px 12px;background:var(--paper);border:1px solid var(--border-soft);border-radius:12px;align-items:center">
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--stone);margin-right:4px">View →</span>
+          <button class="settings-tab-btn active" data-group="all" onclick="setSettingsGroup('all')">📋 All</button>
+          <button class="settings-tab-btn" data-group="account" onclick="setSettingsGroup('account')">👤 Account</button>
+          <button class="settings-tab-btn" data-group="integrations" onclick="setSettingsGroup('integrations')">🔌 Integrations</button>
+          <button class="settings-tab-btn" data-group="content" onclick="setSettingsGroup('content')">📚 Content</button>
+          <button class="settings-tab-btn" data-group="sync" onclick="setSettingsGroup('sync')">🔄 Sync &amp; tools</button>
+          <button class="settings-tab-btn" data-group="maintenance" onclick="setSettingsGroup('maintenance')">🛡 Maintenance</button>
+        </div>
+
         <!-- v11000: program types — Phoebe defines custom program shapes
              without code changes. Each type appears in the "Add program"
              dropdown alongside built-ins. Render path uses the customSections
@@ -757,8 +771,20 @@
         </div>
 
         <div class="settings-card">
-          <h4>🎬 Zoom setup</h4>
-          <p>For automatic transcript fetching, enable cloud recording + audio transcript in Zoom Settings → Recording. Then create a Server-to-Server OAuth app at marketplace.zoom.us and add ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET to your Netlify environment variables.</p>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+            <h4 style="margin:0">🎬 Zoom setup</h4>
+            <span class="integration-status integration-status-on">✓ Live</span>
+          </div>
+          <p style="font-size:13px;color:var(--magenta);line-height:1.6">Server-to-Server OAuth + webhook signing are wired. Cloud recording + audio transcripts auto-pull when each meeting finishes processing.</p>
+          <details style="margin-top:8px">
+            <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600">Setup notes (for reference) →</summary>
+            <ol style="font-size:12px;color:var(--stone);line-height:1.7;padding-left:22px;margin-top:6px">
+              <li>Zoom Settings → Recording → enable <strong>Cloud recording</strong> + <strong>Audio transcript</strong></li>
+              <li>marketplace.zoom.us → Server-to-Server OAuth app → grab account/client/secret IDs</li>
+              <li>Set Netlify env vars: <code>ZOOM_ACCOUNT_ID</code> · <code>ZOOM_CLIENT_ID</code> · <code>ZOOM_CLIENT_SECRET</code> · <code>ZOOM_VERIFICATION_TOKEN</code></li>
+              <li>Webhook subscription on <code>/api/zoom-webhook</code> for <code>recording.completed</code> events</li>
+            </ol>
+          </details>
         </div>
 
         <div class="settings-card">
@@ -2749,6 +2775,72 @@ async function editCustomProgramType(typeId) {
 // v11320: integrations status — fetches /api/integrations-status (which
 // reports which env vars are set) and updates the green/grey pills next
 // to each integration card heading. Auto-runs when Settings opens.
+// v11530: settings page section grouping. Each .settings-card gets tagged
+// into one of: account | integrations | content | sync | maintenance,
+// based on its <h4> text or id. Tabs at the top of the Settings page
+// filter visibility by group. Choice persists in localStorage.
+function groupSettingsCards() {
+  var cards = document.querySelectorAll('#page-settings .settings-card');
+  if (!cards.length) return;
+  // ID-first lookup table — wins over heading-keyword matching
+  var byId = {
+    'data-hygiene-card':       'maintenance',
+    'intake-defaults-card':    'content',
+    'zoom-templates-card':     'sync',
+    'custom-badges-card':      'content',
+    'integration-gmail':       'integrations',
+    'integration-zoom':        'integrations',
+    'integration-calendly':    'integrations',
+    'integration-stripe':      'integrations',
+    'integration-whatsapp':    'integrations',
+    'integration-twilio':      'integrations',
+    'integration-anthropic':   'integrations',
+    'integration-calendar':    'integrations',
+  };
+  // Fallback: heading-keyword matching (case-insensitive substring)
+  var byHeadingKeyword = [
+    { match: /coach pin|login pin/i,                  group: 'account' },
+    { match: /phone number|my phone/i,                group: 'account' },
+    { match: /hourly rate|profitability/i,            group: 'account' },
+    { match: /notification|notif/i,                   group: 'account' },
+    { match: /webhook url|webhook setup|calendly webhook/i, group: 'sync' },
+    { match: /zoom setup|zoom recordings/i,           group: 'sync' },
+    { match: /full sync|sync everything|simulate.*booking|simulate.*calendly/i, group: 'sync' },
+    { match: /program type|recommendable|products?\b|badge/i, group: 'content' },
+    { match: /default intake|intake question/i,       group: 'content' },
+    { match: /backup|github/i,                        group: 'maintenance' },
+    { match: /data hygiene/i,                         group: 'maintenance' },
+    { match: /add client|manually add/i,              group: 'sync' },
+  ];
+  cards.forEach(function(card) {
+    if (card.dataset.settingsGroup) return; // already tagged
+    var group = '';
+    if (card.id && byId[card.id]) group = byId[card.id];
+    if (!group) {
+      var h = card.querySelector('h4');
+      var headText = h ? (h.textContent || '') : '';
+      for (var i = 0; i < byHeadingKeyword.length; i++) {
+        if (byHeadingKeyword[i].match.test(headText)) { group = byHeadingKeyword[i].group; break; }
+      }
+    }
+    if (!group) group = 'maintenance'; // default bucket — appears in Maintenance + All
+    card.dataset.settingsGroup = group;
+  });
+}
+function setSettingsGroup(group) {
+  var cards = document.querySelectorAll('#page-settings .settings-card');
+  cards.forEach(function(card) {
+    if (group === 'all') {
+      card.style.display = '';
+    } else {
+      card.style.display = (card.dataset.settingsGroup === group) ? '' : 'none';
+    }
+  });
+  document.querySelectorAll('.settings-tab-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.group === group);
+  });
+  try { localStorage.setItem('hmh_settings_group', group); } catch (e) {}
+}
 async function refreshIntegrationStatusPills() {
   try {
     var r = await fetch('/api/integrations-status');
@@ -3287,7 +3379,26 @@ function safeMergeClients(serverClients) {
   if (!Array.isArray(serverClients) || !serverClients.length) return clients;
   var localById = {};
   (clients || []).forEach(function(c) { if (c && c.id) localById[c.id] = c; });
-  var merged = (clients || []).slice();
+  var serverIds = new Set();
+  serverClients.forEach(function(srv) { if (srv && srv.id) serverIds.add(srv.id); });
+
+  // v11530 fix: server is the source of truth for which clients EXIST.
+  // Any local-only client that's NOT on the server gets dropped — UNLESS
+  // it's brand new (touched within the last 10 minutes) and might not have
+  // synced yet. This stops deleted clients from re-appearing every page
+  // load (which is why "James Wilson tasks won't move" — the data hygiene
+  // delete worked server-side but the local cache kept resurrecting him).
+  var TEN_MIN = 10 * 60 * 1000;
+  var nowMs = Date.now();
+  var keepLocalOnly = (clients || []).filter(function(c) {
+    if (!c || !c.id) return false;
+    if (serverIds.has(c.id)) return false; // it's on the server, will be merged below
+    var locTs = c.updatedAt ? new Date(c.updatedAt).getTime() : 0;
+    var ageMs = nowMs - locTs;
+    return ageMs < TEN_MIN; // recently-touched local-only entries survive (might be unsynced new client)
+  });
+
+  var merged = keepLocalOnly.slice();
   serverClients.forEach(function(srv) {
     if (!srv || !srv.id) return;
     var local = localById[srv.id];
@@ -3298,12 +3409,10 @@ function safeMergeClients(serverClients) {
     var srvTs = srv.updatedAt ? new Date(srv.updatedAt).getTime() : 0;
     var locTs = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
     if (srvTs > locTs) {
-      // Server is strictly newer — replace local entry
-      var idx = merged.findIndex(function(c){ return c.id === srv.id; });
-      if (idx >= 0) merged[idx] = srv;
+      merged.push(srv); // server is strictly newer — use it
+    } else {
+      merged.push(local); // local is newer or equal — preserve in-progress edits
     }
-    // else: keep local (it's newer or equal — never let server overwrite
-    // an in-progress edit that Phoebe hasn't yet hit save on)
   });
   return merged;
 }
@@ -5147,6 +5256,13 @@ function showPage(id) {
         if (typeof renderRecommendableProductsList==='function') renderRecommendableProductsList();
         if (typeof refreshIntegrationStatusPills==='function') refreshIntegrationStatusPills();
         if (typeof renderIntakeDefaultsEditor==='function') renderIntakeDefaultsEditor();
+        // v11530: tag every card by group + apply the saved tab choice
+        if (typeof groupSettingsCards === 'function') groupSettingsCards();
+        if (typeof setSettingsGroup === 'function') {
+          var savedGroup = 'all';
+          try { savedGroup = localStorage.getItem('hmh_settings_group') || 'all'; } catch (e) {}
+          setSettingsGroup(savedGroup);
+        }
       }
       else if (id === 'tasks')      { if (typeof renderAllTasks==='function') renderAllTasks(); }
       else if (id === 'settings')   { if (typeof initNotificationsToggle==='function') initNotificationsToggle(); }
@@ -11650,6 +11766,27 @@ function refreshTaskRender(client) {
 // v11410: archive (soft) before delete (hard) — Phoebe can recover archived
 // tasks from the "Show archived" toggle on the panel; only "Delete forever"
 // actually removes them. Matches the client-archive pattern.
+// v11530: refresh every task surface that might be visible. Behaviour is
+// the same on home page, Task Sheet, and the per-client Tasks tab —
+// archive/delete/restore work identically wherever Phoebe sees a task.
+function _refreshTaskSurfaces(client) {
+  try {
+    if (typeof renderTasksPanel === 'function' && document.getElementById('tasks-panel')) {
+      renderTasksPanel(client, currentProgramId);
+    }
+  } catch (e) {}
+  try {
+    if (typeof renderTaskSheet === 'function' && document.getElementById('task-sheet-content')) {
+      renderTaskSheet();
+    }
+  } catch (e) {}
+  try {
+    if (typeof renderHome === 'function' && document.getElementById('home-content') && document.getElementById('home-content').children.length) {
+      renderHome();
+    }
+  } catch (e) {}
+}
+
 async function archiveTask(clientId, taskId) {
   var client = clients.find(function(c) { return c.id === clientId; });
   if (!client) return;
@@ -11658,7 +11795,7 @@ async function archiveTask(clientId, taskId) {
   t.archived = true;
   t.archivedAt = new Date().toISOString();
   await persistClient(client);
-  renderTasksPanel(client, currentProgramId);
+  _refreshTaskSurfaces(client);
   if (typeof branded !== 'undefined' && branded.toast) branded.toast('Archived · undo via Show archived');
 }
 
@@ -11670,7 +11807,7 @@ async function unarchiveTask(clientId, taskId) {
   t.archived = false;
   delete t.archivedAt;
   await persistClient(client);
-  renderTasksPanel(client, currentProgramId);
+  _refreshTaskSurfaces(client);
 }
 
 async function deleteTask(clientId, taskId) {
@@ -11680,7 +11817,7 @@ async function deleteTask(clientId, taskId) {
   if (!ok) return;
   client.tasks = (client.tasks||[]).filter(function(t) { return t.id !== taskId; });
   await persistClient(client);
-  renderTasksPanel(client, currentProgramId);
+  _refreshTaskSurfaces(client);
 }
 
 // v11440 cleanup: removed dead `renderTask()` function (replaced by
@@ -14423,19 +14560,141 @@ function _hygieneRow(c, bucket, suggestedTarget) {
   var noteCount = (c.programs || []).reduce(function(s, p) { return s + ((p.sessionNotes || []).length); }, 0);
   if (noteCount) subline.push(noteCount + ' session note' + (noteCount === 1 ? '' : 's'));
 
-  var mergeBtn = suggestedTarget
-    ? '<button class="btn-sm" onclick="dataHygieneMergeIntoCanonical(\'' + escapeHtml(c.id) + '\',\'' + escapeHtml(suggestedTarget) + '\')" title="Merge this orphan into the matching canonical client" style="font-size:10px;padding:3px 8px;background:rgba(95,163,168,0.18);color:#3F7A7E;border:1px solid #5FA3A8">↔ Merge into ' + escapeHtml(suggestedTarget.replace('client-','').replace('-','-')) + '</button>'
+  // v11530: rich per-row action picker. Phoebe chooses one of:
+  //   • Bulk-tick (default delete path)
+  //   • ↔ Merge → suggested canonical (only when name matched)
+  //   • ↔ Merge → pick a client (any orphan can fold into any client)
+  //   • 💛 Save as resource (turn topic + zoom URL into a Happy Hub resource)
+  //   • × Delete forever
+  //   • Open (read-only inspect)
+  var safeId = escapeHtml(c.id);
+  var rowId = 'hyg-row-' + (c.id || '').replace(/[^a-z0-9]/gi, '-');
+  var mergeSuggested = suggestedTarget
+    ? '<button class="btn-sm" onclick="dataHygieneMergeIntoCanonical(\'' + safeId + '\',\'' + escapeHtml(suggestedTarget) + '\')" title="Merge this orphan into the matching canonical client" style="font-size:10px;padding:3px 8px;background:rgba(95,163,168,0.18);color:#3F7A7E;border:1px solid #5FA3A8">↔ Merge into ' + escapeHtml(suggestedTarget.replace('client-','').replace('-','-')) + '</button>'
     : '';
 
-  return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:white;border:1px solid var(--border);border-radius:8px;margin-bottom:4px">' +
-    '<input type="checkbox" class="data-hygiene-check" data-id="' + escapeHtml(c.id) + '" data-bucket="' + bucket + '" style="margin:0">' +
-    '<div style="flex:1;min-width:0">' +
-      '<div style="font-size:13px;color:var(--magenta);font-weight:600">' + escapeHtml(c.name || '(no name)') + '</div>' +
-      '<div style="font-size:11px;color:var(--stone)">' + subline.join(' · ') + '</div>' +
+  return '<div id="' + rowId + '" style="display:flex;flex-direction:column;gap:6px;padding:8px 10px;background:white;border:1px solid var(--border);border-radius:8px;margin-bottom:4px">' +
+    '<div style="display:flex;align-items:center;gap:8px">' +
+      '<input type="checkbox" class="data-hygiene-check" data-id="' + safeId + '" data-bucket="' + bucket + '" style="margin:0">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;color:var(--magenta);font-weight:600">' + escapeHtml(c.name || '(no name)') + '</div>' +
+        '<div style="font-size:11px;color:var(--stone)">' + subline.join(' · ') + '</div>' +
+      '</div>' +
+      mergeSuggested +
+      '<button class="btn-sm" onclick="dataHygieneOpenActions(\'' + safeId + '\',\'' + rowId + '\')" style="font-size:10px;padding:3px 8px" title="Choose an action for this record">⋯ Choose action</button>' +
     '</div>' +
-    mergeBtn +
-    '<button class="btn-sm" onclick="openClient(\'' + escapeHtml(c.id) + '\')" style="font-size:10px;padding:3px 8px">Open</button>' +
+    '<div id="' + rowId + '-actions" style="display:none;padding:8px;background:var(--paper);border-radius:6px;border:1px dashed var(--border)"></div>' +
   '</div>';
+}
+
+// v11530: open the per-row action picker. Renders inline action buttons
+// for orphan / test / demo records. Each option is one click.
+function dataHygieneOpenActions(clientId, rowId) {
+  var slot = document.getElementById(rowId + '-actions');
+  if (!slot) return;
+  if (slot.style.display !== 'none' && slot.innerHTML) {
+    slot.style.display = 'none';
+    return;
+  }
+  var c = clients.find(function(x) { return x.id === clientId; });
+  if (!c) return;
+  var safeId = escapeHtml(clientId);
+  // Build a client-picker dropdown (excluding the orphan itself)
+  var pickerOptions = (clients || [])
+    .filter(function(x) { return x.id !== clientId; })
+    .filter(function(x) { return PROTECTED_CLIENT_IDS.indexOf(x.id) >= 0 || _categoriseClient(x) === 'real'; })
+    .sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); })
+    .map(function(x) { return '<option value="' + escapeHtml(x.id) + '">' + escapeHtml(x.name || x.email || x.id) + '</option>'; })
+    .join('');
+  var hasZoomNotes = (c.programs || []).some(function(p) {
+    return (p.sessionNotes || []).some(function(n) { return n.zoomUrl || n.zoomVideoUrl; });
+  });
+
+  slot.innerHTML =
+    '<div style="font-size:11px;font-weight:700;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">What do you want to do with this record?</div>' +
+    // Merge into a chosen client
+    '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">' +
+      '<label style="font-size:12px;color:var(--magenta);font-weight:600">↔ Add to existing client:</label>' +
+      '<select id="' + rowId + '-target" style="border:1.5px solid var(--border);border-radius:8px;padding:5px 8px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:white;flex:1;min-width:160px">' +
+        '<option value="">— Pick a client —</option>' +
+        pickerOptions +
+      '</select>' +
+      '<button class="btn-sm primary" onclick="dataHygieneMergeFromPicker(\'' + safeId + '\',\'' + rowId + '\')" style="font-size:10px;padding:3px 10px">Merge in</button>' +
+    '</div>' +
+    // Save as resource (only useful for zoom orphans with playable content)
+    (hasZoomNotes
+      ? '<div style="margin-bottom:6px"><button class="btn-sm" onclick="dataHygieneSaveAsResource(\'' + safeId + '\')" style="font-size:11px;background:rgba(251,242,25,0.3);color:var(--magenta);border:1px solid var(--sunshine)">💛 Save as a Happy Hub resource (Zoom recording)</button></div>'
+      : '') +
+    // Delete forever
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+      '<button class="btn-sm" onclick="dataHygieneDeleteOne(\'' + safeId + '\')" style="font-size:10px;padding:3px 10px;background:transparent;color:#C0392B;border:1px solid rgba(192,57,43,0.4)">× Delete forever</button>' +
+      '<button class="btn-sm" onclick="document.getElementById(\'' + rowId + '-actions\').style.display=\'none\'" style="font-size:10px;padding:3px 10px;margin-left:auto">Close</button>' +
+    '</div>';
+  slot.style.display = 'block';
+}
+
+async function dataHygieneMergeFromPicker(orphanId, rowId) {
+  var selectEl = document.getElementById(rowId + '-target');
+  if (!selectEl) return;
+  var targetId = selectEl.value;
+  if (!targetId) { branded.alert('Pick a target client first.'); return; }
+  return dataHygieneMergeIntoCanonical(orphanId, targetId);
+}
+
+// v11530: turn an orphan client record into a Happy Hub resource. Pulls
+// each Zoom session note's URL + topic into a single resource entry,
+// then deletes the orphan. Useful for "personal meeting room" recordings
+// that aren't tied to any client but worth keeping in the library.
+async function dataHygieneSaveAsResource(orphanId) {
+  var orphan = clients.find(function(x) { return x.id === orphanId; });
+  if (!orphan) return;
+  var noteUrls = [];
+  (orphan.programs || []).forEach(function(p) {
+    (p.sessionNotes || []).forEach(function(n) {
+      if (n.zoomUrl || n.zoomVideoUrl) noteUrls.push({
+        url:  n.zoomVideoUrl || n.zoomUrl,
+        title: n.zoomTopic || orphan.name || 'Zoom recording',
+        date: n.date || '',
+      });
+    });
+  });
+  if (!noteUrls.length) { branded.alert('No Zoom URL found on this record — nothing to save as a resource.'); return; }
+  var ok = await branded.confirm(
+    'Add ' + noteUrls.length + ' Zoom recording link' + (noteUrls.length === 1 ? '' : 's') + ' to your Happy Hub library, then delete this orphan record?',
+    { title: '💛 Save as resource?', okLabel: 'Save + delete' }
+  );
+  if (!ok) return;
+  // Append to coachSettings.hubResources (created if absent)
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.hubResources = window._coachSettings.hubResources || [];
+  noteUrls.forEach(function(n) {
+    window._coachSettings.hubResources.push({
+      id: 'res-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+      title: n.title,
+      url: n.url,
+      kind: 'video',
+      tags: ['Zoom recording', n.date].filter(Boolean),
+      addedAt: new Date().toISOString(),
+      audience: 'private', // Phoebe-only by default; she can share to clients later
+    });
+  });
+  flushCoachSettings();
+  // Delete the orphan
+  try {
+    var resp = await fetch('/api/delete-client', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ pin: 'Happy_529', clientIds: [orphanId] })
+    });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+    if (Array.isArray(clients)) clients = clients.filter(function(c) { return c.id !== orphanId; });
+    try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch (e) {}
+    branded.success('Saved ' + noteUrls.length + ' resource' + (noteUrls.length === 1 ? '' : 's') + ' · orphan deleted.');
+    renderDataHygienePanel();
+  } catch (err) {
+    branded.error('Resource saved but orphan delete failed: ' + (err && err.message || 'unknown'));
+  }
 }
 
 function _hygieneDupGroupHtml(g) {
@@ -14492,9 +14751,11 @@ async function _dataHygieneCallDelete(ids) {
     var data = await resp.json();
     if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
     branded.success('Deleted ' + (data.deleted || []).length + ' record' + ((data.deleted || []).length === 1 ? '' : 's') + '.');
-    // Drop them from local state too
+    // Drop them from local state too — AND from localStorage so the next
+    // page load doesn't resurrect them via the merge path. (v11530)
     var del = new Set(data.deleted || []);
     if (Array.isArray(clients)) clients = clients.filter(function(c) { return !del.has(c.id); });
+    try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch (e) {}
     if (typeof renderClients === 'function') renderClients();
     // Re-scan
     renderDataHygienePanel();
@@ -14539,6 +14800,8 @@ async function dataHygieneMergeIntoCanonical(orphanId, canonicalId) {
     var data = await resp.json();
     if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
     if (Array.isArray(clients)) clients = clients.filter(function(c) { return c.id !== orphanId; });
+    // v11530: persist localStorage too so the merge survives a refresh
+    try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch (e) {}
     branded.success('Merged.');
     renderDataHygienePanel();
   } catch (err) {
@@ -19786,8 +20049,11 @@ function renderHome() {
       : '<span style="font-size:9px;font-weight:700;background:#FDEFF5;color:#ACA495;padding:2px 6px;border-radius:99px;text-transform:uppercase">Coach</span>';
     var initials = item.client.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2);
 
+    // v11530: home-page tasks now have the same archive (📦) + delete (×)
+    // actions as the per-client Tasks tab + Task Sheet — so behaviour is
+    // consistent everywhere Phoebe sees a task.
     return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid ' + (urgent ? 'rgba(236,44,138,0.3)' : '#FCE8F0') + ';border-radius:8px;margin-bottom:6px;background:' + (urgent ? '#FFF8FB' : 'white') + '">' +
-      '<div onclick="toggleTaskDone(\''+item.client.id+'\',\''+t.id+'\');setTimeout(renderHome,100)" style="width:18px;height:18px;border-radius:99px;border:2px solid #F5D5E3;flex-shrink:0;cursor:pointer;margin-top:2px"></div>' +
+      '<div onclick="event.stopPropagation();toggleTaskDone(\''+item.client.id+'\',\''+t.id+'\');setTimeout(renderHome,100)" title="Tick to mark done" style="width:18px;height:18px;border-radius:99px;border:2px solid #F5D5E3;flex-shrink:0;cursor:pointer;margin-top:2px"></div>' +
       '<div style="flex:1;min-width:0;cursor:pointer" onclick="openClient(\''+item.client.id+'\')">' +
       '<div style="font-size:13px;color:#C9266B;margin-bottom:4px;word-break:break-word">' + (t.text||'') + '</div>' +
       '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
@@ -19797,7 +20063,9 @@ function renderHome() {
       (dueStr ? '<span style="font-size:11px;color:' + (urgent?'#EC2C8A':'#ACA495') + '">' + dueStr + '</span>' : '') +
       '</div>' +
       '</div>' +
-      '<div onclick="openClient(\''+item.client.id+'\')" style="width:24px;height:24px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#C9266B;cursor:pointer;flex-shrink:0" title="' + item.client.name + '">' + initials + '</div>' +
+      '<button onclick="event.stopPropagation();archiveTask(\''+item.client.id+'\',\''+t.id+'\')" title="Archive · removes from view, can be restored" style="background:none;border:none;cursor:pointer;font-size:13px;color:#ACA495;padding:0 4px;flex-shrink:0">📦</button>' +
+      '<button onclick="event.stopPropagation();deleteTask(\''+item.client.id+'\',\''+t.id+'\')" title="Delete forever" style="background:none;border:none;cursor:pointer;font-size:14px;color:#C0392B;padding:0 4px;flex-shrink:0">×</button>' +
+      '<div onclick="event.stopPropagation();openClient(\''+item.client.id+'\')" style="width:24px;height:24px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#C9266B;cursor:pointer;flex-shrink:0" title="Open ' + item.client.name + '">' + initials + '</div>' +
       '</div>';
   }
 
