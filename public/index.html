@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11320 — bulk actions on Clients page (select mode + floating bar: email all · mark seen · set status · add to cohort · award badge · archive) · cohort sessions filtered to within cohort date window · Settings integration cards (Gmail · Zoom · Calendly · Stripe · WhatsApp · Twilio · Anthropic) with live status pills via /api/integrations-status · new PeaBe PNG icons (180/192/256/512) + SW bumped to v3">
+<meta name="hmh-build" content="v11330 — MDC brief part 1: Cohort Manager + MDC Cohort merged into single 'MDC Cohort' page · cohort lifecycle (active/closed pill + close-out flow with summary report + reopen) · cohort progress overview panel (avg %, attendance, health breakdown, missed-2+ flag) · sortable filterable member grid with AI insights consistency · per-member ✦ Generate insights button · 'MDC member' placeholder fixed · AI cohort insights panel (retrospective + forward-looking session prep) · ↩ Reuse Zoom link from another cohort · sync-to-members tooltip permanent · standardised Sprint/Week format · cohort feed scaffold + shoutout composer">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -172,11 +172,10 @@
       <div class="sidebar-item" onclick="showPage('revenue'); renderRevenueDashboard()">
         <span class="item-icon">📊</span> Revenue
       </div>
-      <div class="sidebar-item" onclick="showPage('mdc-group'); renderMDCGroup()">
-        <span class="item-icon">💡</span> MDC cohort
-      </div>
+      <!-- v11330: merged into a single "MDC Cohort" entry. Old "Cohort manager"
+           sidebar item folded in — the unified page handles both flows. -->
       <div class="sidebar-item" onclick="showPage('cohort-manager'); renderCohortManager()">
-        <span class="item-icon">👥</span> Cohort manager
+        <span class="item-icon">💡</span> MDC Cohort
       </div>
       <div class="sidebar-item" onclick="showPage('task-sheet'); renderTaskSheet()">
         <span class="item-icon">✅</span> Task sheet
@@ -572,10 +571,10 @@
         <div id="plan-output" class="ai-output"></div>
       </div>
 
-      <!-- MDC COHORT MANAGER (replaces old cohort view) -->
+      <!-- MDC COHORT — v11330 unified page (Cohort Manager + MDC Group merged) -->
       <div class="page" id="page-cohort-manager">
-        <h1 class="page-title">MDC Cohort Manager</h1>
-        <p class="page-sub">Manage cohort groups, add clients, send group messages, track WhatsApp links</p>
+        <h1 class="page-title">MDC Cohort</h1>
+        <p class="page-sub">Cohort details · sessions · members · AI insights · community feed</p>
         <div id="cohort-manager-content"></div>
       </div>
 
@@ -586,12 +585,11 @@
         <div id="revenue-content"></div>
       </div>
 
-      <!-- MDC GROUP VIEW -->
-      <div class="page" id="page-mdc-group">
-        <h1 class="page-title">MDC Cohort</h1>
-        <p class="page-sub">Group progress, shared themes, and AI coaching insights</p>
-        <div id="mdc-group-content"></div>
-      </div>
+      <!-- v11330: page-mdc-group merged into the Cohort Manager.
+           Sidebar nav points "MDC cohort" → cohort-manager now. The old
+           render function (renderMDCGroup) is preserved as a helper that
+           the unified manager calls per-cohort. -->
+      <div class="page" id="page-mdc-group" style="display:none"></div>
 
       <!-- TASK SHEET -->
       <div class="page" id="page-task-sheet">
@@ -4838,7 +4836,7 @@ function showPage(id) {
     try {
       if (id === 'clients')         renderClients();
       else if (id === 'revenue')    renderRevenueDashboard();
-      else if (id === 'mdc-group')  renderMDCGroup();
+      else if (id === 'mdc-group')  { showPage('cohort-manager'); renderCohortManager(); }
       else if (id === 'cohort-manager') renderCohortManager();
       else if (id === 'task-sheet') renderTaskSheet();
       else if (id === 'happy-hub')  renderHappyHub('','','');
@@ -15353,7 +15351,13 @@ function renderCohortCard(co) {
 
   // ── Expanded view ─────────────────────────────────────────────────────────
   // Editable details grid
+  // v11330: cohort lifecycle pill — visually mark active vs completed
+  var lifecycleLabel = co.completed
+    ? '<span style="font-size:11px;background:rgba(95,163,168,0.15);color:var(--teal);border:1px solid rgba(95,163,168,0.4);padding:3px 9px;border-radius:99px;font-weight:700">✓ Closed</span>'
+    : (co.active ? '<span style="font-size:11px;background:rgba(229,4,139,0.12);color:var(--magenta);border:1px solid rgba(229,4,139,0.4);padding:3px 9px;border-radius:99px;font-weight:700">● Active</span>' : '');
+
   var detailFields =
+    (lifecycleLabel ? '<div style="margin-top:10px">' + lifecycleLabel + '</div>' : '') +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px">' +
       _cohortInput(co.id, 'name',             'Cohort name',         co.name||'',             'text', 'e.g. MDC May 2026') +
       _cohortInput(co.id, 'start',            'Start date',          co.start||'',            'date', '') +
@@ -15368,10 +15372,18 @@ function renderCohortCard(co) {
       (co.zoomLink ? '<button onclick="copyToClipboard(\''+(co.zoomLink||'').replace(/\'/g,'')+'\')" class="btn-sm" style="font-size:11px">📋 Copy join link</button>' : '') +
       (co.zoomPasscode ? '<span style="font-size:11px;background:white;border:1px solid var(--border);padding:4px 10px;border-radius:99px;color:var(--magenta)">Passcode: <strong>'+escapeHtml(co.zoomPasscode)+'</strong></span>' : '') +
       (!co.zoomLink ? '<button onclick="createCohortZoomMeeting(\''+co.id+'\')" class="btn-sm primary" style="font-size:11px">+ Create Zoom meeting</button>' : '') +
+      // v11330 §4: reuse existing Zoom link from another cohort (or paste an external one)
+      (!co.zoomLink ? '<button onclick="reuseZoomLinkForCohort(\''+co.id+'\')" class="btn-sm" style="font-size:11px" title="Pick an existing Zoom link from another cohort, or paste one">↩ Reuse existing link</button>' : '') +
       (co.whatsapp ? '<a href="'+co.whatsapp+'" target="_blank" style="font-size:11px;background:#25D366;color:white;padding:4px 10px;border-radius:99px;text-decoration:none">💬 Open WhatsApp</a>' : '') +
       (members.length ? '<button class="btn-sm" onclick="resyncCohortToMembers(\''+co.id+'\')" style="font-size:11px" title="Push the cohort\'s Zoom link + next session date to every member\'s MDC program record">↻ Sync to members</button>' : '') +
-      '<button class="btn-sm" onclick="confirmDeleteCohort(\''+co.id+'\')" style="margin-left:auto;color:#C0392B;border-color:rgba(192,57,43,0.3);background:white">🗑 Delete cohort</button>' +
-    '</div>';
+      // v11330 §2: lifecycle close-out — separate from delete
+      (co.completed
+        ? '<button class="btn-sm" onclick="reopenCohort(\''+co.id+'\')" style="font-size:11px;margin-left:auto">↩ Reopen cohort</button>'
+        : '<button class="btn-sm" onclick="closeOutCohort(\''+co.id+'\')" style="font-size:11px;margin-left:auto;background:rgba(95,163,168,0.10);color:var(--teal);border-color:rgba(95,163,168,0.4)" title="Mark cohort as complete and generate a summary report">🏁 Close out cohort</button>') +
+      '<button class="btn-sm" onclick="confirmDeleteCohort(\''+co.id+'\')" style="color:#C0392B;border-color:rgba(192,57,43,0.3);background:white">🗑 Delete</button>' +
+    '</div>' +
+    // v11330 §5: sync-to-members tooltip is now permanent subtext (not hover)
+    (members.length ? '<div style="font-size:11px;color:var(--stone);font-style:italic;margin-top:4px">↻ Sync to members pushes the cohort\'s Zoom link + next-session date onto every member\'s MDC record. Run this whenever you change either above.</div>' : '');
 
   // Member list
   var memberList = members.length === 0
@@ -15433,15 +15445,566 @@ function renderCohortCard(co) {
       '<div style="font-size:11px;color:var(--stone);margin-top:8px;font-style:italic">Members who have notifications turned off (per-client setting) won\'t receive any of these.</div>' +
     '</div>';
 
+  // v11330 §3: cohort progress overview — at-a-glance view of where the
+  // cohort stands collectively
+  var progressOverview = renderCohortProgressOverview(co, members);
+  // v11360: AI cohort insights panel — coach-only retrospective + forward-prep
+  var insightsPanel = renderCohortInsightsPanel(co, members);
+  // v11330: rich member grid (replaces simple list above) — sortable, filterable
+  var memberGrid = renderCohortMemberGrid(co, members);
+  // v11370 stub: community feed placeholder — will become full feed in subsequent batch
+  var feedHtml = renderCohortFeed(co, members);
+
   return '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:16px 18px">' +
     head +
     detailFields +
+    progressOverview +
     sessionsHtml +
-    '<div style="margin-top:18px;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Members</div>' +
-    memberList + memberActions +
+    insightsPanel +
+    '<div style="margin-top:18px;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Members · ' + members.length + '</div>' +
+    memberGrid + memberActions +
+    feedHtml +
     notifsHtml +
     notesBlock +
     '</div>';
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// v11330 §3 — Cohort progress overview
+// At-a-glance view: average %, attendance rate, health breakdown, missed-2+
+// ═════════════════════════════════════════════════════════════════════
+function renderCohortProgressOverview(co, members) {
+  if (!members.length) return '';
+  // Compute averages
+  var totalPct = 0, totalWins = 0, validProgress = 0;
+  var healthCounts = { green: 0, amber: 0, red: 0 };
+  var missedTwoPlus = 0;
+  members.forEach(function(m) {
+    var prog = (m.programs || []).find(function(p){ return p.cohort === co.id; });
+    if (!prog) return;
+    var sprint = prog.mdcSprint || 1;
+    var week = prog.mdcWeek || 1;
+    var pct = Math.round(((sprint - 1) * 6 + week) / 24 * 100);
+    totalPct += pct;
+    validProgress++;
+    totalWins += (prog.wins || []).length;
+    var h = m.health || 'green';
+    if (healthCounts[h] != null) healthCounts[h]++;
+    // Missed sessions count — derived from co.sessions' attendance map
+    var missed = 0;
+    (co.sessions || []).forEach(function(s) {
+      if (s && s.attendance && s.attendance[m.id] === false) missed++;
+    });
+    if (missed >= 2) missedTwoPlus++;
+  });
+  var avgPct = validProgress ? Math.round(totalPct / validProgress) : 0;
+  // Attendance rate
+  var sessions = (co.sessions || []).filter(function(s) { return s && s.attendance; });
+  var attendanceRate = null;
+  if (sessions.length && members.length) {
+    var totalSlots = sessions.length * members.length;
+    var presentSlots = 0;
+    sessions.forEach(function(s) {
+      members.forEach(function(m) { if (s.attendance && s.attendance[m.id] === true) presentSlots++; });
+    });
+    attendanceRate = Math.round(presentSlots / totalSlots * 100);
+  }
+
+  function statBlock(label, value, color, hint) {
+    return '<div style="background:white;border:1px solid var(--border-soft);border-radius:10px;padding:10px 14px;flex:1;min-width:120px">' +
+      '<div style="font-family:var(--f-head);font-size:22px;font-weight:800;color:' + color + ';line-height:1">' + value + '</div>' +
+      '<div style="font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;margin-top:3px">' + label + '</div>' +
+      (hint ? '<div style="font-size:10px;color:var(--stone);margin-top:2px">' + hint + '</div>' : '') +
+    '</div>';
+  }
+  var healthHint = '🟢 ' + healthCounts.green + ' · 🟡 ' + healthCounts.amber + ' · 🔴 ' + healthCounts.red;
+  return '<div style="margin-top:18px;padding:14px 16px;background:linear-gradient(135deg,#FFFCF8 0%,#FDEFF5 100%);border:1.5px solid var(--border);border-radius:12px">' +
+    '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px">📊 Cohort overview</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
+      statBlock('Avg progress', avgPct + '%', avgPct >= 50 ? 'var(--teal)' : '#E8A020') +
+      statBlock('Wins logged', totalWins, 'var(--hot-pink)') +
+      statBlock('Attendance', attendanceRate != null ? attendanceRate + '%' : '—', attendanceRate != null && attendanceRate >= 80 ? 'var(--teal)' : '#E8A020', sessions.length ? sessions.length + ' tracked sessions' : 'No tracked sessions yet') +
+      statBlock('Health', healthCounts.red ? '⚠ ' + healthCounts.red : '✓ All green', healthCounts.red ? 'var(--hot-pink)' : 'var(--teal)', healthHint) +
+      (missedTwoPlus ? statBlock('Missed 2+', missedTwoPlus, 'var(--hot-pink)', 'auto-flag candidates') : '') +
+    '</div>' +
+  '</div>';
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// v11330 §7 — Cohort member grid — sortable, filterable, AI insights consistent
+// Replaces the old plain member list inside renderCohortCard.
+// ═════════════════════════════════════════════════════════════════════
+window._cohortMemberFilters = window._cohortMemberFilters || {};
+function renderCohortMemberGrid(co, members) {
+  if (!members.length) {
+    return '<div class="hub-empty" style="background:var(--marshmallow);border-radius:10px;padding:24px 18px">' +
+      '<span class="empty-emoji">👥</span>' +
+      '<div class="empty-title">No members yet</div>' +
+      '<div class="empty-sub">Add the first MDC member with the button below — they\'ll get a fresh program record tied to this cohort.</div>' +
+    '</div>';
+  }
+  var filters = window._cohortMemberFilters[co.id] || { health: '', sort: 'name' };
+
+  // Apply filters
+  var filtered = members.slice();
+  if (filters.health) filtered = filtered.filter(function(m) { return (m.health || 'green') === filters.health; });
+  if (filters.health === 'attention') filtered = filtered.filter(function(m) { return m.health === 'red' || m.health === 'amber'; });
+
+  // Sort
+  filtered.sort(function(a, b) {
+    var pa = (a.programs || []).find(function(p){ return p.cohort === co.id; }) || {};
+    var pb = (b.programs || []).find(function(p){ return p.cohort === co.id; }) || {};
+    if (filters.sort === 'progress') {
+      var pctA = ((pa.mdcSprint || 1) - 1) * 6 + (pa.mdcWeek || 1);
+      var pctB = ((pb.mdcSprint || 1) - 1) * 6 + (pb.mdcWeek || 1);
+      return pctB - pctA;
+    }
+    if (filters.sort === 'wins')     return ((pb.wins || []).length) - ((pa.wins || []).length);
+    if (filters.sort === 'health')   { var hOrder = { red:0, amber:1, green:2 }; return (hOrder[a.health||'green'] || 0) - (hOrder[b.health||'green'] || 0); }
+    return (a.name || '').localeCompare(b.name || '');
+  });
+
+  // Filter/sort controls
+  var controlsHtml =
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
+      '<select onchange="setCohortMemberFilter(\'' + co.id + '\',\'health\',this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:5px 12px;font-family:var(--f-body);font-size:11px;color:var(--magenta);background:white;cursor:pointer">' +
+        '<option value=""' + (filters.health === '' ? ' selected' : '') + '>All health</option>' +
+        '<option value="green"' + (filters.health === 'green' ? ' selected' : '') + '>🟢 On track</option>' +
+        '<option value="amber"' + (filters.health === 'amber' ? ' selected' : '') + '>🟡 Check in</option>' +
+        '<option value="red"' + (filters.health === 'red' ? ' selected' : '') + '>🔴 Needs attention</option>' +
+      '</select>' +
+      '<select onchange="setCohortMemberFilter(\'' + co.id + '\',\'sort\',this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:5px 12px;font-family:var(--f-body);font-size:11px;color:var(--magenta);background:white;cursor:pointer">' +
+        '<option value="name"' + (filters.sort === 'name' ? ' selected' : '') + '>Sort: Name</option>' +
+        '<option value="progress"' + (filters.sort === 'progress' ? ' selected' : '') + '>Sort: Progress</option>' +
+        '<option value="wins"' + (filters.sort === 'wins' ? ' selected' : '') + '>Sort: Wins</option>' +
+        '<option value="health"' + (filters.sort === 'health' ? ' selected' : '') + '>Sort: Needs attention first</option>' +
+      '</select>' +
+      '<button class="btn-sm" onclick="setCohortMemberFilter(\'' + co.id + '\',\'health\',\'red\')" style="font-size:11px">⚠ Needs attention</button>' +
+    '</div>';
+
+  // Member cards — richer than the old list
+  var cardsHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">' +
+    filtered.map(function(m) {
+      var prog = (m.programs || []).find(function(p){ return p.cohort === co.id; }) || {};
+      var sprint = prog.mdcSprint || 1;
+      var week = prog.mdcWeek || 1;
+      var weekFlat = (sprint - 1) * 6 + week;
+      var pct = Math.round(weekFlat / 24 * 100);
+      var wins = (prog.wins || []).length;
+      var initials = (m.name || '?').split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
+      // v11330 §7: fix "MDC member" placeholder — pull from biz, fall back to email, then blank
+      var subtitle = m.biz || m.email || '';
+      // v11330 §7: AI insights consistency — show inline if present, "Generate" if missing
+      var ci = ((prog.mdcWorkbook || {}).weeklyCheckins || {})[sprint + '-' + week] || {};
+      var hasInsights = !!(ci.focus || ci.blocks);
+      var insightsRow = hasInsights
+        ? (ci.focus ? '<div style="font-size:11px;color:var(--magenta);margin-top:6px;line-height:1.4"><strong>Focus:</strong> ' + escapeHtml(ci.focus.slice(0, 80)) + (ci.focus.length > 80 ? '…' : '') + '</div>' : '') +
+          (ci.blocks ? '<div style="font-size:11px;color:var(--stone);margin-top:2px;line-height:1.4"><strong>Blocks:</strong> ' + escapeHtml(ci.blocks.slice(0, 80)) + (ci.blocks.length > 80 ? '…' : '') + '</div>' : '')
+        : '<button onclick="event.stopPropagation();generateMemberInsights(\'' + m.id + '\',\'' + prog.id + '\')" class="btn-sm" style="font-size:10px;padding:3px 8px;margin-top:6px">✦ Generate insights</button>';
+      var healthDot = { green: '🟢', amber: '🟡', red: '🔴' }[m.health || 'green'] || '🟢';
+      // v11330 §5: standardised sprint/week format
+      var sprintWeekLabel = 'Sprint ' + sprint + ' · Wk ' + weekFlat + '/24';
+      return '<div onclick="openClient(\'' + m.id + '\')" style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:12px;cursor:pointer;transition:all 0.15s" onmouseover="this.style.borderColor=\'var(--hot-pink)\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\'">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+          '<div style="width:32px;height:32px;border-radius:99px;background:var(--bubblegum);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--magenta);flex-shrink:0">' + initials + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;font-weight:700;color:var(--magenta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(m.name) + ' <span style="font-size:11px">' + healthDot + '</span></div>' +
+            (subtitle ? '<div style="font-size:11px;color:var(--stone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(subtitle) + '</div>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--teal);font-weight:700;margin-bottom:4px">' + sprintWeekLabel + ' · ' + wins + ' win' + (wins === 1 ? '' : 's') + '</div>' +
+        '<div style="background:var(--marshmallow);border-radius:99px;height:5px;margin-bottom:6px"><div style="background:var(--hot-pink);height:100%;border-radius:99px;width:' + pct + '%;transition:width 0.3s"></div></div>' +
+        '<div style="font-size:10px;color:var(--stone)">' + pct + '% through program</div>' +
+        insightsRow +
+      '</div>';
+    }).join('') +
+  '</div>';
+
+  return controlsHtml + cardsHtml;
+}
+function setCohortMemberFilter(cohortId, key, value) {
+  if (!window._cohortMemberFilters[cohortId]) window._cohortMemberFilters[cohortId] = { health: '', sort: 'name' };
+  window._cohortMemberFilters[cohortId][key] = value;
+  if (typeof renderCohortManager === 'function') renderCohortManager();
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// v11360 — Cohort AI insights panel (coach-only)
+// Displays the latest insights cached on co.aiInsights with refresh button.
+// Forward-looking session prep cached on co.aiSessionPrep.
+// ═════════════════════════════════════════════════════════════════════
+function renderCohortInsightsPanel(co, members) {
+  if (!members.length) return '';
+  var ins = co.aiInsights || null;
+  var prep = co.aiSessionPrep || null;
+  function ageLabel(ts) {
+    if (!ts) return '';
+    try { var d = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000); return d === 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'; }
+    catch (e) { return ''; }
+  }
+  var insBlock = ins
+    ? '<div class="md-render-preview" style="font-size:13px;color:var(--magenta);line-height:1.65;margin-top:10px">' + (typeof renderMarkdownLite === 'function' ? renderMarkdownLite(ins.text) : escapeHtml(ins.text)) + '</div>' +
+      '<div style="font-size:10px;color:var(--stone);font-style:italic;margin-top:6px">Generated ' + ageLabel(ins.generatedAt) + ' · <a href="javascript:void(0)" onclick="generateCohortInsights(\'' + co.id + '\')" style="color:var(--hot-pink)">refresh</a></div>'
+    : '<button onclick="generateCohortInsights(\'' + co.id + '\')" class="btn-sm primary" style="font-size:12px;margin-top:10px">✦ Generate cohort insights</button>';
+  var prepBlock = prep
+    ? '<div class="md-render-preview" style="font-size:13px;color:var(--magenta);line-height:1.65;margin-top:10px">' + (typeof renderMarkdownLite === 'function' ? renderMarkdownLite(prep.text) : escapeHtml(prep.text)) + '</div>' +
+      '<div style="font-size:10px;color:var(--stone);font-style:italic;margin-top:6px">Generated ' + ageLabel(prep.generatedAt) + ' · <a href="javascript:void(0)" onclick="generateSessionPrep(\'' + co.id + '\')" style="color:var(--hot-pink)">refresh</a></div>'
+    : '<button onclick="generateSessionPrep(\'' + co.id + '\')" class="btn-sm" style="font-size:12px;margin-top:10px">✦ Generate session prep</button>';
+  return '<div style="margin-top:18px;background:linear-gradient(135deg,#F5F0FF,#FDEFF5);border:1.5px solid rgba(229,4,139,0.25);border-radius:12px;padding:14px 16px">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">' +
+      '<div style="font-size:18px">✨</div>' +
+      '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700;flex:1;min-width:0">AI cohort insights</div>' +
+      '<span style="font-size:10px;color:var(--stone);background:white;border:1px solid var(--border);padding:2px 8px;border-radius:99px;font-weight:600">Coach only</span>' +
+    '</div>' +
+    '<details' + (ins ? ' open' : '') + '>' +
+      '<summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:700;padding:6px 0">📊 Retrospective — what\'s happening across the cohort</summary>' +
+      insBlock +
+    '</details>' +
+    '<details' + (prep ? ' open' : '') + ' style="margin-top:8px">' +
+      '<summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:700;padding:6px 0">🔮 Forward-looking — prep for next session</summary>' +
+      prepBlock +
+    '</details>' +
+  '</div>';
+}
+
+// Stub feed renderer — fully built in v11370 batch
+function renderCohortFeed(co, members) {
+  if (!members.length) return '';
+  var entries = (co.feedEntries || []).slice().sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); }).slice(0, 12);
+  var entriesHtml = entries.length
+    ? entries.map(function(e) {
+        var iconMap = { win: '🏆', shoutout: '👏', resource: '📚', highlight: '✨', milestone: '🎖' };
+        var icon = iconMap[e.kind] || '✨';
+        var when = '';
+        try { when = new Date(e.ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); } catch (err) {}
+        var reactions = (e.reactions || {});
+        var totalReactions = Object.values(reactions).reduce(function(s, v){ return s + (v || 0); }, 0);
+        return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:white;border:1px solid var(--border-soft);border-radius:10px;margin-bottom:6px">' +
+          '<div style="font-size:18px">' + icon + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;color:var(--magenta);line-height:1.4">' + escapeHtml(e.text || '') + '</div>' +
+            (e.author ? '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + escapeHtml(e.author) + (when ? ' · ' + when : '') + '</div>' : '') +
+          '</div>' +
+          (totalReactions ? '<span style="font-size:11px;color:var(--hot-pink);font-weight:600;flex-shrink:0">❤ ' + totalReactions + '</span>' : '') +
+        '</div>';
+      }).join('')
+    : '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:10px 0">No activity yet — wins, shoutouts and session highlights will appear here as the cohort goes.</div>';
+  return '<div style="margin-top:18px;background:white;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
+      '<div style="font-size:18px">📣</div>' +
+      '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700;flex:1">Cohort community feed</div>' +
+      '<button class="btn-sm" onclick="openShoutoutComposer(\'' + co.id + '\')" style="font-size:11px">+ Shoutout</button>' +
+    '</div>' +
+    entriesHtml +
+  '</div>';
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// COHORT LIFECYCLE — close-out, reopen, summary report
+// ═════════════════════════════════════════════════════════════════════
+
+async function closeOutCohort(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var members = _cohortMembers(co.id);
+  var ok = await branded.confirm(
+    'Mark "' + (co.name || 'cohort') + '" as complete?\n\n' +
+    members.length + ' member' + (members.length === 1 ? '' : 's') + ' will be moved into your nurture/complete list, the cohort will be archived (still browsable from the dropdown), and a summary report will be generated.',
+    { title: '🏁 Close out cohort?', okLabel: 'Close out · generate report', cancelLabel: 'Not yet' }
+  );
+  if (!ok) return;
+  co.completed = true;
+  co.active = false;
+  co.completedAt = new Date().toISOString();
+  // Generate the summary report (cached on the cohort)
+  co.summaryReport = buildCohortSummaryReport(co, members);
+  _saveCohorts();
+  // Optionally bump each member's status to 'complete'
+  var bump = await branded.confirm('Mark each member\'s MDC program as complete (they\'ll move to your nurture list)?', { title: 'Member status?', okLabel: 'Yes, complete them', cancelLabel: 'Leave as-is' });
+  if (bump) {
+    for (var i = 0; i < members.length; i++) {
+      var m = members[i];
+      var prog = (m.programs || []).find(function(p){ return p.cohort === co.id; });
+      if (prog) { prog.status = 'complete'; prog.completedAt = new Date().toISOString(); }
+      m.status = 'nurture';
+      try { await persistClient(m); } catch (e) {}
+    }
+  }
+  branded.success('Cohort closed · summary report ready');
+  if (typeof renderCohortManager === 'function') renderCohortManager();
+}
+
+async function reopenCohort(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var ok = await branded.confirm('Reopen this cohort? It\'ll appear back in the active list. Member statuses won\'t change automatically.', { title: 'Reopen?', okLabel: 'Reopen' });
+  if (!ok) return;
+  co.completed = false;
+  co.active = true;
+  co.reopenedAt = new Date().toISOString();
+  _saveCohorts();
+  if (typeof renderCohortManager === 'function') renderCohortManager();
+}
+
+// Build a summary report object from the cohort's data — attendance,
+// wins, average progress, key themes from session transcripts.
+function buildCohortSummaryReport(co, members) {
+  var totalSessions = (co.sessions || []).length;
+  var totalWins = members.reduce(function(s, m) {
+    var prog = (m.programs || []).find(function(p){ return p.cohort === co.id; });
+    return s + (prog ? (prog.wins || []).length : 0);
+  }, 0);
+  var avgProgress = members.length ? Math.round(members.reduce(function(s, m) {
+    var prog = (m.programs || []).find(function(p){ return p.cohort === co.id; });
+    if (!prog) return s;
+    var sprint = prog.mdcSprint || 1;
+    var week = prog.mdcWeek || 1;
+    return s + Math.round(((sprint - 1) * 6 + week) / 24 * 100);
+  }, 0) / members.length) : 0;
+  // Attendance rate
+  var sessionsWithAttendance = (co.sessions || []).filter(function(s){ return s && s.attendance; });
+  var attendanceRate = null;
+  if (sessionsWithAttendance.length && members.length) {
+    var totalSlots = sessionsWithAttendance.length * members.length;
+    var present = 0;
+    sessionsWithAttendance.forEach(function(s) {
+      members.forEach(function(m) { if (s.attendance && s.attendance[m.id] === true) present++; });
+    });
+    attendanceRate = Math.round(present / totalSlots * 100);
+  }
+  // Key themes — pulled from session transcripts (collected later by AI)
+  var themes = (co.sessions || []).map(function(s) { return s.aiSummary || ''; }).filter(Boolean).slice(0, 5);
+  return {
+    generatedAt: new Date().toISOString(),
+    cohortName: co.name,
+    start: co.start, end: co.end,
+    members: members.length,
+    totalSessions: totalSessions,
+    totalWins: totalWins,
+    avgProgress: avgProgress,
+    attendanceRate: attendanceRate,
+    keyThemes: themes,
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// REUSE ZOOM LINK — pull from another cohort, paste an external one
+// ═════════════════════════════════════════════════════════════════════
+async function reuseZoomLinkForCohort(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  // Build picker from other cohorts' Zoom links
+  var others = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS))
+    ? MDC_COHORTS.filter(function(c){ return c.id !== cohortId && c.zoomLink; }) : [];
+  var menu = others.length
+    ? others.map(function(c, i) { return (i + 1) + '. ' + c.name + ' (' + c.zoomLink + ')'; }).join('\n') + '\n\nN. Paste a different URL'
+    : 'No other cohorts have Zoom links.\nN. Paste a URL';
+  var pick = await branded.prompt('Pick a Zoom link to reuse — type a number, or "N" to paste a new URL:\n\n' + menu, others.length ? '1' : 'N', '', { title: '↩ Reuse Zoom link', okLabel: 'Next' });
+  if (pick == null) return;
+  var picked = (pick || '').trim().toUpperCase();
+  var url = '';
+  var passcode = '';
+  var meetingId = '';
+  if (picked === 'N' || isNaN(parseInt(picked, 10))) {
+    url = await branded.prompt('Paste the Zoom join URL:', '', 'https://zoom.us/j/…', { title: 'Zoom URL', okLabel: 'Next' });
+    if (!url || !url.trim()) return;
+    url = url.trim();
+    var pc = await branded.prompt('Zoom passcode (optional):', '', '', { title: 'Passcode', okLabel: 'Save' });
+    passcode = (pc || '').trim();
+  } else {
+    var idx = parseInt(picked, 10) - 1;
+    if (idx < 0 || idx >= others.length) { branded.alert('Invalid choice.'); return; }
+    var src = others[idx];
+    url = src.zoomLink;
+    passcode = src.zoomPasscode || '';
+    meetingId = src.zoomMeetingId || '';
+  }
+  co.zoomLink = url;
+  co.zoomPasscode = passcode;
+  if (meetingId) co.zoomMeetingId = meetingId;
+  _saveCohorts();
+  if (members && members.length) await propagateCohortToMembers(co);
+  branded.success('Zoom link set + synced to members');
+  if (typeof renderCohortManager === 'function') renderCohortManager();
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// AI COHORT INSIGHTS — retrospective + forward-looking session prep
+// ═════════════════════════════════════════════════════════════════════
+async function generateCohortInsights(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var members = _cohortMembers(co.id);
+  if (!members.length) { branded.alert('Add members to this cohort first.'); return; }
+  branded.toast('✨ Drafting cohort insights…');
+  // Build context: per-member sprint/week/wins/blocks/focus + recent session transcripts
+  var memberCtx = members.map(function(m) {
+    var prog = (m.programs || []).find(function(p){ return p.cohort === co.id; }) || {};
+    var sprint = prog.mdcSprint || 1, week = prog.mdcWeek || 1;
+    var ci = ((prog.mdcWorkbook || {}).weeklyCheckins || {})[sprint + '-' + week] || {};
+    return '- ' + m.name + ' (' + (m.biz || 'business unknown') + '): Sprint ' + sprint + '/W' + week +
+      (ci.focus ? '; focus="' + ci.focus.slice(0, 80) + '"' : '') +
+      (ci.blocks ? '; blocks="' + ci.blocks.slice(0, 80) + '"' : '') +
+      ' · ' + (prog.wins || []).length + ' wins · health ' + (m.health || 'green');
+  }).join('\n');
+  var sessions = (co.sessions || []).slice(-3).map(function(s) {
+    return (s.date || 'undated') + ': ' + (s.aiSummary || s.topic || 'no summary yet').slice(0, 200);
+  }).join('\n');
+  var prompt = phoebeVoice(
+    'You are Phoebe Blamey reviewing your MDC cohort. Write a coach-only insights report — patterns across members, who needs your attention, what worked recently, what to focus on next session.\n\n' +
+    'Use these EXACT headings:\n' +
+    '## Common patterns\n' +
+    'What\'s coming up across multiple members? Money story themes, business stages, recurring blocks?\n\n' +
+    '## Who needs your attention\n' +
+    'Name 2-3 specific members who are slipping behind, struggling, or quiet. Why each.\n\n' +
+    '## What worked\n' +
+    'From recent sessions — what landed, what shifted things for the cohort.\n\n' +
+    '## Suggested focus next session\n' +
+    'One concrete theme + 2-3 talking points to set up.\n\n' +
+    '300 words max. Plain prose under each heading. No fluff.\n\n' +
+    'COHORT: ' + (co.name || 'MDC') + (co.start ? ' (started ' + co.start + ')' : '') + '\n\n' +
+    'MEMBERS:\n' + memberCtx + '\n\n' +
+    (sessions ? 'RECENT SESSION SUMMARIES:\n' + sessions : 'No session transcript summaries yet.')
+  );
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2000, messages: [{ role:'user', content: prompt }] }),
+    });
+    if (!resp.ok) throw new Error('AI returned ' + resp.status);
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) data.content.forEach(function(b){ if (b && b.type === 'text' && b.text) text += b.text; });
+    if (!text.trim()) throw new Error('Empty response');
+    co.aiInsights = { text: text.trim(), generatedAt: new Date().toISOString() };
+    _saveCohorts();
+    branded.success('Cohort insights drafted');
+    if (typeof renderCohortManager === 'function') renderCohortManager();
+  } catch (e) {
+    branded.alert('Couldn\'t reach the AI: ' + (e.message || e));
+  }
+}
+
+async function generateSessionPrep(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var members = _cohortMembers(co.id);
+  if (!members.length) { branded.alert('Add members first.'); return; }
+  branded.toast('✨ Drafting session prep…');
+  // Find next session
+  var todayStr = new Date().toISOString().split('T')[0];
+  var nextSession = (co.sessions || []).filter(function(s){ return s && s.date && s.date >= todayStr; })
+    .sort(function(a, b){ return (a.date || '').localeCompare(b.date || ''); })[0];
+  var memberCtx = members.map(function(m) {
+    var prog = (m.programs || []).find(function(p){ return p.cohort === co.id; }) || {};
+    var sprint = prog.mdcSprint || 1, week = prog.mdcWeek || 1;
+    var ci = ((prog.mdcWorkbook || {}).weeklyCheckins || {})[sprint + '-' + week] || {};
+    return '- ' + m.name + ': S' + sprint + '/W' + week +
+      (ci.blocks ? ' · blocked on "' + ci.blocks.slice(0, 60) + '"' : '') +
+      (m.health === 'red' ? ' · 🔴 needs attention' : m.health === 'amber' ? ' · 🟡 check in' : '');
+  }).join('\n');
+  var lastSummary = (co.sessions || []).filter(function(s){ return s.aiSummary; }).slice(-1)[0];
+  var prompt = phoebeVoice(
+    'You are Phoebe preparing for your next MDC cohort session. Write a brief session prep card — what to do BEFORE the call.\n\n' +
+    'Use these EXACT headings:\n' +
+    '## Who to check in on\n' +
+    'Name 1-3 members specifically — quick context on each.\n\n' +
+    '## Likely themes\n' +
+    'What\'s probably going to come up based on where members are.\n\n' +
+    '## Suggested structure\n' +
+    'A simple 3-block agenda for the session.\n\n' +
+    '## Anything flagged\n' +
+    'Members who\'ve raised blockers or low progress to deal with directly.\n\n' +
+    '250 words max. Direct.\n\n' +
+    'NEXT SESSION: ' + (nextSession ? (nextSession.date + (nextSession.time ? ' at ' + nextSession.time : '') + ' — ' + (nextSession.topic || 'topic TBD')) : 'No date set yet') + '\n\n' +
+    'MEMBERS:\n' + memberCtx + '\n\n' +
+    (lastSummary && lastSummary.aiSummary ? 'LAST SESSION RECAP:\n' + lastSummary.aiSummary.slice(0, 800) : '')
+  );
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, messages: [{ role:'user', content: prompt }] }),
+    });
+    if (!resp.ok) throw new Error('AI returned ' + resp.status);
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) data.content.forEach(function(b){ if (b && b.type === 'text' && b.text) text += b.text; });
+    if (!text.trim()) throw new Error('Empty response');
+    co.aiSessionPrep = { text: text.trim(), generatedAt: new Date().toISOString() };
+    _saveCohorts();
+    branded.success('Session prep drafted');
+    if (typeof renderCohortManager === 'function') renderCohortManager();
+  } catch (e) {
+    branded.alert('Couldn\'t reach the AI: ' + (e.message || e));
+  }
+}
+
+// Generate insights for an INDIVIDUAL member (focus + blocks for current week).
+// Surfaces on the member card when no insights have been entered yet.
+async function generateMemberInsights(clientId, progId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var prog = (client.programs || []).find(function(p){ return p.id === progId; });
+  if (!prog) return;
+  branded.toast('✨ Drafting…');
+  var sprint = prog.mdcSprint || 1, week = prog.mdcWeek || 1;
+  var prompt = phoebeVoice(
+    'Draft Phoebe-voice "focus" + "blocks" lines for ' + (client.name || 'this client') + ' for Sprint ' + sprint + ' / Week ' + week + ' of MDC. ' +
+    'One sentence each. Specific, not generic. Return as:\n' +
+    'FOCUS: <one sentence>\n' +
+    'BLOCKS: <one sentence>\n\n' +
+    'Context:\nBusiness: ' + (client.biz || 'unknown') + '\n' +
+    (client.bio ? 'Bio: ' + client.bio + '\n' : '') +
+    'Program progress: Sprint ' + sprint + '/W' + week + ' (' + Math.round(((sprint - 1) * 6 + week) / 24 * 100) + '%)\n' +
+    'Recent wins: ' + (((prog.wins || []).slice(-2)).map(function(w){ return (w.metric || w.title || '') + (w.before && w.after ? ': ' + w.before + ' → ' + w.after : ''); }).join('; ') || 'none yet')
+  );
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 300, messages: [{ role:'user', content: prompt }] }),
+    });
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) data.content.forEach(function(b){ if (b && b.type === 'text' && b.text) text += b.text; });
+    var focusM = text.match(/FOCUS:\s*([\s\S]+?)(?=\n\s*BLOCKS:|$)/i);
+    var blocksM = text.match(/BLOCKS:\s*([\s\S]+)/i);
+    prog.mdcWorkbook = prog.mdcWorkbook || {};
+    prog.mdcWorkbook.weeklyCheckins = prog.mdcWorkbook.weeklyCheckins || {};
+    var wkKey = sprint + '-' + week;
+    prog.mdcWorkbook.weeklyCheckins[wkKey] = prog.mdcWorkbook.weeklyCheckins[wkKey] || {};
+    if (focusM) prog.mdcWorkbook.weeklyCheckins[wkKey].focus = focusM[1].trim();
+    if (blocksM) prog.mdcWorkbook.weeklyCheckins[wkKey].blocks = blocksM[1].trim();
+    await persistClient(client);
+    branded.success('Insights drafted');
+    if (typeof renderCohortManager === 'function') renderCohortManager();
+  } catch (e) {
+    branded.alert('Couldn\'t reach the AI just now.');
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// COMMUNITY FEED actions (full feed renders in v11370 batch)
+// ═════════════════════════════════════════════════════════════════════
+async function openShoutoutComposer(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var text = await branded.prompt('Write a shoutout to the cohort — celebrating someone, marking a win, sharing an insight. Visible to every member.', '', 'Shoutout to {name} for…', { title: '👏 Shoutout', okLabel: 'Post' });
+  if (!text || !text.trim()) return;
+  co.feedEntries = co.feedEntries || [];
+  co.feedEntries.unshift({
+    id: 'fe-' + Date.now(),
+    kind: 'shoutout',
+    text: text.trim(),
+    author: 'Phoebe',
+    ts: new Date().toISOString(),
+    reactions: {},
+  });
+  _saveCohorts();
+  branded.success('Shouted out to the cohort');
+  if (typeof renderCohortManager === 'function') renderCohortManager();
 }
 
 // ── Cohort sessions — per-meeting calendar with create-Zoom buttons ───────
@@ -17099,8 +17662,7 @@ function renderHome() {
   html += '<button onclick="showPage(\'clients\')" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">👥 All clients</button>';
   html += '<button onclick="showPage(\'task-sheet\')" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">✅ Task sheet</button>';
   html += '<button onclick="openLogCommModal()" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">📞 Log communication</button>';
-  html += '<button onclick="showPage(\'mdc-group\'); renderMDCGroup()" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">💡 MDC cohort</button>';
-  html += '<button onclick="showPage(\'cohort-manager\'); renderCohortManager()" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">👥 Cohort manager</button>';
+  html += '<button onclick="showPage(\'cohort-manager\'); renderCohortManager()" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">💡 MDC Cohort</button>';
   html += '</div>';
 
   // Stats grid
