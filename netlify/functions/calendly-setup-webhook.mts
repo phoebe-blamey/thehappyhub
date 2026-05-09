@@ -16,7 +16,7 @@ import { randomBytes } from "node:crypto";
 // PIN-guarded so only Phoebe can run it.
 //
 // POST /api/calendly-setup-webhook
-// Body: { pin: "PB2025", events?: ["invitee.created", "invitee.canceled"] }
+// Body: { pin: "Happy_529", events?: ["invitee.created", "invitee.canceled"] }
 //
 // Returns: {
 //   ok: true,
@@ -31,7 +31,9 @@ export default async (req: Request) => {
 
   let body: any;
   try { body = await req.json(); } catch { return new Response("Bad JSON", { status: 400 }); }
-  if (body.pin !== "PB2025") return new Response("Unauthorised", { status: 401 });
+  // v11510: PIN updated Happy_529 (case-sensitive). Override via COACH_ADMIN_PIN env.
+  const expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
+  if (body.pin !== expectedPin) return new Response("Unauthorised", { status: 401 });
 
   const token = Netlify.env.get("CALENDLY_API_TOKEN");
   if (!token) {

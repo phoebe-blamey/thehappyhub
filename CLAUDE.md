@@ -117,7 +117,7 @@ Webhook event subscriptions (Marketplace → Happy Hub → Feature):
 
 ## Auth model
 
-- **Coach portal** locked behind PIN `PB2025`
+- **Coach portal** locked behind PIN `Happy_529` (case-sensitive — was `PB2025` during build phase)
 - **Client portal** accessed via individual codes (e.g. `JAME24`, `SARA31`, `ELOD99` for the Elodie test client)
 - No real user accounts — Phoebe is the only privileged user
 

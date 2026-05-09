@@ -7,7 +7,7 @@ import { getStore } from "@netlify/blobs";
 //
 // POST /api/delete-client
 // Body: {
-//   pin: "PB2025",
+//   pin: "Happy_529",
 //   clientIds: string[]    // 1+ blob keys to delete
 // }
 //
@@ -34,7 +34,9 @@ export default async (req: Request) => {
 
   let body: any;
   try { body = await req.json(); } catch { return new Response("Bad JSON", { status: 400 }); }
-  if (body.pin !== "PB2025") return new Response("Unauthorised", { status: 401 });
+  // v11510: PIN updated Happy_529 (case-sensitive). Override via COACH_ADMIN_PIN env.
+  const expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
+  if (body.pin !== expectedPin) return new Response("Unauthorised", { status: 401 });
 
   const ids: string[] = Array.isArray(body.clientIds) ? body.clientIds.filter((x: any) => typeof x === "string" && x) : [];
   if (!ids.length) return new Response(JSON.stringify({ error: "clientIds[] required" }), { status: 400, headers: { "Content-Type": "application/json" } });

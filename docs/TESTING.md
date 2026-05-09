@@ -13,7 +13,7 @@ The hub does a lot. This walks you through every real workflow at least once so 
 These are quick environment confirmations before you test features.
 
 - [ ] Open https://hub.phoebeblamey.com.au — page loads, you see the landing screen
-- [ ] Type the secret reveal phrase, enter the coach PIN `PB2025`, the coach hub opens
+- [ ] Type the secret reveal phrase, enter the coach PIN `Happy_529` (case-sensitive — note the capital H + underscore), the coach hub opens
 - [ ] Top-right pill shows the current build (e.g. `v11430`) — that's your version
 - [ ] Settings → scroll to the integrations cluster
   - [ ] Gmail — green "Live" pill

@@ -249,7 +249,10 @@ export default async (req: Request) => {
 
   let body: any = {};
   try { body = await req.json(); } catch {}
-  if (body.pin !== "PB2025") return new Response("Unauthorised", { status: 401 });
+  // v11510: PIN updated Happy_529 (case-sensitive). Override possible via
+  // COACH_ADMIN_PIN env var if Phoebe ever rotates the shared admin secret.
+  const expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
+  if (body.pin !== expectedPin) return new Response("Unauthorised", { status: 401 });
 
   const store = getStore("clients");
   const results: string[] = [];

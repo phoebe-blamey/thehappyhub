@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11500 — pre-UAT hardening · Calendly webhook signature verification (HMAC-SHA256 + 3-min replay window, soft-warn until CALENDLY_WEBHOOK_SIGNING_KEY env is set), one-click signed-webhook setup in Settings (deletes old + creates new with a fresh signing key, shown once). Settings → 🧹 Data hygiene panel — finds + bulk-deletes demo personas / test bookings / Zoom orphan placeholders, surfaces likely duplicates by email-root + name, suggests merge target where a Zoom orphan name matches a canonical client. Stop-the-bleeding: demo data only loads with ?demo=1, simulate-booking now tags records isTest:true with a 🧪 TEST pill on the card, sync-zoom-all stub-creation default flipped from on to off (was the source of 30 topic-only orphan records). Plus the v11440 review fixes — discover-socials AI brief now uses actual program label not hardcoded broker, dead renderTask + ZOOM_ACCESS_TOKEN reads removed, 8 noisy per-render console.logs cleaned up.">
+<meta name="hmh-build" content="v11510 — coach PIN → Happy_529 (case-sensitive, 9 chars, was PB2025). Login input now allows up to 20 chars + preserves case. Auto-migrates any device still holding the old PB2025 default to Happy_529 on first load (one-shot per device). PIN-guarded admin endpoints (seed-clients, calendly-setup-webhook, delete-client) updated; new optional COACH_ADMIN_PIN env-var override for future rotation. Settings → Your login PIN copy + reset_pin URL flow updated to drop forced uppercase. CLAUDE.md + docs/TESTING.md reflect the new PIN.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -80,7 +80,7 @@
         <span class="prog-tag">All clients</span>
       </div>
       <div class="pin-row">
-        <input type="password" id="coach-pin" placeholder="Coach PIN" maxlength="6"
+        <input type="password" id="coach-pin" placeholder="Coach PIN" maxlength="20"
           onkeydown="if(event.key==='Enter') enterCoach()">
         <button class="btn-enter" onclick="enterCoach()">Enter</button>
       </div>
@@ -882,9 +882,9 @@
 
         <div class="settings-card">
           <h4>🔑 Coach PIN</h4>
-          <p>Your login PIN to access this dashboard. Default is <code>PB2025</code>. Change it any time — only you need it.</p>
+          <p>Your login PIN to access this dashboard. Default is <code>Happy_529</code>. Change it any time — only you need it. PINs are case-sensitive.</p>
           <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
-            <input id="new-coach-pin" type="text" placeholder="New PIN (e.g. HAPPY99)" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:14px;color:var(--magenta);background:var(--paper);outline:none;width:180px;text-transform:uppercase">
+            <input id="new-coach-pin" type="text" placeholder="New PIN (e.g. Happy_529)" maxlength="20" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:14px;color:var(--magenta);background:var(--paper);outline:none;width:200px">
             <button class="btn-sm primary" onclick="changeCoachPin()">Save new PIN</button>
             <span id="coach-pin-saved" style="font-size:12px;color:var(--teal)"></span>
           </div>
@@ -1892,9 +1892,24 @@ var PROGRAMS = {
 };
 
 // Coach PIN is stored in localStorage so Phoebe can change it from Settings.
-// Default to 'PB2025' if nothing's set yet (first-time use).
+// Default to 'Happy_529' if nothing's set yet (first-time use). PINs are
+// case-sensitive — "Happy_529" ≠ "HAPPY_529".
+//
+// v11510: auto-migrate any device still holding the old default 'PB2025'
+// (the previous build-phase PIN). Runs once per device — bumps the stored
+// value to the new default so Phoebe doesn't get locked out after the
+// rename. Anyone who's already changed their PIN to a custom value keeps
+// it — only the literal old default gets migrated.
+(function migrateLegacyDefaultPin() {
+  try {
+    if (localStorage.getItem('hmh_coach_pin') === 'PB2025') {
+      localStorage.setItem('hmh_coach_pin', 'Happy_529');
+      console.log('[pin] migrated legacy default PB2025 → Happy_529');
+    }
+  } catch (e) {}
+})();
 function getCoachPin() {
-  return localStorage.getItem('hmh_coach_pin') || 'PB2025';
+  return localStorage.getItem('hmh_coach_pin') || 'Happy_529';
 }
 
 // ============================================================
@@ -2479,10 +2494,12 @@ async function changeCoachPin() {
   var input = document.getElementById('new-coach-pin');
   var status = document.getElementById('coach-pin-saved');
   if (!input) return;
-  var newPin = (input.value || '').toUpperCase().trim();
+  // v11510: PINs are case-sensitive now (was uppercase-only). Lets Phoebe pick
+  // something like "Happy_529" rather than being forced to "HAPPY529".
+  var newPin = (input.value || '').trim();
   if (newPin.length < 4) { status.textContent = 'Pick at least 4 characters'; status.style.color = 'var(--hot-pink)'; return; }
   if (newPin.length > 20) { status.textContent = 'Keep it under 20 characters'; status.style.color = 'var(--hot-pink)'; return; }
-  var ok = await branded.confirm('Change your coach PIN to "' + newPin + '"?\n\nYou\'ll use this to log in next time. Make sure you can remember it — there is no recovery from this device.', { title:'Change PIN?', okLabel:'Yes, change PIN' });
+  var ok = await branded.confirm('Change your coach PIN to "' + newPin + '"?\n\nYou\'ll use this to log in next time. Make sure you can remember it — there is no recovery from this device. PINs are case-sensitive.', { title:'Change PIN?', okLabel:'Yes, change PIN' });
   if (!ok) return;
   localStorage.setItem('hmh_coach_pin', newPin);
   input.value = '';
@@ -2791,7 +2808,7 @@ async function setupCalendlyWebhookSigning() {
     var resp = await fetch('/api/calendly-setup-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin: 'PB2025' })
+      body: JSON.stringify({ pin: 'Happy_529' })
     });
     var data = await resp.json();
     if (!resp.ok || !data.ok) {
@@ -3773,7 +3790,8 @@ async function restoreSession() {
 function focusCoachPin() { document.getElementById('coach-pin').focus(); }
 
 async function enterCoach() {
-  var pin = document.getElementById('coach-pin').value.toUpperCase();
+  // v11510: PINs are case-sensitive (was uppercase-only) so Happy_529 works
+  var pin = document.getElementById('coach-pin').value;
   if (pin === getCoachPin()) {
     sessionSet(HMH_SESSION.ROLE, 'coach');
     sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
@@ -3827,11 +3845,12 @@ async function enterClient() {
 
 window.addEventListener('load', async function() {
   var params = new URLSearchParams(window.location.search);
-  // ── PIN recovery: hub.phoebeblamey.com.au/?reset_pin=PB2025 (or any new PIN)
+  // ── PIN recovery: hub.phoebeblamey.com.au/?reset_pin=Happy_529 (or any new PIN)
   // resets the coach PIN to the value provided. Use this when you've changed
   // your PIN and forgotten it. After running, the URL clears itself.
+  // v11510: case-sensitive now — pass the PIN exactly as you want it stored.
   if (params.has('reset_pin')) {
-    var newPin = (params.get('reset_pin') || 'PB2025').toUpperCase().trim();
+    var newPin = (params.get('reset_pin') || 'Happy_529').trim();
     if (newPin.length >= 4 && newPin.length <= 20) {
       localStorage.setItem('hmh_coach_pin', newPin);
       // Strip the param from the address bar so it's not bookmarked / cached
@@ -12439,7 +12458,7 @@ async function seedRealClients() {
     var resp = await fetch('/api/seed-clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin: 'PB2025' })
+      body: JSON.stringify({ pin: 'Happy_529' })
     });
     var data = await resp.json();
     if (data.success) {
@@ -14468,7 +14487,7 @@ async function _dataHygieneCallDelete(ids) {
     var resp = await fetch('/api/delete-client', {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ pin: 'PB2025', clientIds: ids })
+      body: JSON.stringify({ pin: 'Happy_529', clientIds: ids })
     });
     var data = await resp.json();
     if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
@@ -14515,7 +14534,7 @@ async function dataHygieneMergeIntoCanonical(orphanId, canonicalId) {
     var resp = await fetch('/api/delete-client', {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ pin: 'PB2025', clientIds: [orphanId] })
+      body: JSON.stringify({ pin: 'Happy_529', clientIds: [orphanId] })
     });
     var data = await resp.json();
     if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
