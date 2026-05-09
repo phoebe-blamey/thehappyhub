@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11630 — env-var name fan-out for the Calendly webhook signing key. Both integrations-status (status pill) AND calendly-webhook (signature verifier) now accept any of: CALENDLY_WEBHOOK_SIGNING_KEY (canonical), CALENDLY_SIGNING_KEY, CALENDLY_WEBHOOK_KEY, or CALENDLY_KEY. Documented name stays CALENDLY_WEBHOOK_SIGNING_KEY but the shorter aliases work too — pill flips green regardless of which one Phoebe typed in Netlify.">
+<meta name="hmh-build" content="v11700 — major batch from Phoebe's overnight notes. (1) Zoom-orphan placeholders (March Round / Unknown contact / Personal Meeting Room / etc) NO LONGER appear as people on the All Clients grid — they show as a single banner pointing to the Settings → Unmatched Zoom Recordings review queue. (2) Today's-date timezone bug — was using UTC date string, which pushes 'today' back a day in AEST so yesterday's tasks looked like today's. Fixed via _localTodayStr() helper used in renderHome / renderTaskSheet / renderClientTodosTab / renderTodayOneThing. (3) Light-grey text darkened from #ACA495 to #7A7368 for readability on cream paper background. (4) Most-recent enrolled program is now the default tab (active first, then completed; newest within each group). (5) MDC shoutout composer simplified — pick a member from a numbered menu first, then type the shoutout — no awkward {name} placeholder. Picked member id is stored on the feed entry. (6) Plan Builder renamed to Program Builder + import scaffolds for Coaching / 90-Day / MDC / Audit / Happy Hour so Phoebe can tailor existing program shapes rather than starting from scratch. (7) Help drawer 'Tell Phoebe' section — Request a feature / Report an issue / Suggest something — posts to activity log. (8) Universal intake auto-collapses when all questions are answered (shows summary pill); auto-fill bug repaired (was missing re-render after drafts saved, so Phoebe saw 'Drafting…' toast then nothing changed — now re-renders the intake content). (9) Notifications bell back on the topbar with unread badge + new openNotificationsCenter panel that groups repetitive entries by client+kind so you don't see 'James · note shared' 17 times. (10) Community tab now shows WhatsApp group link + next session date + 🎬 Zoom join button at the top — no hunting for links. Plus all v11620 regressions confirmed clean.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -120,6 +120,12 @@
     <span id="save-status-pill" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Save status — saves happen automatically as you type"></span>
     <!-- v11210: action cluster — theme + sign-out. On mobile flips to vertical column. -->
     <div class="topbar-actions">
+      <!-- v11700: notifications bell — opens the Pulse panel with new
+           bookings, reviews to address, feedback from clients. -->
+      <button id="topbar-notif-bell" onclick="openNotificationsCenter()" title="Notifications" aria-label="Notifications" class="topbar-action-btn topbar-tap" style="position:relative">
+        🔔
+        <span id="topbar-notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--sunshine);color:var(--magenta);font-size:9px;font-weight:800;padding:1px 5px;border-radius:99px;line-height:1.2;border:1.5px solid var(--magenta)">0</span>
+      </button>
       <!-- v11100: theme toggle (sun/moon) — switches light <-> dark -->
       <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" class="topbar-action-btn topbar-tap">🌙</button>
       <button class="btn-logout topbar-tap" onclick="logout()">Sign out</button>
@@ -167,7 +173,7 @@
         <span class="item-icon">🔬</span> Research brief
       </div>
       <div class="sidebar-item" onclick="showPage('planner')">
-        <span class="item-icon">⚡</span> Plan builder
+        <span class="item-icon">⚡</span> Program builder
       </div>
       <div class="sidebar-item" onclick="showPage('revenue'); renderRevenueDashboard()">
         <span class="item-icon">📊</span> Revenue
@@ -590,18 +596,28 @@
         <div id="research-output" class="ai-output"></div>
       </div>
 
-      <!-- PLAN BUILDER TOOL -->
+      <!-- PROGRAM BUILDER TOOL (v11700: was Plan Builder) -->
       <div class="page" id="page-planner">
-        <h1 class="page-title">Plan Builder</h1>
-        <p class="page-sub">Paste Zoom session notes — generate a structured 90-day plan instantly</p>
+        <h1 class="page-title">Program Builder</h1>
+        <p class="page-sub">Build a custom program from session notes, OR import an existing program block (Coaching, MDC, Audit, Happy Hour) and edit. The output saves as a plan template you can apply to any client.</p>
         <div class="settings-card">
-          <div class="sim-field"><label>Client name (optional)</label><input id="p-name" placeholder="e.g. Sarah Chen"></div>
+          <div class="sim-field"><label>Program name / client (optional)</label><input id="p-name" placeholder="e.g. Sarah Chen · 90-Day · or 'Group MDC retainer'"></div>
           <div class="sim-field" style="margin-top:8px">
-            <label>Session notes / Zoom transcript</label>
-            <textarea id="p-notes" style="width:100%;min-height:160px;border:1.5px solid var(--border);border-radius:8px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="Paste your full Zoom AI summary or session notes here…"></textarea>
+            <label>Import from existing program block</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+              <button class="btn-sm" type="button" onclick="importProgramBlock('coaching')" title="Pull the Coaching program scaffold into the textarea so you can tailor it">📥 Coaching</button>
+              <button class="btn-sm" type="button" onclick="importProgramBlock('90day')" title="Pull the 90-Day Business Builder scaffold">📥 90-Day Builder</button>
+              <button class="btn-sm" type="button" onclick="importProgramBlock('mdc')" title="Pull the MDC sprint structure">📥 MDC</button>
+              <button class="btn-sm" type="button" onclick="importProgramBlock('audit')" title="Pull the Beautiful Business Audit scaffold">📥 Audit</button>
+              <button class="btn-sm" type="button" onclick="importProgramBlock('happyhour')" title="Pull the Happy Hour single-session scaffold">📥 Happy Hour</button>
+            </div>
+          </div>
+          <div class="sim-field" style="margin-top:8px">
+            <label>Session notes, transcript, or imported scaffold to edit</label>
+            <textarea id="p-notes" style="width:100%;min-height:200px;border:1.5px solid var(--border);border-radius:8px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="Paste your full Zoom AI summary, session notes, OR import a scaffold above and tailor it."></textarea>
           </div>
           <button class="btn-sm primary" onclick="runPlanBuilder()" id="plan-btn" style="margin-top:12px">
-            <span>✦</span> Build 90-day plan
+            <span>✦</span> Build program
           </button>
         </div>
         <div id="plan-output" class="ai-output"></div>
@@ -1494,6 +1510,27 @@
         <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600;list-style:none">What does Phoebe see when I write something?</summary>
         <div style="margin-top:8px;font-size:12px;color:var(--magenta);line-height:1.6">Anything you type in your portal — workbook answers, reflections, your notes, ticked tasks — Phoebe sees on her side. It\'s a shared space. The only thing she keeps private from you are her own personal session prep notes.</div>
       </details>
+    </div>
+
+    <!-- v11700: feedback section — request a feature, report a bug, or
+         just send Phoebe an idea. Posts to her Pulse panel as a
+         "feedback" entry tagged by kind. -->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--stone);margin-bottom:8px">💬 Tell Phoebe</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+        <button onclick="openFeedbackForm('feature')"  class="btn-sm" style="font-size:11px;flex:1;min-width:90px">✨ Request a feature</button>
+        <button onclick="openFeedbackForm('bug')"      class="btn-sm" style="font-size:11px;flex:1;min-width:90px">🐛 Report an issue</button>
+        <button onclick="openFeedbackForm('idea')"     class="btn-sm" style="font-size:11px;flex:1;min-width:90px">💡 Suggest something</button>
+      </div>
+      <div id="feedback-form" style="display:none;background:var(--marshmallow);border:1.5px solid rgba(229,4,139,0.2);border-radius:10px;padding:10px 12px">
+        <div id="feedback-form-label" style="font-size:11px;font-weight:700;color:var(--magenta);margin-bottom:6px">What\'s on your mind?</div>
+        <textarea id="feedback-form-text" rows="3" placeholder="Type away — Phoebe sees this on her side." style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:white;outline:none;resize:vertical"></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+          <button onclick="sendFeedback()" class="btn-sm primary" style="font-size:11px">Send to Phoebe</button>
+          <button onclick="document.getElementById('feedback-form').style.display='none'" class="btn-sm" style="font-size:11px">Cancel</button>
+          <span id="feedback-status" style="font-size:11px;color:var(--teal);margin-left:auto"></span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -4091,6 +4128,24 @@ function logout() {
 // ========== NOTIFICATION POLLING ==========
 var pollInterval = null;
 
+// v11700: notification queue lives on window._notifQueue. Each entry is
+// { id, kind, title, body, ts, ref }. The header bell badge shows
+// unread count; clicking it opens a panel with all + AI digest of
+// repetitive items. Auto-clears items >7 days old.
+window._notifQueue = window._notifQueue || [];
+window._notifSeen  = window._notifSeen  || (function(){ try { return JSON.parse(localStorage.getItem('hmh_notif_seen') || '[]'); } catch(e) { return []; } })();
+
+function _persistNotifSeen() { try { localStorage.setItem('hmh_notif_seen', JSON.stringify(window._notifSeen.slice(-200))); } catch(e) {} }
+function _notifUnread() { return window._notifQueue.filter(function(n){ return window._notifSeen.indexOf(n.id) < 0; }); }
+function refreshNotifBadge() {
+  var badge = document.getElementById('topbar-notif-badge');
+  if (!badge) return;
+  var unread = _notifUnread();
+  if (!unread.length) { badge.style.display = 'none'; return; }
+  badge.textContent = unread.length > 9 ? '9+' : String(unread.length);
+  badge.style.display = 'inline-block';
+}
+
 function startNotificationPolling() {
   if (!isDeployed) return;
   pollInterval = setInterval(async function() {
@@ -4107,7 +4162,17 @@ function startNotificationPolling() {
           // — we just need to MERGE the new client in, preserving local state.
           await mergeNewClientFromServer(notif.clientId);
           renderClients();
-          // Log to activity feed so Phoebe can see what arrived automatically
+          // v11700: also push to the persistent header notification queue
+          window._notifQueue.unshift({
+            id: 'notif-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+            kind: 'booking',
+            title: notif.isNew ? 'New booking · ' + notif.clientName : 'Returning client · ' + notif.clientName,
+            body: (notif.program || '') + ' on ' + (notif.sessionDate || ''),
+            ref: { clientId: notif.clientId },
+            ts: notif.timestamp || new Date().toISOString(),
+          });
+          window._notifQueue = window._notifQueue.slice(0, 50); // cap at 50
+          refreshNotifBadge();
           if (typeof logActivity === 'function') {
             logActivity('calendly', 'New booking · ' + (notif.clientName || 'client'), {
               clientId: notif.clientId,
@@ -4119,6 +4184,87 @@ function startNotificationPolling() {
       }
     } catch(e) {}
   }, 15000); // poll every 15s
+}
+
+// v11700: open the notifications centre panel. Shows unread first,
+// then read. AI digest of repetitive entries grouped by client+kind
+// so Phoebe doesn't see "James Wilson · note shared" 17 times.
+async function openNotificationsCenter() {
+  var unread = _notifUnread();
+  var all = window._notifQueue.slice(0, 30);
+  // Group repetitive entries: same kind + clientId, collapse to one digest line
+  var grouped = {};
+  all.forEach(function(n) {
+    var key = n.kind + '::' + ((n.ref && n.ref.clientId) || '');
+    if (!grouped[key]) grouped[key] = { items: [], kind: n.kind, clientId: n.ref && n.ref.clientId };
+    grouped[key].items.push(n);
+  });
+  var html = '';
+  if (!all.length) {
+    html = '<div style="font-size:13px;color:var(--stone);font-style:italic;text-align:center;padding:20px">No notifications. Quiet for now ✨</div>';
+  } else {
+    Object.keys(grouped).forEach(function(key) {
+      var g = grouped[key];
+      var newest = g.items[0];
+      var older = g.items.length - 1;
+      var unreadInGroup = g.items.filter(function(n){ return window._notifSeen.indexOf(n.id) < 0; }).length;
+      var when = '';
+      try { when = new Date(newest.ts).toLocaleString('en-AU', { weekday:'short', hour:'numeric', minute:'2-digit', hour12:true }); } catch (e) {}
+      html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-soft);background:' + (unreadInGroup ? 'rgba(229,4,139,0.04)' : 'white') + ';cursor:' + (newest.ref && newest.ref.clientId ? 'pointer' : 'default') + '"' +
+        (newest.ref && newest.ref.clientId ? ' onclick="openClient(\'' + newest.ref.clientId + '\');closeNotificationsCenter();markNotifSeen(\'' + newest.id + '\')"' : '') + '>' +
+        '<div style="font-size:18px">' + (g.kind === 'booking' ? '📅' : g.kind === 'feedback' ? '💬' : '🔔') + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;color:var(--magenta);font-weight:' + (unreadInGroup ? '700' : '500') + '">' + escapeHtml(newest.title || '') + '</div>' +
+          (newest.body ? '<div style="font-size:11px;color:var(--stone);margin-top:1px">' + escapeHtml(newest.body) + '</div>' : '') +
+          (older > 0 ? '<div style="font-size:10px;color:var(--hot-pink);margin-top:2px;font-weight:600">+ ' + older + ' more update' + (older === 1 ? '' : 's') + ' for this thread</div>' : '') +
+          '<div style="font-size:10px;color:var(--stone);margin-top:2px">' + when + '</div>' +
+        '</div>' +
+      '</div>';
+    });
+  }
+  // Mark all on open — but with a 2s delay so the user actually sees them as unread first
+  setTimeout(function() {
+    all.forEach(function(n) { if (window._notifSeen.indexOf(n.id) < 0) window._notifSeen.push(n.id); });
+    _persistNotifSeen();
+    refreshNotifBadge();
+  }, 2000);
+  // Render in a side panel (using branded modal)
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '🔔';
+  document.getElementById('branded-modal-title').textContent = 'Notifications';
+  var bodyEl = document.getElementById('branded-modal-body');
+  bodyEl.innerHTML = '<div style="max-height:60vh;overflow-y:auto;margin:0 -8px">' + html + '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var clearBtn = document.createElement('button');
+  clearBtn.className = 'btn-sm';
+  clearBtn.textContent = 'Mark all seen';
+  clearBtn.onclick = function() {
+    all.forEach(function(n) { if (window._notifSeen.indexOf(n.id) < 0) window._notifSeen.push(n.id); });
+    _persistNotifSeen();
+    refreshNotifBadge();
+    closeNotificationsCenter();
+  };
+  actions.appendChild(clearBtn);
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'btn-sm primary';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = closeNotificationsCenter;
+  actions.appendChild(closeBtn);
+  host.style.display = 'flex';
+  host._cancel = closeNotificationsCenter;
+}
+
+function closeNotificationsCenter() {
+  var host = document.getElementById('branded-modal-host');
+  if (host) host.style.display = 'none';
+}
+function markNotifSeen(notifId) {
+  if (window._notifSeen.indexOf(notifId) < 0) window._notifSeen.push(notifId);
+  _persistNotifSeen();
+  refreshNotifBadge();
 }
 
 // Fetches a single client from the server and inserts it into the in-memory
@@ -4242,6 +4388,18 @@ var PHOEBE_VOICE = (
 // Use as `phoebeVoice(myPrompt)` rather than splicing strings everywhere.
 function phoebeVoice(prompt) {
   return PHOEBE_VOICE + '\n\n────────────\n\n' + (prompt || '');
+}
+
+// v11700: today's-date helper that uses LOCAL date components instead of
+// `toISOString().split('T')[0]` (which converts to UTC and pushes "today"
+// back a day for clients in AEST/+10/+11 zones, so yesterday's "today"
+// commitments + tasks would still surface this morning). Use this anywhere
+// you compare a session/task date against "today" for visibility filters.
+function _localTodayStr() {
+  var d = new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
 }
 
 // v11570: AI-refusal detector. When Sonnet bails out (test-client flag,
@@ -4820,6 +4978,76 @@ function renderEarnedBadgeRibbon(client) {
 // HELP PANEL — floating "?" button bottom-right opens a drawer
 // with Resources / Email Phoebe / Book a chat / Quick help FAQ
 // ============================================================
+// v11700: client feedback form — surfaces under the help drawer. Posts
+// to the activity log as 'feedback' so Phoebe sees it on her side. No
+// AI or external send — just a private "Phoebe to Phoebe's-clients"
+// channel that's always-on regardless of integration status.
+function openFeedbackForm(kind) {
+  var labels = {
+    feature: '✨ Request a feature',
+    bug:     '🐛 Report an issue',
+    idea:    '💡 Suggestion for Phoebe',
+  };
+  var hints = {
+    feature: 'What would help your work flow? "It would be great if I could…"',
+    bug:     'What broke? When? On phone or laptop? Screenshot if you have one.',
+    idea:    'Your idea — wild ones welcome.',
+  };
+  var form = document.getElementById('feedback-form');
+  var label = document.getElementById('feedback-form-label');
+  var ta = document.getElementById('feedback-form-text');
+  var status = document.getElementById('feedback-status');
+  if (!form || !label || !ta) return;
+  form.style.display = 'block';
+  label.textContent = labels[kind] || labels.idea;
+  ta.placeholder = hints[kind] || hints.idea;
+  ta.dataset.kind = kind || 'idea';
+  if (status) status.textContent = '';
+  setTimeout(function(){ ta.focus(); }, 80);
+}
+
+async function sendFeedback() {
+  var ta = document.getElementById('feedback-form-text');
+  var status = document.getElementById('feedback-status');
+  if (!ta) return;
+  var text = (ta.value || '').trim();
+  if (!text) {
+    if (status) { status.textContent = 'Type something first'; status.style.color = '#C0392B'; }
+    return;
+  }
+  var kind = ta.dataset.kind || 'idea';
+  var client = (typeof currentClientId !== 'undefined' && currentClientId)
+    ? clients.find(function(c){ return c.id === currentClientId; })
+    : null;
+  var payload = {
+    type: 'feedback',
+    kind: kind,
+    text: text,
+    clientId: client ? client.id : null,
+    clientName: client ? client.name : 'Coach',
+    clientCode: client ? client.clientAccess : null,
+    page: (typeof location !== 'undefined') ? location.hash || location.pathname : '',
+    userAgent: (typeof navigator !== 'undefined') ? (navigator.userAgent || '').slice(0, 200) : '',
+    ts: new Date().toISOString(),
+  };
+  try {
+    var resp = await fetch('/api/activity-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ append: payload })
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    if (status) { status.textContent = '✓ Sent to Phoebe — thanks'; status.style.color = 'var(--teal)'; }
+    ta.value = '';
+    setTimeout(function(){
+      var form = document.getElementById('feedback-form');
+      if (form) form.style.display = 'none';
+    }, 1500);
+  } catch (err) {
+    if (status) { status.textContent = '⚠️ Could not send. Try again in a sec.'; status.style.color = '#C0392B'; }
+  }
+}
+
 // v11570: dedicated handlers for the client More sheet entries — the
 // previous inline onclick used `document.querySelector('details.client-section')`
 // which matched the FIRST collapsible section it found, not always the
@@ -7030,6 +7258,86 @@ async function runResearch() {
   btn.disabled=false;btn.innerHTML='<span>✦</span> Generate research brief';
 }
 
+// v11700: Program Builder import helper. Drops a program-type scaffold
+// into the textarea so Phoebe can tailor it (rather than starting from
+// scratch). The scaffolds match the existing program shapes the
+// auto-task-templates engine already understands.
+function importProgramBlock(progType) {
+  var ta = document.getElementById('p-notes');
+  if (!ta) return;
+  var scaffolds = {
+    'coaching':
+      '## Coaching · 90-day shape\n\n' +
+      'Month 1 — Foundations\n' +
+      '- Map current state (revenue, time use, network)\n' +
+      '- Set the 90-day target — one sentence\n' +
+      '- Audit pricing + offer set\n' +
+      '- Identify the ONE blocking story\n\n' +
+      'Month 2 — Movement\n' +
+      '- Ship one priced offer to market\n' +
+      '- Reach out to top 5 referral sources\n' +
+      '- Track every piece of revenue + every hour\n' +
+      '- Habit shift: weekly money review (15 min)\n\n' +
+      'Month 3 — Compound\n' +
+      '- Raise pricing on at least one offer\n' +
+      '- Systematise one repeating piece of work\n' +
+      '- Plan the next 90 days from this position',
+    '90day':
+      '## 90-Day Business Builder\n\n' +
+      'Week 1-2 — Diagnostic\n' +
+      '- Business snapshot: who, what, how much\n' +
+      '- Money leaks audit\n' +
+      '- Customer + revenue mix\n\n' +
+      'Week 3-6 — Build\n' +
+      '- Position one priced offer clearly\n' +
+      '- Two outreach moves a week\n' +
+      '- Visible weekly check-in\n\n' +
+      'Week 7-10 — Test\n' +
+      '- Ship the offer publicly\n' +
+      '- Collect proof + raise on next round\n\n' +
+      'Week 11-13 — Scale\n' +
+      '- Systematise repeatable parts\n' +
+      '- Set the next quarter',
+    'mdc':
+      '## MDC · 24 weeks · 4 sprints of 6 weeks\n\n' +
+      'Sprint 1 (Wk 1-6) — Vision + business snapshot\n' +
+      '- The "$1M" definition\n' +
+      '- Honest current-state map\n' +
+      '- One sprint focus\n\n' +
+      'Sprint 2 (Wk 7-12) — Move\n' +
+      '- Acquisition channel test\n' +
+      '- First scaling lever pulled\n\n' +
+      'Sprint 3 (Wk 13-18) — Build the engine\n' +
+      '- Team / systems / process\n' +
+      '- Recurring revenue motion\n\n' +
+      'Sprint 4 (Wk 19-24) — Compound\n' +
+      '- Pricing + position takes another step\n' +
+      '- Plan the post-MDC 12 months',
+    'audit':
+      '## Beautiful Business Audit · 60 days\n\n' +
+      'Pre-call — research brief + numbers gathered\n' +
+      'Day of — 2-hour deep dive\n' +
+      'Days 1-7 — first wins (3 quick wins, all visible)\n' +
+      'Days 8-30 — implement priorities (top 3)\n' +
+      'Days 31-60 — measure + plan next 90',
+    'happyhour':
+      '## Happy Hour · single 90-min session\n\n' +
+      'Pre-call: pre-read Phoebe\'s blog post on the topic\n' +
+      'Session: bring 1 problem + 3 questions\n' +
+      'Output: 5 immediate actions, scheduled this week',
+  };
+  var content = scaffolds[progType];
+  if (!content) return;
+  // If the textarea already has content, append; otherwise replace
+  if (ta.value.trim()) {
+    ta.value = ta.value.trim() + '\n\n────\n\n' + content;
+  } else {
+    ta.value = content;
+  }
+  ta.focus();
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('📥 ' + progType.toUpperCase() + ' scaffold imported — edit + tailor');
+}
+
 async function runPlanBuilder() {
   var notes=document.getElementById('p-notes').value.trim();if(!notes){branded.alert('Please paste session notes');return;}
   var clientName=document.getElementById('p-name').value.trim()||'Client';
@@ -7128,8 +7436,19 @@ function loadClientPortal(client) {
   // Only MDC cohort members get the tab in their nav.
   try { if (typeof updateClientCommunityTabVisibility === 'function') updateClientCommunityTabVisibility(client); } catch(e) { console.warn('[Community tab]', e); }
 
-  // Build program nav — show all unlocked + completed programs
+  // Build program nav — show all unlocked + completed programs.
+  // v11700: sort so the MOST RECENT enrolled (or active) program is the
+  // default tab. Was using array order, which surfaced the oldest program
+  // first for clients with multiple enrolments.
   var progs = (client.programs||[]).filter(function(p){ return p.workbook!=='none' && p.workbook!=='inquiry'; });
+  progs.sort(function(a, b) {
+    var aDone = (a.status === 'complete' || a.locked) ? 1 : 0;
+    var bDone = (b.status === 'complete' || b.locked) ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone; // active first, completed last
+    var aT = new Date(a.sessionDate || a.createdAt || 0).getTime();
+    var bT = new Date(b.sessionDate || b.createdAt || 0).getTime();
+    return bT - aT; // newest first within each group
+  });
   var nav = document.getElementById('client-prog-nav');
   nav.innerHTML = progs.map(function(p, i) {
     var pi = PROGRAMS[p.program]||{};
@@ -7140,8 +7459,7 @@ function loadClientPortal(client) {
       (pi.icon||'📌') + ' ' + (pi.short||p.program) + (isComplete?' ✓':'') + '</button>';
   }).join('');
 
-  // Render the first program into the Programs pane (so when client clicks the
-  // Programs tab the content is already there)
+  // Render the first (most recent active) program into the Programs pane
   if (progs.length) renderClientProgram(client, progs[0]);
   else {
     document.getElementById('client-content-area').innerHTML = '<div style="padding:32px;text-align:center;color:var(--stone)">Your program workbook will appear here. Check with Phoebe for your access details.</div>';
@@ -10242,7 +10560,7 @@ async function useSuggestedWhy() {
 function renderClientTodosTab(client) {
   var area = document.getElementById('client-todos-area');
   if (!area || !client) return;
-  var today = new Date().toISOString().split('T')[0];
+  var today = _localTodayStr(); // v11700 TZ fix
   var allTasks = (client.tasks||[]).filter(function(t){ return t && t.text && t.clientVisible; });
   var openTasks = allTasks.filter(function(t){ return !t.done; });
   var doneTasks = allTasks.filter(function(t){ return t.done; });
@@ -10601,7 +10919,7 @@ async function openShareWinModal(targetClientId) {
 // distinct from regular tasks; Done interaction matches the to-dos tab
 // (ticked = strikethrough + green confirm).
 function renderTodayOneThing(client) {
-  var today = new Date().toISOString().split('T')[0];
+  var today = _localTodayStr(); // v11700: was UTC-based — wrong day for AEST
   var commits = client.dailyCommits || {};
   var todayVal = commits[today] || '';
   var done = todayVal && todayVal.indexOf('✓') === 0;
@@ -15092,21 +15410,37 @@ function renderUniversalIntake(client, prog) {
     '</div>';
   }).join('');
 
-  return '<div class="intake-universal-block">' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">' +
+  // v11700: count answered vs blank, auto-collapse when fully answered.
+  // Phoebe asked: "Make 'My answers' collapsed when answered". Now the
+  // intake renders as a <details> that opens automatically when there
+  // are blanks AND collapses when every question has an answer. The
+  // user can always click the summary to expand and edit.
+  var totalCount = fields.length;
+  var answeredCount = fields.filter(function(f) { return f.answer && f.answer.trim(); }).length;
+  var allAnswered = totalCount > 0 && answeredCount === totalCount;
+  var openAttr = allAnswered ? '' : ' open';
+  var summaryRight = allAnswered
+    ? '<span style="font-size:11px;font-weight:600;color:var(--teal);background:rgba(95,163,168,0.15);padding:3px 10px;border-radius:99px">✓ ' + answeredCount + '/' + totalCount + ' answered · click to edit</span>'
+    : '<span style="font-size:11px;font-weight:600;color:var(--hot-pink);background:rgba(229,4,139,0.10);padding:3px 10px;border-radius:99px">' + answeredCount + '/' + totalCount + ' answered</span>';
+
+  return '<details class="intake-universal-block"' + openAttr + ' style="border:1.5px solid var(--border);border-radius:12px;padding:0;background:white">' +
+    '<summary style="cursor:pointer;list-style:none;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">' +
       '<div>' +
         '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700">📋 Universal intake</div>' +
         '<div style="font-size:11px;color:var(--stone);margin-top:2px">Same answers across every program. Click any question to rephrase or any answer to edit.</div>' +
       '</div>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+      summaryRight +
+    '</summary>' +
+    '<div style="padding:0 16px 16px">' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
         // v11380 §8: auto-fill blanks from research brief / sessions / domain
-        '<button class="btn-sm" style="font-size:11px" onclick="autoFillIntakeWithAI(\'' + client.id + '\')" title="AI drafts answers for blank questions from the research brief, recent sessions, and existing data">✦ Auto-fill blanks</button>' +
-        '<button class="btn-sm primary" style="font-size:11px" onclick="addIntakeField(\'' + client.id + '\')">+ Add a question</button>' +
+        '<button class="btn-sm" style="font-size:11px" onclick="event.preventDefault();autoFillIntakeWithAI(\'' + client.id + '\')" title="AI drafts answers for blank questions from the research brief, recent sessions, and existing data">✦ Auto-fill blanks</button>' +
+        '<button class="btn-sm primary" style="font-size:11px" onclick="event.preventDefault();addIntakeField(\'' + client.id + '\')">+ Add a question</button>' +
       '</div>' +
+      migrateBanner +
+      '<div id="intake-fields-list">' + fieldsHtml + '</div>' +
     '</div>' +
-    migrateBanner +
-    '<div id="intake-fields-list">' + fieldsHtml + '</div>' +
-  '</div>';
+  '</details>';
 }
 
 // v11390: client-facing activity feed — last 7 days of Phoebe's actions
@@ -16826,7 +17160,15 @@ async function autoFillIntakeWithAI(clientId) {
     client.intake.updatedAt = new Date().toISOString();
     await persistClient(client);
     branded.success('✨ Drafted ' + draftsCount + ' answer' + (draftsCount === 1 ? '' : 's') + ' — review + edit, then save.');
+    // v11700 fix: re-render the intake content so the new drafted answers
+    // actually show up. Was navigating to the tab without re-rendering,
+    // so Phoebe saw "Drafting…" toast then nothing changed.
     if (typeof switchTab === 'function') switchTab('intake');
+    var intakeContent = document.getElementById('intake-content');
+    if (intakeContent && typeof renderUniversalIntake === 'function') {
+      var prog = (client.programs || []).find(function(p){ return p.id === currentProgramId; }) || (client.programs || [])[0];
+      intakeContent.innerHTML = renderUniversalIntake(client, prog);
+    }
   } catch (e) {
     branded.alert('Couldn\'t draft answers: ' + (e.message || e));
   }
@@ -17026,6 +17368,12 @@ function renderClients() {
   var grid = document.getElementById('clients-grid');
   if (!grid) return;
   var list = clients;
+  // v11700: Zoom-orphan placeholder records (client-zoom-* IDs) are
+  // recordings that need a coach decision, NOT real clients. Hide them
+  // from the All Clients grid by default; surface a small banner so
+  // Phoebe can jump to the review queue.
+  var zoomOrphans = list.filter(function(c){ return c && c.id && c.id.indexOf('client-zoom-') === 0; });
+  list = list.filter(function(c){ return !c || !c.id || c.id.indexOf('client-zoom-') !== 0; });
   // Hide archived clients unless the toggle is flipped on. Persists across
   // sessions so Phoebe doesn't lose her place.
   var showArchived = localStorage.getItem('hmh_show_archived') === '1';
@@ -17072,7 +17420,19 @@ function renderClients() {
   }
   // v11320: bulk-select mode — toggle on each card, checkbox visible
   var bulkOn = window._bulkSelect && window._bulkSelect.scope === 'clients' && window._bulkSelect.mode;
-  grid.innerHTML = list.map(function(c) {
+  // v11700: gentle banner pointing Phoebe at the Zoom-orphan review queue
+  // when there are unreviewed recordings hidden from this grid.
+  var orphanBanner = '';
+  if (zoomOrphans.length) {
+    orphanBanner = '<div style="grid-column:1/-1;background:linear-gradient(135deg,#FFFBE8,#FDEFF5);border:1px dashed rgba(232,160,32,0.4);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<div style="font-size:18px">🎬</div>' +
+      '<div style="flex:1;min-width:200px;font-size:12px;color:#5A4632;line-height:1.5">' +
+        '<strong>' + zoomOrphans.length + ' Zoom recording' + (zoomOrphans.length === 1 ? '' : 's') + ' to review</strong> — these aren\'t real clients (March round, Unknown contact, your Personal Meeting Room, etc). Match each one to a client OR mark as misc.' +
+      '</div>' +
+      '<button class="btn-sm primary" onclick="showPage(\'home\')" style="font-size:11px">Review now →</button>' +
+    '</div>';
+  }
+  grid.innerHTML = orphanBanner + list.map(function(c) {
     var progs = (c.programs||[]).filter(function(p){ return p.workbook!=='none'&&p.workbook!=='inquiry'; });
     var latestProg = progs[progs.length-1] || {};
     var initials = c.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2);
@@ -17436,7 +17796,7 @@ function renderTaskSheet() {
 
   // Archived clients are excluded from the working task sheet — restore via Edit if needed.
   var clientArr = (Array.isArray(clients) ? clients : []).filter(function(c){ return c && !c.archived; });
-  var today = new Date().toISOString().split('T')[0];
+  var today = _localTodayStr(); // v11700 TZ fix
   var filterMode = window._taskFilter || 'pending';
 
   var allItems = [];
@@ -18303,6 +18663,35 @@ function renderClientCommunityTab(client) {
     return goalHtml + momentumHtml + memberDirHtml + feedHtml;
   }).join('');
 
+  // v11700: surface the cohort's WhatsApp group, next session date+time,
+  // and Zoom join URL right at the top of the Community tab so members
+  // never have to hunt. One-tap actions for everything they need.
+  var quickLinksHtml = cos.map(function(co) {
+    var prog = (client.programs || []).find(function(p) { return p && p.cohort === co.id; });
+    var nextSess = null;
+    if (Array.isArray(co.sessions) && co.sessions.length) {
+      var todayLocal = _localTodayStr();
+      var future = co.sessions.filter(function(s){ return s.date && s.date >= todayLocal; }).sort(function(a, b){ return (a.date||'').localeCompare(b.date||''); });
+      nextSess = future[0] || null;
+    }
+    var nextDate = '';
+    if (nextSess && nextSess.date) {
+      try { nextDate = new Date(nextSess.date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }) + (nextSess.time ? ' · ' + nextSess.time : ''); }
+      catch (e) { nextDate = nextSess.date; }
+    }
+    var zoomUrl = (nextSess && nextSess.zoomJoinUrl) || co.zoomLink || (prog && prog.zoomJoin) || '';
+    var whatsappUrl = co.whatsapp || '';
+    var buttons = [];
+    if (whatsappUrl) buttons.push('<a href="' + escapeHtml(whatsappUrl) + '" target="_blank" rel="noopener" class="btn-sm primary" style="font-size:12px;text-decoration:none;background:#25D366;border-color:#25D366;color:white">💬 WhatsApp group</a>');
+    if (zoomUrl)     buttons.push('<a href="' + escapeHtml(zoomUrl) + '" target="_blank" rel="noopener" class="btn-sm primary" style="font-size:12px;text-decoration:none">🎬 Join Zoom</a>');
+    if (!whatsappUrl && !zoomUrl) buttons.push('<span style="font-size:11px;color:var(--stone);font-style:italic">Phoebe will share the WhatsApp + Zoom links once the cohort is set up.</span>');
+    return '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px">' +
+      '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700;margin-bottom:4px">' + escapeHtml(co.name || 'Cohort') + '</div>' +
+      (nextDate ? '<div style="font-size:12px;color:var(--stone);margin-bottom:8px">📅 Next session · <strong style="color:var(--magenta)">' + escapeHtml(nextDate) + '</strong></div>' : '') +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + buttons.join('') + '</div>' +
+    '</div>';
+  }).join('');
+
   area.innerHTML =
     '<div class="client-section">' +
       '<h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
@@ -18310,6 +18699,7 @@ function renderClientCommunityTab(client) {
         '<span style="font-size:11px;color:var(--stone);font-weight:500">· ' + cos.length + ' cohort' + (cos.length === 1 ? '' : 's') + '</span>' +
       '</h3>' +
       '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">Hey ' + escapeHtml(firstName) + ' — this is private to your cohort. Wins, shoutouts and session highlights all land here. Add a shoutout when someone\'s done something brilliant. 👇</p>' +
+      quickLinksHtml +
     '</div>' +
     sections;
 }
@@ -19253,22 +19643,54 @@ async function sendResourceToCohort(cohortId) {
   branded.success(sent + ' sent · resource posted to feed' + (co.whatsapp ? ' · WhatsApp queued' : '') + (failed ? ' · ' + failed + ' failed' : ''));
 }
 
+// v11700: shoutout composer is now a simple two-step picker:
+//   1) Pick a cohort member (or skip → "to the cohort")
+//   2) Write the shoutout
+// Was a single free-text prompt with awkward "{name}" placeholder text
+// — Phoebe asked for the simpler picker. The picked member id is
+// stored on the feed entry so future renderers can highlight them.
 async function openShoutoutComposer(cohortId) {
   var co = _findCohort(cohortId);
   if (!co) return;
-  var text = await branded.prompt('Write a shoutout to the cohort — celebrating someone, marking a win, sharing an insight. Visible to every member.', '', 'Shoutout to {name} for…', { title: '👏 Shoutout', okLabel: 'Post' });
+  var members = _cohortMembers(co.id);
+  // Build a numbered menu — "0. To the whole cohort" / "1. Frances" / "2. Lou" / ...
+  var pickedId = '';
+  var pickedName = '';
+  if (members.length) {
+    var menu = '0. To the whole cohort (no specific person)\n' + members.map(function(m, i) {
+      return (i + 1) + '. ' + (m.name || 'Member');
+    }).join('\n');
+    var pick = await branded.prompt(
+      'Who is the shoutout for? Type the number:\n\n' + menu,
+      '0', '', { title: '👏 Pick a member', okLabel: 'Next' }
+    );
+    if (pick == null) return;
+    var idx = parseInt(pick, 10);
+    if (!isNaN(idx) && idx > 0 && idx <= members.length) {
+      pickedId = members[idx - 1].id;
+      pickedName = members[idx - 1].name || '';
+    }
+  }
+  var promptHeader = pickedName ? 'Shoutout for ' + pickedName + ' — write what they did:' : 'Write a shoutout to the cohort — celebrating someone, marking a win, sharing an insight.';
+  var promptHint = pickedName ? 'e.g. just landed her first commercial brief 👏' : '';
+  var text = await branded.prompt(promptHeader, '', promptHint, { title: '👏 Shoutout', okLabel: 'Post' });
   if (!text || !text.trim()) return;
+  // If a specific member was picked, the feed entry stores their id so
+  // future renderers can prepend "🏆 [Name]:" or highlight their card.
   co.feedEntries = co.feedEntries || [];
+  var displayText = pickedName ? (pickedName + ' — ' + text.trim()) : text.trim();
   co.feedEntries.unshift({
     id: 'fe-' + Date.now(),
     kind: 'shoutout',
-    text: text.trim(),
+    text: displayText,
+    aboutClientId: pickedId || undefined, // who the shoutout is FOR (if anyone)
+    aboutClientName: pickedName || undefined,
     author: 'Phoebe',
     ts: new Date().toISOString(),
     reactions: {},
   });
   _saveCohorts();
-  branded.success('Shouted out to the cohort');
+  branded.success(pickedName ? ('Shoutout posted for ' + pickedName) : 'Shouted out to the cohort');
   if (typeof renderCohortManager === 'function') renderCohortManager();
 }
 
@@ -20677,7 +21099,7 @@ function renderHome() {
 
   // Archived clients are never surfaced on the home page — they're done for now
   var clientArr = (Array.isArray(clients) ? clients : []).filter(function(c){ return c && !c.archived; });
-  var today = new Date().toISOString().split('T')[0];
+  var today = _localTodayStr(); // v11700 TZ fix
   var thisWeekEnd = new Date();
   thisWeekEnd.setDate(thisWeekEnd.getDate() + 7);
   var weekEndStr = thisWeekEnd.toISOString().split('T')[0];

@@ -33,7 +33,9 @@
   --magenta:     #E5048B;
   --sunshine:    #FBF219;
   --sand:        #C9A88D;
-  --stone:       #ACA495;
+  /* v11700: darkened from #ACA495 — readability on cream paper background.
+     Phoebe flagged the previous tone as slightly hard to read. */
+  --stone:       #7A7368;
   --mist:        #D7E9E7;
   --teal:        #5FA3A8;
   --border:      rgba(229,4,139,0.12);
