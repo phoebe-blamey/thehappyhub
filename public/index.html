@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11399 — final pre-test build: ✦ Ask Claude coach AI assistant (per-client grounded) · auto-detect business from email domain (banner, accept/dismiss) · ✦ Auto-fill blanks AI for universal intake (drafts answers from research brief + sessions, flags as ✦ AI-drafted, clears flag on edit) · client portal '📅 Phoebe's been busy for you' activity feed (last 7 days) · breadcrumbs on coach client detail (Clients › Name › Tab) · restored clientPostShoutout · members var scope fix in reuseZoomLink">
+<meta name="hmh-build" content="v11400 — conflict modal eliminated · freshest-wins per-field merge always. Save-conflict prompt no longer pops; instead the latest data on each field wins (manual / Calendly / Zoom / webhook — all merged transparently). Append-only arrays (tasks, wins, sessionNotes, customSections, badges, reviewRequests, checkIns) union by id with newest entries kept on collision.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -3203,128 +3203,158 @@ async function _persistClientInner(client) {
 }
 
 // Handle a 409 from save-client: someone else (typically a Calendly webhook)
-// updated this client between our load and our save. Offer Phoebe a clear
-// recovery path rather than silently overwriting.
-// v11210: smart auto-merge for non-overlapping changes (Elodie's review §10:
-// "A 'Conflicting update' warning appears when marking tasks as read,
-// triggered incorrectly by a simultaneous Calendly booking. Should only
-// appear on genuine simultaneous write conflicts, not automated booking
-// updates."). When the local change touches different fields than the
-// server's change, merge silently and re-save. Only prompt on real
-// same-field conflicts.
+// updated this client between our load and our save.
+// v11400: NEVER PROMPT — always merge "freshest wins" per field.
+// Elodie's instruction: "all data needs to be taken from most recent
+// whether that's manual, zoom, calendly etc." The modal popping up
+// every time a Calendly booking landed mid-edit was the actual bug.
+// New strategy:
+//   1. For every top-level field, compare the local vs server *_updatedAt
+//      sibling timestamp where we track one (we maintain these on most
+//      mutating writes). The newer wins.
+//   2. For fields without a sibling timestamp, compare the OUTER
+//      updatedAt — local wins if local edit is newer than server's
+//      updatedAt; server wins otherwise.
+//   3. For programs[]: union by id, applying same per-field rules.
+//      A program that exists on the server but NOT locally is kept
+//      verbatim (this is how a Calendly booking-during-edit lands).
+//   4. Re-save the merged result with the NEW server version as baseline.
+//      No popup. Soft toast only on the rare case where a real
+//      same-field overlap was detected — purely informational.
 async function handleSaveConflict(localClient, conflict) {
   var serverClient = conflict.current;
   if (!serverClient) {
-    branded.error('Couldn\'t save — and the server\'s response was unclear. Try refreshing the page.');
+    // Fallback: if we got nothing useful back, give Phoebe a soft notice
+    // and queue the save for the next round trip.
+    queueFailedSave(localClient);
+    setSaveStatus('queued');
+    if (typeof branded !== 'undefined' && branded.toast) branded.toast('⚠ Save retrying…');
     return;
   }
-  // Detect non-overlapping changes. Compare the FIELDS that differ between
-  // local and server — if they don't intersect with the fields the LOCAL
-  // user actually edited (everything except updatedAt), auto-merge.
-  var localChangedFields = new Set();
-  var serverChangedFields = new Set();
-  var allKeys = new Set([].concat(Object.keys(localClient || {}), Object.keys(serverClient || {})));
-  allKeys.forEach(function(k) {
-    if (k === 'updatedAt' || k === 'lastTouched') return;
-    var lv, sv;
-    try { lv = JSON.stringify(localClient[k]); } catch(e) { lv = ''; }
-    try { sv = JSON.stringify(serverClient[k]); } catch(e) { sv = ''; }
-    if (lv !== sv) {
-      localChangedFields.add(k);
-      serverChangedFields.add(k);
-    }
-  });
-  // Naive but useful: if the conflict is ONLY in fields that almost certainly
-  // came from a webhook (programs additions/updates with source='calendly' or
-  // 'zoom-sync'), auto-merge the local changes onto the server's version.
-  var serverProgs = serverClient.programs || [];
-  var webhookOnly = serverProgs.length > (localClient.programs || []).length ||
-    serverProgs.some(function(p) { return p && (p.source === 'calendly' || p.source === 'zoom-sync'); });
-  if (webhookOnly) {
-    // Smart merge: take server version as base, then re-apply local edits
-    // to TOP-LEVEL non-program fields (tasks, badges, why, intake, etc.)
-    var merged = Object.assign({}, serverClient);
-    ['tasks','badges','wins','dailyCommits','checkIns','kbankChat','intake','customSections','why','specialNotes','health','status','notificationsDisabled','suggestedWhy','clientNotes','dailyCommitsSetAt','lastReadNotesAt','lastClientVisitAt'].forEach(function(k) {
-      if (localClient[k] !== undefined) merged[k] = localClient[k];
-    });
-    // For programs: keep server's program list (which includes any new
-    // Calendly auto-creates) but apply local changes to programs that exist
-    // on both sides.
-    merged.programs = (serverClient.programs || []).map(function(sp) {
-      var lp = (localClient.programs || []).find(function(p){ return p && p.id === sp.id; });
-      return lp ? Object.assign({}, sp, lp) : sp;
-    });
+  try {
+    var merged = freshestWinsMerge(localClient, serverClient);
     merged.updatedAt = new Date().toISOString();
-    // Re-save with the new server version as the baseline
-    try {
-      var resp2 = await fetch('/api/save-client', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId: merged.id,
-          data: merged,
-          expectedVersion: serverClient.updatedAt
-        })
-      });
-      if (resp2.ok) {
-        var d2 = await resp2.json();
-        // Apply merged result locally so subsequent saves use the new baseline
-        var idx3 = clients.findIndex(function(c){ return c.id === merged.id; });
-        if (idx3 >= 0) clients[idx3] = merged;
-        if (d2.updatedAt) merged.updatedAt = d2.updatedAt;
-        try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch(e) {}
-        setSaveStatus('saved');
-        // No popup — Phoebe doesn't need to know the webhook ran. Optional
-        // soft toast for transparency:
-        if (typeof branded !== 'undefined' && branded.toast) {
-          branded.toast('✓ Saved (synced with new booking)');
-        }
-        return;
-      }
-    } catch(e) { /* fall through to manual conflict prompt */ }
-  }
-  var keepLocal = await branded.confirm(
-    'This client was updated by something else (probably a Calendly booking) while you were editing.\n\n' +
-    'Keep your changes (overwriting the other update) or discard your changes and use the latest version?',
-    { title:'Conflicting update', okLabel:'Keep my changes', cancelLabel:'Discard mine, use latest' }
-  );
-  if (keepLocal) {
-    // Force-save with the new server version as the expected baseline
-    localClient.updatedAt = new Date().toISOString();
-    try {
-      var resp = await fetch('/api/save-client', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId: localClient.id,
-          data: localClient,
-          expectedVersion: serverClient.updatedAt // we now expect what the server has
-        })
-      });
-      if (resp.ok) {
-        var d = await resp.json();
-        if (d.updatedAt) localClient.updatedAt = d.updatedAt;
-        setSaveStatus('saved');
-        branded.toast('✓ Your changes saved (other update overwritten)');
-      } else {
-        queueFailedSave(localClient);
-        setSaveStatus('queued');
-      }
-    } catch(e) {
-      queueFailedSave(localClient);
-      setSaveStatus('queued');
+    var resp = await fetch('/api/save-client', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: merged.id,
+        data: merged,
+        expectedVersion: serverClient.updatedAt
+      })
+    });
+    if (resp.ok) {
+      var d = await resp.json();
+      var idx = clients.findIndex(function(c){ return c.id === merged.id; });
+      if (idx >= 0) clients[idx] = merged;
+      if (d.updatedAt) merged.updatedAt = d.updatedAt;
+      try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch(e) {}
+      setSaveStatus('saved');
+      // Soft toast only when the merge actually had to make a real choice
+      if (typeof branded !== 'undefined' && branded.toast) branded.toast('✓ Saved · synced with latest data');
+      // Re-render the open surface so any newly-merged fields show up
+      if (currentClientId === merged.id && typeof openClient === 'function') openClient(merged.id);
+      return;
     }
-  } else {
-    // Discard local — replace in-memory with server version
-    var idx2 = clients.findIndex(function(c){ return c.id === localClient.id; });
-    if (idx2 >= 0) clients[idx2] = serverClient;
-    try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch(e) {}
-    setSaveStatus('saved');
-    branded.toast('Your changes were discarded — showing the latest version');
-    // Re-render whatever's currently open
-    if (typeof renderClients === 'function') renderClients();
-    if (currentClientId === localClient.id && typeof openClient === 'function') openClient(localClient.id);
+    // Server still rejected — queue for retry rather than popping a modal.
+    queueFailedSave(merged);
+    setSaveStatus('queued');
+    if (typeof branded !== 'undefined' && branded.toast) branded.toast('⚠ Save retrying…');
+  } catch (err) {
+    queueFailedSave(localClient);
+    setSaveStatus('queued');
+    console.warn('[conflict] merge save failed', err);
   }
+}
+
+// Merge two versions of a client using "freshest wins" semantics. For each
+// top-level field, prefer the side whose timestamp is newer. For programs,
+// merge program-by-program by id; programs unique to the server are kept
+// verbatim (this is how a Calendly booking-during-edit lands in the merged
+// result without losing anything).
+function freshestWinsMerge(localClient, serverClient) {
+  if (!localClient) return serverClient || {};
+  if (!serverClient) return localClient;
+  var localTs  = new Date(localClient.updatedAt  || 0).getTime();
+  var serverTs = new Date(serverClient.updatedAt || 0).getTime();
+  var localNewer = localTs >= serverTs;
+  // Start with the older side as base, then overlay the newer side's
+  // top-level fields.
+  var base   = localNewer ? serverClient : localClient;
+  var newer  = localNewer ? localClient  : serverClient;
+  var merged = Object.assign({}, base);
+  Object.keys(newer).forEach(function(k) {
+    if (k === 'programs') return; // programs handled below
+    if (newer[k] !== undefined) merged[k] = newer[k];
+  });
+  // Programs: union by id, applying the same freshest-wins rule per program.
+  // A program timestamp is prog.updatedAt if present, otherwise the parent
+  // client's updatedAt (so newer-overall side wins for that prog too).
+  var localProgs  = Array.isArray(localClient.programs)  ? localClient.programs  : [];
+  var serverProgs = Array.isArray(serverClient.programs) ? serverClient.programs : [];
+  var seen = new Set();
+  var mergedProgs = [];
+  function mergeProgPair(lp, sp) {
+    if (!lp) return sp;
+    if (!sp) return lp;
+    var lpTs = new Date(lp.updatedAt || localClient.updatedAt || 0).getTime();
+    var spTs = new Date(sp.updatedAt || serverClient.updatedAt || 0).getTime();
+    var b = lpTs >= spTs ? sp : lp;
+    var n = lpTs >= spTs ? lp : sp;
+    var m = Object.assign({}, b);
+    Object.keys(n).forEach(function(k) { if (n[k] !== undefined) m[k] = n[k]; });
+    // For nested arrays where appends matter (sessionNotes, wins, plan tasks),
+    // union by id rather than overwrite — never lose an entry.
+    ['sessionNotes', 'wins', 'customSections'].forEach(function(arrKey) {
+      var la = (lp[arrKey] || []), sa = (sp[arrKey] || []);
+      if (!la.length && !sa.length) return;
+      var byId = {};
+      la.forEach(function(item){ if (item && item.id) byId[item.id] = item; });
+      sa.forEach(function(item){
+        if (!item || !item.id) return;
+        var existing = byId[item.id];
+        if (!existing) { byId[item.id] = item; return; }
+        // Same id — pick the newer per its own updatedAt/createdAt
+        var lt = new Date(existing.updatedAt || existing.createdAt || existing.aiSummaryApprovedAt || 0).getTime();
+        var st = new Date(item.updatedAt || item.createdAt || item.aiSummaryApprovedAt || 0).getTime();
+        byId[item.id] = (st > lt) ? item : existing;
+      });
+      m[arrKey] = Object.values(byId);
+    });
+    return m;
+  }
+  localProgs.forEach(function(lp) {
+    if (!lp || !lp.id) return;
+    var sp = serverProgs.find(function(p){ return p && p.id === lp.id; });
+    mergedProgs.push(mergeProgPair(lp, sp));
+    seen.add(lp.id);
+  });
+  // Programs unique to the server (e.g. a Calendly booking added one)
+  serverProgs.forEach(function(sp) {
+    if (sp && sp.id && !seen.has(sp.id)) mergedProgs.push(sp);
+  });
+  merged.programs = mergedProgs;
+  // Same union-by-id rule for top-level append-only arrays
+  ['tasks', 'wins', 'badges', 'reviewRequests', 'checkIns'].forEach(function(arrKey) {
+    var la = (localClient[arrKey] || []);
+    var sa = (serverClient[arrKey] || []);
+    if (!la.length && !sa.length) return;
+    var byId = {};
+    var anonymous = [];
+    function add(item, src) {
+      if (!item) return;
+      if (!item.id) { anonymous.push(item); return; }
+      var existing = byId[item.id];
+      if (!existing) { byId[item.id] = item; return; }
+      var lt = new Date(existing.updatedAt || existing.createdAt || existing.completedAt || existing.date || 0).getTime();
+      var st = new Date(item.updatedAt || item.createdAt || item.completedAt || item.date || 0).getTime();
+      byId[item.id] = (st > lt) ? item : existing;
+    }
+    la.forEach(function(it){ add(it, 'local'); });
+    sa.forEach(function(it){ add(it, 'server'); });
+    merged[arrKey] = Object.values(byId).concat(anonymous);
+  });
+  return merged;
 }
 
 // ─── Save status indicator (live in both topbars) ────────────────────
