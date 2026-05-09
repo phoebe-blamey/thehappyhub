@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11330 — MDC brief part 1: Cohort Manager + MDC Cohort merged into single 'MDC Cohort' page · cohort lifecycle (active/closed pill + close-out flow with summary report + reopen) · cohort progress overview panel (avg %, attendance, health breakdown, missed-2+ flag) · sortable filterable member grid with AI insights consistency · per-member ✦ Generate insights button · 'MDC member' placeholder fixed · AI cohort insights panel (retrospective + forward-looking session prep) · ↩ Reuse Zoom link from another cohort · sync-to-members tooltip permanent · standardised Sprint/Week format · cohort feed scaffold + shoutout composer">
+<meta name="hmh-build" content="v11370 — MDC brief parts 2-4: sessions are now expandable cards with attendance grid + ✦ Session N Insights AI summarisation (coach + client versions in parallel) + per-session reminders + auto-flag clients missing 2+ sessions · cohort messaging (📧 custom message · 📚 send resource from library · WhatsApp queue) · client MDC week view shows cohort session summary + cohort feed for that week · full cohort community feed with auto-posted wins / milestones / session highlights / resources · 5-emoji reactions · pin-to-top · client can post shoutouts · WhatsApp mirror queues (becomes real once API live)">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -7657,29 +7657,94 @@ function renderClientProgram(client, prog) {
     var weekNotes = (prog.sessionNotes||[]).filter(function(n) {
       return n && n.sprint === sprint && n.week === week;
     });
+    // v11350 §8: also pull the matching cohort session (if any) — its
+    // aiClientSummary is the plain-language version we now generate
+    // alongside the coach summary in v11340. Surface that here.
+    var weekFlat = (sprint - 1) * 6 + week;
+    var cohortSession = null;
+    if (prog.cohort && typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) {
+      var co = MDC_COHORTS.find(function(c){ return c.id === prog.cohort; });
+      if (co && co.start && Array.isArray(co.sessions)) {
+        // Find a session whose date is within this week's range
+        var startMs = new Date(co.start).getTime();
+        var weekStartMs = startMs + (weekFlat - 1) * 7 * 86400000;
+        var weekEndMs = startMs + weekFlat * 7 * 86400000;
+        cohortSession = co.sessions.find(function(s) {
+          if (!s || !s.date) return false;
+          var t = new Date(s.date).getTime();
+          return t >= weekStartMs && t < weekEndMs;
+        });
+      }
+    }
     var weekSessionHtml = '';
+    var sessionBits = [];
+    // Cohort session (client-facing summary preferred)
+    if (cohortSession) {
+      var cs = cohortSession;
+      var clientSummary = cs.aiClientSummary || '';
+      var bits = [];
+      var videoUrl = cs.zoomJoinUrl || '';
+      if (videoUrl) bits.push('<a href="' + videoUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--mist);color:var(--teal);padding:6px 14px;border-radius:99px;text-decoration:none;font-weight:600">🎥 Open Zoom ' + (cs.zoomPasscode ? '(' + cs.zoomPasscode + ')' : '') + '</a>');
+      var linksRow = bits.length ? '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + bits.join('') + '</div>' : '';
+      var summaryHtml = clientSummary
+        ? '<div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Session summary</div>' +
+          '<div class="md-render-preview" style="font-size:13px;line-height:1.65;color:var(--magenta)">' + (typeof renderMarkdownLite === 'function' ? renderMarkdownLite(clientSummary) : escapeHtml(clientSummary)) + '</div>'
+        : '<div style="font-size:12px;color:var(--stone);font-style:italic">Phoebe will share the session summary here once she\'s reviewed it.</div>';
+      sessionBits.push(summaryHtml + linksRow);
+    }
+    // Per-program session notes (legacy + individual sessions)
     if (weekNotes.length) {
-      weekSessionHtml = weekNotes.map(function(n) {
+      sessionBits = sessionBits.concat(weekNotes.map(function(n) {
         var bits = [];
-        // Zoom video link with subtitles (player URL or playable file)
         var videoUrl = n.zoomVideoUrl || n.zoomUrl || '';
-        if (videoUrl) {
-          bits.push('<a href="' + videoUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--mist);color:var(--teal);padding:6px 14px;border-radius:99px;text-decoration:none;font-weight:600">🎥 Watch session ' + (n.zoomPasscode ? '(passcode: ' + n.zoomPasscode + ')' : '') + '</a>');
-        }
-        if (n.hasTranscript) {
-          bits.push('<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--stone);margin-left:8px">CC subtitles available</span>');
-        }
+        if (videoUrl) bits.push('<a href="' + videoUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--mist);color:var(--teal);padding:6px 14px;border-radius:99px;text-decoration:none;font-weight:600">🎥 Watch session ' + (n.zoomPasscode ? '(passcode: ' + n.zoomPasscode + ')' : '') + '</a>');
+        if (n.hasTranscript) bits.push('<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--stone);margin-left:8px">CC subtitles available</span>');
         var linksRow = bits.length ? '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + bits.join('') + '</div>' : '';
-        // Polished summary (only if approved/shared)
         var summaryHtml = (n.aiSummary && n.sharedWithClient)
           ? '<div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Session summary</div>' +
             '<div style="font-size:13px;line-height:1.7;color:var(--magenta);white-space:pre-wrap">' + n.aiSummary + '</div>'
           : '<div style="font-size:12px;color:var(--stone);font-style:italic">Phoebe will share the session summary here once it\'s polished.</div>';
         return summaryHtml + linksRow;
-      }).join('<div style="height:1px;background:var(--border-soft);margin:14px 0"></div>');
-      weekSessionHtml = '<div class="client-section">' +
-        '<h3>This week\'s session</h3>' + weekSessionHtml + '</div>';
+      }));
     }
+    if (sessionBits.length) {
+      weekSessionHtml = '<div class="client-section">' +
+        '<h3>This week\'s session</h3>' +
+        sessionBits.join('<div style="height:1px;background:var(--border-soft);margin:14px 0"></div>') +
+      '</div>';
+    }
+    // v11350 §8: cohort feed highlights for this week (resources, shoutouts,
+    // session highlights). Surfaces the relevant feed cards inline.
+    var weekFeedHtml = '';
+    if (prog.cohort && typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) {
+      var co2 = MDC_COHORTS.find(function(c){ return c.id === prog.cohort; });
+      if (co2 && co2.start && Array.isArray(co2.feedEntries)) {
+        var startMs2 = new Date(co2.start).getTime();
+        var weekStartMs2 = startMs2 + (weekFlat - 1) * 7 * 86400000;
+        var weekEndMs2 = startMs2 + weekFlat * 7 * 86400000;
+        var weekFeed = co2.feedEntries.filter(function(e) {
+          if (!e || !e.ts) return false;
+          var t = new Date(e.ts).getTime();
+          return t >= weekStartMs2 && t < weekEndMs2 && e.kind !== 'milestone'; // milestones are personal
+        }).slice(0, 5);
+        if (weekFeed.length) {
+          var iconMap = { win: '🏆', shoutout: '👏', resource: '📚', highlight: '✨' };
+          weekFeedHtml = '<div class="client-section">' +
+            '<h3>📣 This week from your cohort</h3>' +
+            weekFeed.map(function(e) {
+              return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid var(--border-soft);border-radius:8px;margin-bottom:6px">' +
+                '<div style="font-size:18px">' + (iconMap[e.kind] || '✨') + '</div>' +
+                '<div style="flex:1;min-width:0">' +
+                  '<div style="font-size:13px;color:var(--magenta);line-height:1.4">' + escapeHtml(e.text || '') + '</div>' +
+                  (e.resourceUrl ? '<a href="' + e.resourceUrl + '" target="_blank" style="font-size:11px;color:var(--hot-pink);text-decoration:none;margin-top:4px;display:inline-block">Open →</a>' : '') +
+                '</div>' +
+              '</div>';
+            }).join('') +
+          '</div>';
+        }
+      }
+    }
+    weekSessionHtml = (weekSessionHtml || '') + (weekFeedHtml || '');
     // Compute flat week-of-cohort for the heading. Clients only ever see
     // "Week N of 24" — sprints are an internal grouping only.
     var flatWeek = ((sprint - 1) * 6) + week;
@@ -7734,7 +7799,9 @@ function renderClientProgram(client, prog) {
       '</div>';
     var clientNotesMdc = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
     var customSectionsMdc = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
-    content = lockNotice + recCard + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + customSectionsMdc + fullAchievementsAccordion;
+    // v11370: cohort community feed for MDC clients
+    var cohortFeedMdc = (typeof renderClientCohortFeed === 'function') ? renderClientCohortFeed(client, prog) : '';
+    content = lockNotice + recCard + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + customSectionsMdc + cohortFeedMdc + fullAchievementsAccordion;
     area.innerHTML = content;
     // Auto-scroll the active week pill into the centre of the strip so
     // clients always land on the right week without having to scroll.
@@ -14485,7 +14552,7 @@ async function submitWin(clientId, progId) {
   var prog   = client?(client.programs||[]).find(function(p){return p.id===progId;}):null;
   if (!prog) return;
   prog.wins = prog.wins||[];
-  prog.wins.push({
+  var newWin = {
     id:'win-'+Date.now(),
     metric:  document.getElementById('win-metric')?.value||'Win',
     date:    document.getElementById('win-date')?.value||new Date().toISOString().split('T')[0],
@@ -14494,11 +14561,160 @@ async function submitWin(clientId, progId) {
     note:    document.getElementById('win-note')?.value.trim()||'',
     shared:  document.getElementById('win-shared')?.checked||false,
     createdAt: new Date().toISOString(),
-  });
+  };
+  prog.wins.push(newWin);
   await persistClient(client);
+  // v11370: auto-post the win to the cohort feed if this is a cohort program
+  if (prog.cohort && newWin.shared !== false) {
+    if (typeof postWinToCohortFeed === 'function') {
+      try { await postWinToCohortFeed(client, prog, newWin); } catch (e) {}
+    }
+  }
+  // v11370: check for milestone auto-posts (first win, 50% through, badges)
+  if (typeof maybePostMilestone === 'function') {
+    try { await maybePostMilestone(client, prog, 'win-logged'); } catch (e) {}
+  }
   // Clear form
   ['win-before','win-after','win-note'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
   renderWinsTracker(client, prog);
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// v11370 — Cohort feed auto-posts (wins, milestones) + reactions
+// ═════════════════════════════════════════════════════════════════════
+
+async function postWinToCohortFeed(client, prog, win) {
+  if (!prog.cohort) return;
+  var co = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS))
+    ? MDC_COHORTS.find(function(c){ return c.id === prog.cohort; }) : null;
+  if (!co) return;
+  var firstName = (client.name || '').split(' ')[0] || 'Client';
+  var winText = win.metric || win.title || 'A win';
+  if (win.before && win.after) winText += ': ' + win.before + ' → ' + win.after;
+  if (win.note) winText += ' — ' + win.note;
+  co.feedEntries = co.feedEntries || [];
+  // De-dupe — don't post the same win twice
+  if (co.feedEntries.some(function(e){ return e.kind === 'win' && e.winId === win.id; })) return;
+  co.feedEntries.unshift({
+    id: 'fe-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    kind: 'win',
+    text: '🏆 ' + firstName + ': ' + winText,
+    author: client.name || 'Cohort member',
+    authorId: client.id,
+    winId: win.id,
+    ts: new Date().toISOString(),
+    reactions: {},
+  });
+  _saveCohorts();
+  // Queue WhatsApp mirror
+  if (co.whatsapp) {
+    co.pendingWhatsappMessages = (co.pendingWhatsappMessages || []).concat([{
+      id: 'wam-' + Date.now(), kind: 'win', text: '🏆 ' + firstName + ': ' + winText, ts: new Date().toISOString(), status: 'pending',
+    }]);
+    _saveCohorts();
+  }
+}
+
+// Detect milestone moments and auto-post to the feed
+async function maybePostMilestone(client, prog, trigger) {
+  if (!prog.cohort) return;
+  var co = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS))
+    ? MDC_COHORTS.find(function(c){ return c.id === prog.cohort; }) : null;
+  if (!co) return;
+  client._milestonesPosted = client._milestonesPosted || {};
+  var firstName = (client.name || '').split(' ')[0] || 'Client';
+  var milestones = [];
+  // First win
+  var totalWins = (prog.wins || []).length + (client.wins || []).length;
+  if (totalWins === 1 && !client._milestonesPosted.firstWin) {
+    milestones.push({ key: 'firstWin', text: '🎉 ' + firstName + ' just logged their first win!' });
+  }
+  // 50% through program
+  var sprint = prog.mdcSprint || 1; var week = prog.mdcWeek || 1;
+  var pct = Math.round(((sprint - 1) * 6 + week) / 24 * 100);
+  if (pct >= 50 && pct < 60 && !client._milestonesPosted.halfway) {
+    milestones.push({ key: 'halfway', text: '🌱 ' + firstName + ' just hit halfway through MDC. Keep going!' });
+  }
+  // Final week
+  if (pct >= 96 && !client._milestonesPosted.finalWeek) {
+    milestones.push({ key: 'finalWeek', text: '🏁 ' + firstName + ' is in the final week of MDC. Big season ahead.' });
+  }
+  // Badge earned
+  if (trigger === 'badge-earned' && (client.badges || []).length) {
+    var latestBadge = client.badges[client.badges.length - 1];
+    var badgeKey = 'badge-' + latestBadge.id;
+    if (!client._milestonesPosted[badgeKey]) {
+      var badgeName = (typeof BADGES !== 'undefined' && BADGES[latestBadge.id]) ? BADGES[latestBadge.id].name : latestBadge.id;
+      milestones.push({ key: badgeKey, text: '🎖 ' + firstName + ' just earned: ' + badgeName });
+    }
+  }
+  if (!milestones.length) return;
+  co.feedEntries = co.feedEntries || [];
+  milestones.forEach(function(m) {
+    co.feedEntries.unshift({
+      id: 'fe-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      kind: 'milestone',
+      text: m.text,
+      authorId: client.id,
+      ts: new Date().toISOString(),
+      reactions: {},
+    });
+    client._milestonesPosted[m.key] = new Date().toISOString();
+  });
+  _saveCohorts();
+  try { await persistClient(client); } catch (e) {}
+}
+
+// React to a feed item — toggles a reaction emoji from the tap-er's id
+async function reactToFeedItem(cohortId, entryId, emoji) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var entry = (co.feedEntries || []).find(function(e){ return e.id === entryId; });
+  if (!entry) return;
+  entry.reactions = entry.reactions || {};
+  // Use currentClientId (when on client side) or 'phoebe' on coach side
+  var reactor = (typeof currentClientId !== 'undefined' && currentClientId) ? currentClientId : 'phoebe';
+  entry.reactions[emoji] = entry.reactions[emoji] || {};
+  if (entry.reactions[emoji][reactor]) {
+    delete entry.reactions[emoji][reactor];
+    if (Object.keys(entry.reactions[emoji]).length === 0) delete entry.reactions[emoji];
+  } else {
+    entry.reactions[emoji][reactor] = new Date().toISOString();
+  }
+  _saveCohorts();
+  // Re-render whichever surface is visible
+  if (typeof renderCohortManager === 'function' && document.getElementById('coach-hub') && document.getElementById('coach-hub').classList.contains('active')) renderCohortManager();
+  if (typeof renderClientProgram === 'function' && currentClientId) {
+    var c = clients.find(function(x){ return x.id === currentClientId; });
+    var p = c ? (c.programs || []).find(function(pp){ return pp.cohort === cohortId; }) : null;
+    if (c && p) renderClientProgram(c, p);
+  }
+}
+
+// Member-side: post a shoutout from the client portal
+async function clientPostShoutout(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var text = await branded.prompt('Write a shoutout for someone in the cohort — celebrate a win, say thanks, share something that landed for you.', '', '', { title: '👏 Shoutout', okLabel: 'Post' });
+  if (!text || !text.trim()) return;
+  co.feedEntries = co.feedEntries || [];
+  co.feedEntries.unshift({
+    id: 'fe-' + Date.now(),
+    kind: 'shoutout',
+    text: text.trim(),
+    author: client.name,
+    authorId: client.id,
+    ts: new Date().toISOString(),
+    reactions: {},
+  });
+  _saveCohorts();
+  branded.success('Posted to the cohort feed');
+  if (typeof renderClientProgram === 'function') {
+    var p = (client.programs || []).find(function(pp){ return pp.cohort === cohortId; });
+    if (p) renderClientProgram(client, p);
+  }
 }
 
 async function generateImpactStatement(clientId, progId) {
@@ -15406,11 +15622,15 @@ function renderCohortCard(co) {
         '</div>';
       }).join('') + '</div>';
 
+  // v11340 §6: cohort messaging — three actions: custom message, send resource,
+  // session reminder (per-session, already wired). WhatsApp group link opens
+  // outright; messages-via-WhatsApp happen once Meta API is live.
   var memberActions =
     '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
       '<button class="btn-sm primary" onclick="showAddToCohort(\''+co.id+'\')">+ Add member</button>' +
-      (members.length ? '<button class="btn-sm" onclick="broadcastToCohort(\''+co.id+'\',\'email\')">📧 Email all</button>' : '') +
-      (members.length && co.whatsapp ? '<a href="'+co.whatsapp+'" target="_blank" class="btn-sm" style="text-decoration:none">💬 WhatsApp group</a>' : '') +
+      (members.length ? '<button class="btn-sm" onclick="sendCohortCustomMessage(\''+co.id+'\')" title="Compose a custom message and send to all members via email (and WhatsApp once API is live)">📧 Send custom message</button>' : '') +
+      (members.length ? '<button class="btn-sm" onclick="sendResourceToCohort(\''+co.id+'\')" title="Pick from your Happy Hub resource library and send to every member">📚 Send resource</button>' : '') +
+      (members.length && co.whatsapp ? '<a href="'+co.whatsapp+'" target="_blank" class="btn-sm" style="text-decoration:none" title="Opens the WhatsApp group in the app">💬 WhatsApp group</a>' : '') +
     '</div>';
 
   // Phoebe's reference notes for this cohort — free-form, autosaves on blur.
@@ -15667,33 +15887,145 @@ function renderCohortInsightsPanel(co, members) {
   '</div>';
 }
 
-// Stub feed renderer — fully built in v11370 batch
+// v11370: full cohort community feed — wins, shoutouts, resources, session
+// highlights, milestones. Each card has emoji reactions (❤ 🎉 👏 🔥 💛).
+// Phoebe can pin posts; pinned posts show first regardless of date.
 function renderCohortFeed(co, members) {
   if (!members.length) return '';
-  var entries = (co.feedEntries || []).slice().sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); }).slice(0, 12);
+  var allEntries = (co.feedEntries || []).slice();
+  // Pinned first, then chronological
+  allEntries.sort(function(a, b) {
+    if ((a.pinned ? 1 : 0) !== (b.pinned ? 1 : 0)) return b.pinned ? 1 : -1;
+    return (b.ts || '').localeCompare(a.ts || '');
+  });
+  var entries = allEntries.slice(0, 15);
+
+  function renderEntry(e, viewerScope) {
+    var iconMap = { win: '🏆', shoutout: '👏', resource: '📚', highlight: '✨', milestone: '🎖' };
+    var bgMap = {
+      win: 'linear-gradient(135deg,#FFFBE8,#FFF5E0)',
+      shoutout: 'linear-gradient(135deg,#FFFCF8,#FDEFF5)',
+      resource: 'white',
+      highlight: 'linear-gradient(135deg,#F5F0FF,#FDEFF5)',
+      milestone: 'linear-gradient(135deg,#FFFBE8,#FFFCF8)',
+    };
+    var icon = iconMap[e.kind] || '✨';
+    var when = '';
+    try { when = new Date(e.ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); } catch (err) {}
+    var reactions = e.reactions || {};
+    var reactionEmojis = ['❤','🎉','👏','🔥','💛'];
+    var reactionRow = reactionEmojis.map(function(em) {
+      var count = reactions[em] ? Object.keys(reactions[em]).length : 0;
+      var reactor = (typeof currentClientId !== 'undefined' && currentClientId) ? currentClientId : 'phoebe';
+      var didReact = reactions[em] && reactions[em][reactor];
+      return '<button onclick="reactToFeedItem(\'' + co.id + '\',\'' + e.id + '\',\'' + em + '\')" style="background:' + (didReact ? 'rgba(229,4,139,0.12)' : 'transparent') + ';border:1px solid ' + (didReact ? 'var(--hot-pink)' : 'var(--border-soft)') + ';padding:3px 8px;border-radius:99px;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-family:var(--f-body)">' +
+        em + (count ? '<span style="color:var(--hot-pink);font-weight:700">' + count + '</span>' : '') +
+      '</button>';
+    }).join('');
+    var pinPill = e.pinned ? '<span style="font-size:10px;background:rgba(229,4,139,0.15);color:var(--magenta);padding:2px 8px;border-radius:99px;font-weight:700">📌 Pinned</span>' : '';
+    // Coach-only controls
+    var coachControls = viewerScope === 'coach'
+      ? '<div style="margin-left:auto;display:flex;gap:4px;align-items:center">' +
+          '<button onclick="toggleFeedPin(\'' + co.id + '\',\'' + e.id + '\')" title="' + (e.pinned ? 'Unpin' : 'Pin to top') + '" style="background:transparent;border:none;color:var(--stone);font-size:13px;cursor:pointer;padding:2px 6px">📌</button>' +
+          '<button onclick="deleteFeedEntry(\'' + co.id + '\',\'' + e.id + '\')" title="Delete" style="background:transparent;border:none;color:var(--stone);font-size:14px;cursor:pointer;padding:2px 6px">×</button>' +
+        '</div>'
+      : '';
+    return '<div style="background:' + (bgMap[e.kind] || 'white') + ';border:1px solid var(--border-soft);border-radius:10px;padding:10px 12px;margin-bottom:6px">' +
+      '<div style="display:flex;align-items:flex-start;gap:10px">' +
+        '<div style="font-size:20px;line-height:1">' + icon + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">' + pinPill + (when ? '<span style="font-size:10px;color:var(--stone)">' + when + '</span>' : '') + '</div>' +
+          '<div style="font-size:13px;color:var(--magenta);line-height:1.5">' + escapeHtml(e.text || '') + '</div>' +
+          (e.resourceUrl ? '<a href="' + e.resourceUrl + '" target="_blank" style="font-size:11px;color:var(--hot-pink);text-decoration:none;margin-top:4px;display:inline-block">Open resource →</a>' : '') +
+          (e.author ? '<div style="font-size:11px;color:var(--stone);margin-top:4px;font-style:italic">— ' + escapeHtml(e.author) + '</div>' : '') +
+        '</div>' +
+        coachControls +
+      '</div>' +
+      '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft)">' + reactionRow + '</div>' +
+    '</div>';
+  }
+
   var entriesHtml = entries.length
-    ? entries.map(function(e) {
-        var iconMap = { win: '🏆', shoutout: '👏', resource: '📚', highlight: '✨', milestone: '🎖' };
-        var icon = iconMap[e.kind] || '✨';
-        var when = '';
-        try { when = new Date(e.ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); } catch (err) {}
-        var reactions = (e.reactions || {});
-        var totalReactions = Object.values(reactions).reduce(function(s, v){ return s + (v || 0); }, 0);
-        return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:white;border:1px solid var(--border-soft);border-radius:10px;margin-bottom:6px">' +
-          '<div style="font-size:18px">' + icon + '</div>' +
-          '<div style="flex:1;min-width:0">' +
-            '<div style="font-size:13px;color:var(--magenta);line-height:1.4">' + escapeHtml(e.text || '') + '</div>' +
-            (e.author ? '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + escapeHtml(e.author) + (when ? ' · ' + when : '') + '</div>' : '') +
-          '</div>' +
-          (totalReactions ? '<span style="font-size:11px;color:var(--hot-pink);font-weight:600;flex-shrink:0">❤ ' + totalReactions + '</span>' : '') +
-        '</div>';
-      }).join('')
+    ? entries.map(function(e){ return renderEntry(e, 'coach'); }).join('')
     : '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:10px 0">No activity yet — wins, shoutouts and session highlights will appear here as the cohort goes.</div>';
   return '<div style="margin-top:18px;background:white;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px">' +
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
       '<div style="font-size:18px">📣</div>' +
       '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700;flex:1">Cohort community feed</div>' +
       '<button class="btn-sm" onclick="openShoutoutComposer(\'' + co.id + '\')" style="font-size:11px">+ Shoutout</button>' +
+    '</div>' +
+    entriesHtml +
+  '</div>';
+}
+
+// Pin/unpin a feed entry to the top
+async function toggleFeedPin(cohortId, entryId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var e = (co.feedEntries || []).find(function(x){ return x.id === entryId; });
+  if (!e) return;
+  e.pinned = !e.pinned;
+  _saveCohorts();
+  if (typeof renderCohortManager === 'function') renderCohortManager();
+}
+
+async function deleteFeedEntry(cohortId, entryId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var ok = await branded.confirm('Delete this feed entry?', { title: 'Delete?', okLabel: 'Delete', danger: true });
+  if (!ok) return;
+  co.feedEntries = (co.feedEntries || []).filter(function(e){ return e.id !== entryId; });
+  _saveCohorts();
+  if (typeof renderCohortManager === 'function') renderCohortManager();
+}
+
+// v11370 §10: client-side cohort feed renderer — for the MDC client portal
+function renderClientCohortFeed(client, prog) {
+  if (!prog || !prog.cohort) return '';
+  var co = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS))
+    ? MDC_COHORTS.find(function(c){ return c.id === prog.cohort; }) : null;
+  if (!co) return '';
+  var allEntries = (co.feedEntries || []).slice();
+  allEntries.sort(function(a, b) {
+    if ((a.pinned ? 1 : 0) !== (b.pinned ? 1 : 0)) return b.pinned ? 1 : -1;
+    return (b.ts || '').localeCompare(a.ts || '');
+  });
+  var entries = allEntries.slice(0, 12);
+  var entriesHtml = entries.length
+    ? entries.map(function(e) {
+        var iconMap = { win: '🏆', shoutout: '👏', resource: '📚', highlight: '✨', milestone: '🎖' };
+        var bgMap = { win: '#FFFBE8', shoutout: '#FFFCF8', resource: 'white', highlight: '#F5F0FF', milestone: '#FFFBE8' };
+        var icon = iconMap[e.kind] || '✨';
+        var when = '';
+        try { when = new Date(e.ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); } catch (err) {}
+        var reactions = e.reactions || {};
+        var reactionEmojis = ['❤','🎉','👏','🔥','💛'];
+        var reactionRow = reactionEmojis.map(function(em) {
+          var count = reactions[em] ? Object.keys(reactions[em]).length : 0;
+          var didReact = reactions[em] && reactions[em][client.id];
+          return '<button onclick="reactToFeedItem(\'' + co.id + '\',\'' + e.id + '\',\'' + em + '\')" style="background:' + (didReact ? 'rgba(229,4,139,0.12)' : 'transparent') + ';border:1px solid ' + (didReact ? 'var(--hot-pink)' : 'var(--border-soft)') + ';padding:3px 8px;border-radius:99px;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-family:var(--f-body)">' +
+            em + (count ? '<span style="color:var(--hot-pink);font-weight:700">' + count + '</span>' : '') +
+          '</button>';
+        }).join('');
+        var pinPill = e.pinned ? '<span style="font-size:10px;background:rgba(229,4,139,0.15);color:var(--magenta);padding:2px 8px;border-radius:99px;font-weight:700">📌 Pinned</span>' : '';
+        return '<div style="background:' + (bgMap[e.kind] || 'white') + ';border:1px solid var(--border-soft);border-radius:10px;padding:10px 12px;margin-bottom:6px">' +
+          '<div style="display:flex;align-items:flex-start;gap:10px">' +
+            '<div style="font-size:20px;line-height:1">' + icon + '</div>' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">' + pinPill + (when ? '<span style="font-size:10px;color:var(--stone)">' + when + '</span>' : '') + '</div>' +
+              '<div style="font-size:13px;color:var(--magenta);line-height:1.5">' + escapeHtml(e.text || '') + '</div>' +
+              (e.resourceUrl ? '<a href="' + e.resourceUrl + '" target="_blank" style="font-size:11px;color:var(--hot-pink);text-decoration:none;margin-top:4px;display:inline-block">Open resource →</a>' : '') +
+              (e.author && e.authorId !== client.id ? '<div style="font-size:11px;color:var(--stone);margin-top:4px;font-style:italic">— ' + escapeHtml(e.author) + '</div>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft)">' + reactionRow + '</div>' +
+        '</div>';
+      }).join('')
+    : '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:10px 0;text-align:center">Quiet for now. Wins, shoutouts and session highlights will land here.</div>';
+  return '<div class="client-section">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
+      '<h3 style="margin:0">📣 ' + escapeHtml(co.name || 'Cohort') + ' feed</h3>' +
+      '<button onclick="clientPostShoutout(\'' + co.id + '\')" class="btn-sm primary" style="font-size:11px;margin-left:auto">+ Shoutout</button>' +
     '</div>' +
     entriesHtml +
   '</div>';
@@ -15988,6 +16320,315 @@ async function generateMemberInsights(clientId, progId) {
 // ═════════════════════════════════════════════════════════════════════
 // COMMUNITY FEED actions (full feed renders in v11370 batch)
 // ═════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════
+// v11340 §5 — Session attendance + transcript summaries + reminders
+// ═════════════════════════════════════════════════════════════════════
+
+function renderSessionAttendanceGrid(co, s, members) {
+  if (!members.length) return '';
+  var att = s.attendance || {};
+  var rows = members.map(function(m) {
+    var state = att[m.id]; // true/false/undefined
+    var initials = (m.name || '?').split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
+    var presentBg = state === true  ? 'var(--mist)'        : 'transparent';
+    var absentBg  = state === false ? 'rgba(229,4,139,0.10)' : 'transparent';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:white;border:1px solid var(--border-soft);border-radius:8px">' +
+      '<div style="width:22px;height:22px;border-radius:99px;background:var(--bubblegum);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--magenta);flex-shrink:0">' + initials + '</div>' +
+      '<span style="flex:1;font-size:11px;color:var(--magenta);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml((m.name || '').split(' ')[0] || m.name) + '</span>' +
+      '<button onclick="setSessionAttendance(\'' + co.id + '\',\'' + s.id + '\',\'' + m.id + '\',true)" title="Present" style="background:' + presentBg + ';border:1px solid ' + (state === true ? 'var(--teal)' : 'var(--border)') + ';color:' + (state === true ? 'var(--teal)' : 'var(--stone)') + ';padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;cursor:pointer">✓</button>' +
+      '<button onclick="setSessionAttendance(\'' + co.id + '\',\'' + s.id + '\',\'' + m.id + '\',false)" title="Absent" style="background:' + absentBg + ';border:1px solid ' + (state === false ? 'var(--hot-pink)' : 'var(--border)') + ';color:' + (state === false ? 'var(--hot-pink)' : 'var(--stone)') + ';padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;cursor:pointer">×</button>' +
+    '</div>';
+  }).join('');
+  return '<div style="margin-top:10px"><div style="font-size:10px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">📋 Attendance</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">' + rows + '</div>' +
+  '</div>';
+}
+
+async function setSessionAttendance(cohortId, sessionId, memberId, present) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var s = (co.sessions || []).find(function(x){ return x.id === sessionId; });
+  if (!s) return;
+  s.attendance = s.attendance || {};
+  // Toggle: if clicking the already-set value, unset
+  if (s.attendance[memberId] === present) delete s.attendance[memberId];
+  else s.attendance[memberId] = present;
+  _saveCohorts();
+  // v11340 §5: auto-flag clients who miss 2+ consecutive sessions
+  if (typeof checkAutoFlagMissedSessions === 'function') checkAutoFlagMissedSessions(co);
+  if (typeof renderCohortManager === 'function') renderCohortManager();
+}
+
+// Auto-flag clients who've missed 2+ consecutive cohort sessions
+async function checkAutoFlagMissedSessions(co) {
+  var sessions = (co.sessions || []).slice().sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
+  if (sessions.length < 2) return;
+  var members = _cohortMembers(co.id);
+  for (var i = 0; i < members.length; i++) {
+    var m = members[i];
+    // Check last N sessions for consecutive absences
+    var consecMissed = 0;
+    for (var j = sessions.length - 1; j >= 0; j--) {
+      var att = sessions[j].attendance || {};
+      if (att[m.id] === false) consecMissed++;
+      else if (att[m.id] === true) break;
+    }
+    if (consecMissed >= 2 && m.health !== 'red') {
+      // Only auto-update if Phoebe hasn't manually set health recently
+      var manualMs = m.healthSetByCoachAt ? new Date(m.healthSetByCoachAt).getTime() : 0;
+      var manuallyRecent = manualMs && (Date.now() - manualMs) < 24 * 60 * 60 * 1000;
+      if (!manuallyRecent) {
+        m.health = 'red';
+        m.healthAutoUpdatedAt = new Date().toISOString();
+        m.healthAutoReason = 'Missed ' + consecMissed + ' consecutive ' + (co.name || 'cohort') + ' sessions';
+        try { await persistClient(m); } catch (e) {}
+      }
+    }
+  }
+}
+
+function renderSessionTranscriptSummary(co, s, sessionNum) {
+  var summaryHtml = '';
+  if (s.aiSummary) {
+    var when = s.aiSummaryGeneratedAt ? ' · ' + (function(t){ try { var d = Math.floor((Date.now() - new Date(t).getTime()) / 86400000); return d === 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'; } catch(e) { return ''; } })(s.aiSummaryGeneratedAt) : '';
+    summaryHtml = '<div class="md-render-preview" style="font-size:13px;color:var(--magenta);line-height:1.6;margin-top:8px">' + (typeof renderMarkdownLite === 'function' ? renderMarkdownLite(s.aiSummary) : escapeHtml(s.aiSummary)) + '</div>' +
+      '<div style="font-size:10px;color:var(--stone);font-style:italic;margin-top:4px">Generated' + when + ' · <a href="javascript:void(0)" onclick="generateSessionTranscriptSummary(\'' + co.id + '\',\'' + s.id + '\')" style="color:var(--hot-pink)">refresh</a></div>';
+  } else {
+    summaryHtml = '<button onclick="generateSessionTranscriptSummary(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm" style="font-size:11px;margin-top:8px">✦ Generate Session ' + sessionNum + ' insights</button>' +
+      (s.zoomTranscript || s.transcriptText ? '' : '<div style="font-size:10px;color:var(--stone);margin-top:4px;font-style:italic">No transcript yet — pull one from Zoom or paste manually below</div>');
+  }
+  return '<details style="margin-top:10px;background:var(--paper);border:1px solid var(--border-soft);border-radius:8px;padding:8px 12px">' +
+    '<summary style="cursor:pointer;font-size:11px;color:var(--magenta);font-weight:700;list-style:none">📝 Session ' + sessionNum + ' Insights ▾</summary>' +
+    summaryHtml +
+    '<div style="margin-top:10px"><div style="font-size:10px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Raw transcript</div>' +
+    '<textarea onchange="updateCohortSession(\'' + co.id + '\',\'' + s.id + '\',\'transcriptText\',this.value)" placeholder="Paste a transcript or pull one from Zoom — then click ✦ Generate to summarise" style="width:100%;min-height:80px;border:1px solid var(--border);border-radius:8px;padding:8px;font-family:var(--f-body);font-size:11px;color:var(--magenta);background:white;resize:vertical;line-height:1.5">' + escapeHtml(s.transcriptText || s.zoomTranscript || '') + '</textarea>' +
+    '</div>' +
+  '</details>';
+}
+
+async function generateSessionTranscriptSummary(cohortId, sessionId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var s = (co.sessions || []).find(function(x){ return x.id === sessionId; });
+  if (!s) return;
+  var transcript = (s.transcriptText || s.zoomTranscript || '').trim();
+  if (!transcript || transcript.length < 60) {
+    branded.alert('No transcript yet — paste one in the field below or pull from Zoom first.');
+    return;
+  }
+  branded.toast('✨ Drafting session insights…');
+  var sessionNum = ((co.sessions || []).slice().sort(function(a, b){ return (a.date || '').localeCompare(b.date || ''); }).findIndex(function(x){ return x.id === sessionId; }) || 0) + 1;
+  // Two prompts: coach-facing + client-facing (used in §8 weekly view)
+  var coachPrompt = phoebeVoice(
+    'You are Phoebe Blamey. Below is the raw transcript of MDC cohort Session ' + sessionNum + '. Write a coach-only insights summary.\n\n' +
+    'Use these EXACT headings:\n' +
+    '## Key topics discussed\n' +
+    '## Themes I noticed\n' +
+    '## Action items\n' +
+    '## Follow-up notes for next time\n\n' +
+    'Detailed and direct. Coach language. 350 words max.\n\n' +
+    'TRANSCRIPT:\n' + transcript.slice(0, 16000)
+  );
+  var clientPrompt = phoebeVoice(
+    'Same transcript as above — but write a client-facing summary in plain language. NO coach jargon, NO references to "the cohort" — speak directly to the member.\n\n' +
+    'Use these EXACT headings:\n' +
+    '## What we covered\n' +
+    '## Your focus this week\n' +
+    '## What to watch out for\n\n' +
+    '200 words max. Warm, direct, action-oriented. NO mention of internal/private details.\n\n' +
+    'TRANSCRIPT:\n' + transcript.slice(0, 16000)
+  );
+  try {
+    // Run both in parallel
+    var [coachResp, clientResp] = await Promise.all([
+      fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2000, messages: [{ role: 'user', content: coachPrompt }] }),
+      }),
+      fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, messages: [{ role: 'user', content: clientPrompt }] }),
+      }),
+    ]);
+    function extractText(r, data) {
+      if (!r.ok) throw new Error('AI returned ' + r.status);
+      var t = '';
+      if (Array.isArray(data.content)) data.content.forEach(function(b){ if (b && b.type === 'text' && b.text) t += b.text; });
+      return t.trim();
+    }
+    var [coachData, clientData] = await Promise.all([coachResp.json(), clientResp.json()]);
+    var coachText = extractText(coachResp, coachData);
+    var clientText = extractText(clientResp, clientData);
+    if (!coachText) throw new Error('AI returned empty coach summary');
+    s.aiSummary = coachText;
+    if (clientText) s.aiClientSummary = clientText;
+    s.aiSummaryGeneratedAt = new Date().toISOString();
+    _saveCohorts();
+    // v11370: auto-post Session Highlights card to cohort feed
+    co.feedEntries = co.feedEntries || [];
+    co.feedEntries.unshift({
+      id: 'fe-' + Date.now(),
+      kind: 'highlight',
+      text: 'Session ' + sessionNum + (s.topic ? ' · ' + s.topic : '') + ' — see your weekly summary in your hub for what we covered.',
+      author: 'Phoebe',
+      sessionId: s.id,
+      ts: new Date().toISOString(),
+      reactions: {},
+    });
+    _saveCohorts();
+    branded.success('Session insights drafted');
+    if (typeof renderCohortManager === 'function') renderCohortManager();
+  } catch (e) {
+    branded.alert('Couldn\'t reach the AI: ' + (e.message || e));
+  }
+}
+
+// Send a reminder to all cohort members for a specific session
+async function sendSessionReminderNow(cohortId, sessionId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var s = (co.sessions || []).find(function(x){ return x.id === sessionId; });
+  if (!s) return;
+  var members = _cohortMembers(co.id);
+  if (!members.length) { branded.alert('No members to remind.'); return; }
+  var ok = await branded.confirm('Send a reminder for "' + (s.topic || ('Session on ' + (s.date || 'TBD'))) + '" to ' + members.length + ' member' + (members.length === 1 ? '' : 's') + ' via email?', { title: '📧 Send reminder?', okLabel: 'Send' });
+  if (!ok) return;
+  branded.toast('Sending…');
+  var sent = 0, failed = 0, skipped = 0;
+  var dateLabel = s.date ? new Date(s.date + (s.time ? 'T' + parseTimeFlexible(s.time) : 'T00:00:00')).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }) : 'TBD';
+  var join = s.zoomJoinUrl || co.zoomLink || '';
+  for (var i = 0; i < members.length; i++) {
+    var m = members[i];
+    if (!m.email || m.notificationsDisabled) { skipped++; continue; }
+    var firstName = (m.name || 'there').split(' ')[0];
+    var body =
+      'Hi ' + firstName + ',\n\n' +
+      'Quick reminder — ' + (co.name || 'our cohort') + ' meets ' + dateLabel + (s.time ? ' at ' + s.time : '') + '.\n\n' +
+      (s.topic ? 'Topic: ' + s.topic + '\n\n' : '') +
+      (join ? '🎬 Join: ' + join + '\n' : '') +
+      (s.zoomPasscode ? 'Passcode: ' + s.zoomPasscode + '\n' : '') +
+      '\nSee you there.\n\nPhoebe x';
+    try {
+      var r = await fetch('/api/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'email', to: m.email, subject: '📅 Reminder · ' + (co.name || 'cohort') + ' session ' + dateLabel, message: body, clientName: m.name }),
+      });
+      if (r.ok) sent++; else failed++;
+    } catch (e) { failed++; }
+  }
+  s.reminderSentAt = new Date().toISOString();
+  _saveCohorts();
+  branded.success('Reminder · ' + sent + ' sent' + (failed ? ' · ' + failed + ' failed' : '') + (skipped ? ' · ' + skipped + ' skipped' : ''));
+  if (typeof renderCohortManager === 'function') renderCohortManager();
+}
+
+// v11340 §6: send a free-form custom message to every cohort member
+async function sendCohortCustomMessage(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var members = _cohortMembers(co.id).filter(function(m){ return m.email && !m.notificationsDisabled; });
+  if (!members.length) { branded.alert('No members with email + notifications enabled.'); return; }
+  var subject = await branded.prompt('Subject for ' + members.length + ' member' + (members.length === 1 ? '' : 's') + ':', '', 'A note from Phoebe', { title: '📧 Send custom message', okLabel: 'Next' });
+  if (subject == null || !subject.trim()) return;
+  var body = await branded.prompt('Message — supports {firstName} and {cohortName}:', '', 'Hi {firstName},\n\nQuick note for {cohortName}…\n\nPhoebe x', { title: '📧 Message body', okLabel: 'Send' });
+  if (body == null || !body.trim()) return;
+  var ok = await branded.confirm('Send this message to ' + members.length + ' member' + (members.length === 1 ? '' : 's') + '?\n\nWhatsApp mirror queues for when the API is connected.', { title: 'Confirm send', okLabel: 'Send', cancelLabel: 'Edit' });
+  if (!ok) return;
+  branded.toast('Sending…');
+  var sent = 0, failed = 0;
+  for (var i = 0; i < members.length; i++) {
+    var m = members[i];
+    var personal = body.replace(/\{firstName\}/g, (m.name||'').split(' ')[0] || 'there').replace(/\{cohortName\}/g, co.name || 'our cohort');
+    try {
+      var r = await fetch('/api/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ type:'email', to: m.email, subject: subject, message: personal, clientName: m.name }),
+      });
+      if (r.ok) sent++; else failed++;
+    } catch (e) { failed++; }
+  }
+  // Queue WhatsApp mirror if WhatsApp group is set (becomes real once API live)
+  if (co.whatsapp) {
+    co.pendingWhatsappMessages = (co.pendingWhatsappMessages || []).concat([{
+      id: 'wam-' + Date.now(), kind: 'custom', subject: subject, body: body, ts: new Date().toISOString(), status: 'pending',
+    }]);
+    _saveCohorts();
+  }
+  branded.success(sent + ' sent' + (failed ? ' · ' + failed + ' failed' : '') + (co.whatsapp ? ' · WhatsApp queued' : ''));
+}
+
+// v11340 §6: send a Happy Hub resource to every cohort member; also auto-posts
+// to the cohort feed as a "New resource" card.
+async function sendResourceToCohort(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  // Load resources (lazy-loaded helper exists in the codebase)
+  var resources = (typeof loadHubResources === 'function') ? await loadHubResources() : [];
+  if (!resources.length) { branded.alert('No resources in your Happy Hub yet — add some first via the Happy Hub page.'); return; }
+  // Filter resources by audience compatibility (audience='all' or matches MDC)
+  var compatible = resources.filter(function(r) {
+    if (!r.audience || r.audience.type === 'all') return true;
+    if (r.audience.type === 'cohorts' && Array.isArray(r.audience.ids)) return r.audience.ids.indexOf(co.id) !== -1;
+    if (r.audience.type === 'programs' && Array.isArray(r.audience.ids)) return r.audience.ids.indexOf('mdc') !== -1;
+    return true;
+  });
+  if (!compatible.length) { branded.alert('No resources are targeted at this cohort. Open Happy Hub → Audience → "All" or "Cohorts" → pick this cohort.'); return; }
+  var menu = compatible.slice(0, 20).map(function(r, i) { return (i + 1) + '. [' + (r.type || 'resource') + '] ' + r.title; }).join('\n');
+  var pick = await branded.prompt('Pick a resource to send (type the number):\n\n' + menu, '1', '', { title: '📚 Send resource', okLabel: 'Next' });
+  if (pick == null) return;
+  var idx = parseInt(pick, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= compatible.length) { branded.alert('Invalid choice.'); return; }
+  var resource = compatible[idx];
+  var members = _cohortMembers(co.id).filter(function(m){ return m.email && !m.notificationsDisabled; });
+  var ok = await branded.confirm('Send "' + resource.title + '" to ' + members.length + ' member' + (members.length === 1 ? '' : 's') + '?\n\nIt also auto-posts to the cohort feed as a "New resource" card.', { title: 'Confirm send', okLabel: 'Send' });
+  if (!ok) return;
+  branded.toast('Sending…');
+  var sent = 0, failed = 0;
+  for (var i = 0; i < members.length; i++) {
+    var m = members[i];
+    var firstName = (m.name || 'there').split(' ')[0];
+    var body =
+      'Hi ' + firstName + ',\n\n' +
+      'Sharing this with the ' + (co.name || 'cohort') + ' — thought it would land for you:\n\n' +
+      resource.title + '\n' +
+      (resource.desc ? resource.desc + '\n' : '') +
+      (resource.url ? '\n→ ' + resource.url + '\n' : '') +
+      '\nIt\'s also in your portal under the ❓ help drawer → My resources.\n\nPhoebe x';
+    try {
+      var r = await fetch('/api/send-message', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ type:'email', to: m.email, subject: '📚 New resource for ' + (co.name || 'the cohort') + ': ' + resource.title, message: body, clientName: m.name }),
+      });
+      if (r.ok) sent++; else failed++;
+    } catch (e) { failed++; }
+  }
+  // Auto-post to cohort feed
+  co.feedEntries = co.feedEntries || [];
+  co.feedEntries.unshift({
+    id: 'fe-' + Date.now(),
+    kind: 'resource',
+    text: resource.title + (resource.desc ? ' — ' + resource.desc : ''),
+    author: 'Phoebe',
+    resourceId: resource.id,
+    resourceUrl: resource.url,
+    ts: new Date().toISOString(),
+    reactions: {},
+  });
+  _saveCohorts();
+  // Queue WhatsApp mirror if applicable
+  if (co.whatsapp) {
+    co.pendingWhatsappMessages = (co.pendingWhatsappMessages || []).concat([{
+      id: 'wam-' + Date.now(), kind: 'resource', resourceId: resource.id, resourceTitle: resource.title, resourceUrl: resource.url, ts: new Date().toISOString(), status: 'pending',
+    }]);
+    _saveCohorts();
+  }
+  branded.success(sent + ' sent · resource posted to feed' + (co.whatsapp ? ' · WhatsApp queued' : '') + (failed ? ' · ' + failed + ' failed' : ''));
+}
+
 async function openShoutoutComposer(cohortId) {
   var co = _findCohort(cohortId);
   if (!co) return;
@@ -16052,28 +16693,65 @@ function renderCohortSessionsList(co) {
   } else {
     html += '<div style="display:flex;flex-direction:column;gap:6px">';
     var todayStr = new Date().toISOString().split('T')[0];
-    sessions.forEach(function(s) {
+    var members = _cohortMembers(co.id);
+    sessions.forEach(function(s, idx) {
+      var sessionNum = idx + 1; // v11340 §5: standardised "Session N" label
       var isPast = s.date && s.date < todayStr;
       var dateLabel = s.date ? new Date(s.date + (s.time ? 'T' + parseTimeFlexible(s.time) : 'T00:00:00')).toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'short', year:'numeric' }) : 'No date';
-      html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:' + (isPast ? '#F5F2F4' : 'white') + ';border:1px solid ' + (isPast ? 'var(--border-soft)' : 'var(--border)') + ';border-radius:10px' + (isPast ? ';opacity:0.85' : '') + '">' +
-        '<div style="font-size:18px;line-height:1">' + (isPast ? '✓' : '📅') + '</div>' +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+      // Attendance summary
+      var att = s.attendance || {};
+      var attCounts = { present: 0, absent: 0, unmarked: 0 };
+      members.forEach(function(m) {
+        if (att[m.id] === true) attCounts.present++;
+        else if (att[m.id] === false) attCounts.absent++;
+        else attCounts.unmarked++;
+      });
+      var attLabel = isPast && (attCounts.present || attCounts.absent)
+        ? '<span style="font-size:10px;background:var(--mist);color:var(--teal);padding:2px 8px;border-radius:99px;font-weight:700">✓ ' + attCounts.present + '/' + members.length + '</span>'
+        : '';
+      var summaryReady = s.aiSummary ? '<span style="font-size:10px;background:#FFF5D6;color:#A07030;padding:2px 8px;border-radius:99px;font-weight:700">✨ summary</span>' : '';
+      // v11340: each session is an expandable <details> with transcript
+      // summary + attendance toggles + reminder controls inside
+      html += '<details class="cohort-session-row" style="background:' + (isPast ? '#F5F2F4' : 'white') + ';border:1px solid ' + (isPast ? 'var(--border-soft)' : 'var(--border)') + ';border-radius:10px' + (isPast ? ';opacity:0.92' : '') + '">' +
+        '<summary style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;list-style:none">' +
+          '<div style="font-size:18px;line-height:1">' + (isPast ? '✓' : '📅') + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:12px;font-weight:700;color:var(--magenta)">Session ' + sessionNum + (s.topic ? ' · ' + escapeHtml(s.topic) : '') + '</div>' +
+            '<div style="font-size:11px;color:var(--stone);margin-top:1px">' + dateLabel + (s.time ? ' · ' + escapeHtml(s.time) : '') + '</div>' +
+          '</div>' +
+          attLabel +
+          summaryReady +
+          (s.zoomJoinUrl
+            ? '<a href="' + s.zoomJoinUrl + '" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;background:#2D8CFF;color:white;padding:3px 9px;border-radius:99px;text-decoration:none;font-weight:600">🎬 Join</a>'
+            : '<button onclick="event.stopPropagation();event.preventDefault();createSessionZoom(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm primary" style="font-size:10px;padding:3px 10px;min-height:0">🎬 Create Zoom</button>') +
+          '<span style="font-size:11px;color:var(--stone);margin-left:4px">▾</span>' +
+        '</summary>' +
+        // Expanded body — date/time/topic editors + attendance + transcript summary + reminder
+        '<div style="padding:0 14px 14px 14px;border-top:1px solid var(--border-soft);margin-top:4px">' +
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' +
             '<input type="date" value="' + (s.date||'') + '" onchange="updateCohortSession(\'' + co.id + '\',\'' + s.id + '\',\'date\',this.value)" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper)">' +
             '<input type="text" value="' + (s.time||'').replace(/"/g,'&quot;') + '" onchange="updateCohortSession(\'' + co.id + '\',\'' + s.id + '\',\'time\',this.value)" placeholder="10:00am" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper);width:90px">' +
-            '<input type="text" value="' + (s.topic||'').replace(/"/g,'&quot;') + '" onchange="updateCohortSession(\'' + co.id + '\',\'' + s.id + '\',\'topic\',this.value)" placeholder="Optional topic for this session" style="flex:1;min-width:160px;border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper)">' +
+            '<input type="text" value="' + (s.topic||'').replace(/"/g,'&quot;') + '" onchange="updateCohortSession(\'' + co.id + '\',\'' + s.id + '\',\'topic\',this.value)" placeholder="Topic for this session" style="flex:1;min-width:160px;border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:var(--f-body);font-size:12px;color:var(--magenta);background:var(--paper)">' +
           '</div>' +
-          '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap">' +
-            (s.zoomJoinUrl
-              ? '<a href="' + s.zoomJoinUrl + '" target="_blank" style="font-size:10px;background:#2D8CFF;color:white;padding:2px 8px;border-radius:99px;text-decoration:none;font-weight:600">🎬 Open Zoom</a>' +
-                '<button onclick="copyToClipboard(\'' + s.zoomJoinUrl.replace(/\'/g,'') + '\')" class="btn-sm" style="font-size:10px;padding:2px 8px;min-height:0">📋 Copy</button>' +
-                (s.zoomPasscode ? '<span style="font-size:10px;color:var(--stone)">code: <strong style="color:var(--magenta)">' + escapeHtml(s.zoomPasscode) + '</strong></span>' : '')
-              : '<button onclick="createSessionZoom(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm primary" style="font-size:10px;padding:3px 10px;min-height:0">🎬 Create Zoom link</button>') +
-            (s.zoomJoinUrl && co.notifyOnSessionDateChange ? '<button onclick="emailSessionLink(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm" style="font-size:10px;padding:3px 10px;min-height:0">📧 Email cohort</button>' : '') +
+          // v11340 §5: attendance grid — per-member present/absent toggle
+          (members.length ? renderSessionAttendanceGrid(co, s, members) : '') +
+          // v11340 §5: transcript summary — Session N Insights
+          renderSessionTranscriptSummary(co, s, sessionNum) +
+          // v11340 §5: action row — Email cohort, Send reminder, Auto-remind toggle
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center">' +
+            (s.zoomJoinUrl ? '<button onclick="copyToClipboard(\'' + s.zoomJoinUrl.replace(/\'/g,'') + '\')" class="btn-sm" style="font-size:11px">📋 Copy join link</button>' : '') +
+            (s.zoomPasscode ? '<span style="font-size:11px;color:var(--stone);background:white;border:1px solid var(--border);padding:3px 8px;border-radius:99px">Passcode: <strong style="color:var(--magenta)">' + escapeHtml(s.zoomPasscode) + '</strong></span>' : '') +
+            '<button onclick="sendSessionReminderNow(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm" style="font-size:11px">📧 Send reminder now</button>' +
+            // Auto-reminder toggle (per-session)
+            '<label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--magenta);cursor:pointer;background:var(--marshmallow);padding:4px 10px;border-radius:99px">' +
+              '<input type="checkbox"' + (s.autoReminderOn ? ' checked' : '') + ' onchange="updateCohortSession(\'' + co.id + '\',\'' + s.id + '\',\'autoReminderOn\',this.checked?true:false)" style="margin:0">' +
+              '<span>⏰ Auto-send 24h before</span>' +
+            '</label>' +
+            (s.reminderSentAt ? '<span style="font-size:10px;color:var(--teal);font-style:italic">✓ reminder sent</span>' : '') +
+            '<button onclick="deleteCohortSession(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm" style="font-size:11px;margin-left:auto;color:#C0392B;border-color:rgba(192,57,43,0.3);background:white">🗑 Delete session</button>' +
           '</div>' +
         '</div>' +
-        '<button onclick="deleteCohortSession(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm" style="font-size:14px;padding:4px 8px;color:var(--stone);min-height:0;background:none;border:none" title="Delete this session">×</button>' +
-      '</div>';
+      '</details>';
     });
     html += '</div>';
   }
