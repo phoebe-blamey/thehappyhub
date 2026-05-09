@@ -42,6 +42,12 @@ export default async (req: Request) => {
 
   let body: any = {};
   try { body = await req.json(); } catch {}
+  // v11560: PIN guard — same shared admin secret as the other destructive
+  // endpoints (delete-client, seed-clients, calendly-setup-webhook,
+  // merge-clients). Pulls Calendly bookings + creates client records, so
+  // anonymous access could create rogue client entries.
+  const expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
+  if (body.pin !== expectedPin) return new Response("Unauthorised", { status: 401 });
   const days: number = Math.min(Math.max(body.days || 365, 30), 730);
   const dryRun: boolean = !!body.dryRun;
 

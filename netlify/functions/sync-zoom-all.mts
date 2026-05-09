@@ -54,6 +54,10 @@ export default async (req: Request) => {
 
   let body: any = {};
   try { body = await req.json(); } catch {}
+  // v11560: PIN guard — pulls Zoom recordings + writes session notes
+  // onto client records. Anonymous access could pollute every client.
+  const expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
+  if (body.pin !== expectedPin) return new Response("Unauthorised", { status: 401 });
   const days: number = Math.min(Math.max(body.days || 365, 30), 730);
   // v11500: default flipped to false — stub creation is opt-in now
   const createUnmatched: boolean = body.createUnmatched === true;

@@ -73,6 +73,11 @@ export default async (req: Request) => {
 
   let body: any = {};
   try { body = await req.json(); } catch {}
+  // v11560: PIN guard — was previously unauthenticated, which meant any
+  // anonymous POST could trigger a real merge against live client data.
+  // Override via COACH_ADMIN_PIN env var if Phoebe rotates the shared secret.
+  const expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
+  if (body.pin !== expectedPin) return new Response("Unauthorised", { status: 401 });
   const dryRun: boolean = !!body.dryRun;
 
   const store = getStore("clients");
