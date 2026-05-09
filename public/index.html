@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11530 — fixes the deleted-clients-keep-coming-back bug (server is now canonical for client existence in safeMergeClients; local cache + localStorage are pruned after data hygiene delete + merge). Stale Zoom setup card replaced with a 'Live ✓' card + collapsible setup notes. Task archive/delete/restore now work identically on the home page, Task Sheet, AND per-client Tasks tab — single _refreshTaskSurfaces helper keeps every visible surface in sync. Settings page reorganised: 6 tabs at the top (All / 👤 Account / 🔌 Integrations / 📚 Content / 🔄 Sync &amp; tools / 🛡 Maintenance) auto-tag every card by heading or id; choice persists per device. Data hygiene panel: each orphan/dup row gets a '⋯ Choose action' button that opens a per-row picker — merge into a chosen client (any client, not just name-matched), 💛 save Zoom recordings as Happy Hub resources, or × delete forever.">
+<meta name="hmh-build" content="v11540 — MDC community feed now renders even when the cohort has zero active members (was hidden entirely after data hygiene deletes — Phoebe lost visibility of past wins/shoutouts/milestones plus couldn't seed the feed for a fresh cohort). Empty state explains the situation + offers a 'Write a welcome / first shoutout' CTA. Member-count pill on the feed header (e.g. 'No members yet' in amber when 0). Insights panel + progress overview still legitimately hide when no members (can't compute averages on no data). Audited every MDC v11330–v11370 function: all 11 features present (cohort lifecycle close-out, messaging, broadcast, AI insights, member grid, progress overview, community feed, attendance, missed-session auto-flag, Zoom-link reuse, sprint/week format).">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -17813,7 +17813,13 @@ function renderCohortInsightsPanel(co, members) {
 // highlights, milestones. Each card has emoji reactions (❤ 🎉 👏 🔥 💛).
 // Phoebe can pin posts; pinned posts show first regardless of date.
 function renderCohortFeed(co, members) {
-  if (!members.length) return '';
+  // v11540: render the feed even when the cohort has 0 active members.
+  // Previously the whole "community" section disappeared if the cohort
+  // was empty (during cleanup, between rounds, or before members were
+  // added). Now it always shows — with a more helpful empty state when
+  // there's nothing in it yet.
+  if (!co) return '';
+  members = members || [];
   var allEntries = (co.feedEntries || []).slice();
   // Pinned first, then chronological
   allEntries.sort(function(a, b) {
@@ -17867,13 +17873,30 @@ function renderCohortFeed(co, members) {
     '</div>';
   }
 
-  var entriesHtml = entries.length
-    ? entries.map(function(e){ return renderEntry(e, 'coach'); }).join('')
-    : '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:10px 0">No activity yet — wins, shoutouts and session highlights will appear here as the cohort goes.</div>';
+  var entriesHtml;
+  if (entries.length) {
+    entriesHtml = entries.map(function(e){ return renderEntry(e, 'coach'); }).join('');
+  } else if (!members.length) {
+    // v11540: cohort exists but has zero members. Show a different empty
+    // state that explains the situation + offers the action that makes
+    // sense (add members, OR write something for when members join).
+    entriesHtml =
+      '<div style="background:var(--paper);border:1px dashed var(--border);border-radius:10px;padding:14px;text-align:center">' +
+        '<div style="font-size:24px;margin-bottom:6px">📣</div>' +
+        '<div style="font-size:13px;color:var(--magenta);font-weight:600;margin-bottom:4px">No members in this cohort yet</div>' +
+        '<div style="font-size:12px;color:var(--stone);line-height:1.55;margin-bottom:10px">When you add MDC clients to this cohort (Members panel above) their wins, shoutouts and session highlights start landing here automatically. You can also drop a welcome message in now — it\'ll be the first thing they see.</div>' +
+        '<button class="btn-sm primary" onclick="openShoutoutComposer(\'' + co.id + '\')" style="font-size:11px">+ Write a welcome / first shoutout</button>' +
+      '</div>';
+  } else {
+    entriesHtml = '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:10px 0">No activity yet — wins, shoutouts and session highlights will appear here as the cohort goes.</div>';
+  }
+  var memberPill = members.length
+    ? '<span style="font-size:11px;color:var(--stone);font-weight:500;margin-left:8px">· ' + members.length + ' member' + (members.length === 1 ? '' : 's') + '</span>'
+    : '<span style="font-size:11px;color:#A07030;background:rgba(232,160,32,0.18);padding:2px 8px;border-radius:99px;font-weight:600;margin-left:8px">No members yet</span>';
   return '<div style="margin-top:18px;background:white;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px">' +
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
       '<div style="font-size:18px">📣</div>' +
-      '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700;flex:1">Cohort community feed</div>' +
+      '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700;flex:1">Cohort community feed' + memberPill + '</div>' +
       '<button class="btn-sm" onclick="openShoutoutComposer(\'' + co.id + '\')" style="font-size:11px">+ Shoutout</button>' +
     '</div>' +
     entriesHtml +
