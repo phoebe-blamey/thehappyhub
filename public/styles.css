@@ -23,21 +23,21 @@
    ════════════════════════════════════════════════════════════════════ */
 :root, [data-theme="light"] {
   /* Brand layer — raw colours.
-     v11210: --magenta updated from #C9266B → #C2185B per Phoebe's brand
-     pack. Tiny perceptual shift, but Elodie flagged a brand-pink mismatch
-     in the review. Border alphas updated to match the new RGB. */
+     v11220: --magenta updated to #E5048B per Phoebe's actual brand pack
+     (was #C2185B in v11210, was #C9266B before that). This is now
+     the brand-correct vivid magenta. Border alphas updated. */
   --paper:       #FFFDFA;
   --marshmallow: #FDEFF5;
   --bubblegum:   #F0A3C7;
   --hot-pink:    #EC2C8A;
-  --magenta:     #C2185B;
+  --magenta:     #E5048B;
   --sunshine:    #FBF219;
   --sand:        #C9A88D;
   --stone:       #ACA495;
   --mist:        #D7E9E7;
   --teal:        #5FA3A8;
-  --border:      rgba(194,24,91,0.12);
-  --border-soft: rgba(194,24,91,0.06);
+  --border:      rgba(229,4,139,0.12);
+  --border-soft: rgba(229,4,139,0.06);
   --f-head: "AllRoundGothic", "Poppins", sans-serif;
   --f-body: "Poppins", sans-serif;
   /* Semantic layer — light theme (default).

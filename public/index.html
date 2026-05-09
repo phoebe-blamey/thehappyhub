@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11210 — bug bash from Elodie's review: header (mobile sign-out below ⚙️, hub-lowercase, click-home, tap anims, brand pink #C2185B, no horizontal scroll) · why pin (AI suggest button, edit pencil, prompt tightened) · contextual single Join Session · medallion labels wrap · My Answers → Summary · Today's One Thing (Enter, pinned, Done) · clickable journey stats · Coach dashboard (font, '9 new notifications', Mark all seen direct flush) · Login (logo, hidden coach card unless ?coach=1 / type 'phoebe', mobile button fit) · Research brief (markdown render, 8000 tokens, history snapshot, network errors, generation timestamp) · Create Zoom + auto-invite · smart conflict auto-merge for non-overlapping changes · phone back button · bottom More sheet · .ics calendar · mood history modal">
+<meta name="hmh-build" content="v11220 — brand pink corrected to #E5048B · Mark all seen now also clears review-request entries (was the persistence bug — review requests filter on !addressed, not timestamp, so they survived mark-all-seen)">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -15342,9 +15342,10 @@ function gatherPulseSinceLastVisit(clientArr, lastSeenIso) {
       }
     });
     // Review requests they flagged on session notes
+    // v11220: skip if reviewSeen is true (Mark-all-seen has been clicked)
     (c.programs || []).forEach(function(p) {
       (p.sessionNotes || []).forEach(function(n) {
-        if (n && n.reviewRequested && n.reviewRequestedAt && new Date(n.reviewRequestedAt).getTime() > since) {
+        if (n && n.reviewRequested && !n.reviewSeen && n.reviewRequestedAt && new Date(n.reviewRequestedAt).getTime() > since) {
           entries.push({
             client: c, clientId: c.id, ts: n.reviewRequestedAt,
             icon: '🙋', label: 'Asked you to review: "' + String(n.text || 'a session note').slice(0, 60) + '"',
@@ -15354,8 +15355,9 @@ function gatherPulseSinceLastVisit(clientArr, lastSeenIso) {
       });
     });
     // Top-level review requests via the "Ask Phoebe to look" button on Summary
+    // v11220: skip if seen flag set
     (c.reviewRequests || []).forEach(function(rr) {
-      if (rr && !rr.addressed && rr.ts && new Date(rr.ts).getTime() > since) {
+      if (rr && !rr.addressed && !rr.seen && rr.ts && new Date(rr.ts).getTime() > since) {
         entries.push({
           client: c, clientId: c.id, ts: rr.ts,
           icon: '🙋', label: 'Asking for your eyes: "' + String(rr.text || '').slice(0, 80) + (String(rr.text||'').length > 80 ? '…' : '') + '"',
@@ -15384,31 +15386,52 @@ function gatherPulseSinceLastVisit(clientArr, lastSeenIso) {
 // "Mark all seen" — bumps the lastSeenAt timestamp so the pulse panel goes
 // quiet until something new comes in. Saves to coach-settings (server side)
 // so it follows Phoebe across devices.
-// v11210: forces an IMMEDIATE flush (no debounce) so a refresh doesn't
-// resurrect dismissed entries. Elodie's review §5: "James Wilson's update
-// notification persists after Mark all seen". Root cause was the debounce
-// — local memory updated, but if Phoebe refreshed before the 1.5s flush
-// fired, the server still had the old timestamp.
+// v11220: ALSO marks all unaddressed review requests as `seen` so they stop
+// dominating the pulse panel. Elodie reported "James Wilson's update
+// notification persists after hard refresh" in v11210 — root cause was
+// review-request entries which filter on `!rr.addressed`, NOT on
+// timestamp, so they survived every Mark-all-seen. Now we set rr.seen
+// when Mark-all-seen fires; pulse skips seen items. Genuinely new items
+// still appear because each new request has rr.seen=false by default.
 async function markPulseSeen() {
   if (!window._coachSettings) window._coachSettings = {};
   window._coachSettings.coachLastSeenAt = new Date().toISOString();
-  // Mirror to localStorage immediately so refresh-before-server-flush still
-  // sees the new value
+  // Mirror to localStorage immediately
   try { localStorage.setItem('hmh_coach_settings_cache', JSON.stringify(window._coachSettings)); } catch(e) {}
-  // Direct, non-debounced server save so the new timestamp is durable
-  // across a refresh / device switch
+  // Direct, non-debounced server save
   try {
     await fetch('/api/coach-settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ patch: { coachLastSeenAt: window._coachSettings.coachLastSeenAt } }),
     });
-    // Refresh the in-memory baseline so subsequent debounced flushes don't
-    // try to re-send this same delta
     if (window._coachSettingsBaseline) window._coachSettingsBaseline.coachLastSeenAt = window._coachSettings.coachLastSeenAt;
   } catch (err) {
-    // Network error is OK — the next debounced flush will pick this up
     flushCoachSettings();
+  }
+  // v11220: mark all currently-unaddressed review requests as `seen` so
+  // they stop appearing in the pulse panel. Stays unaddressed (so the
+  // "needs your attention" semantic isn't lost), just marked-seen for
+  // the purposes of the pulse digest.
+  var now = new Date().toISOString();
+  var clientsToSave = [];
+  (clients || []).forEach(function(c) {
+    if (!c) return;
+    var changed = false;
+    (c.reviewRequests || []).forEach(function(rr) {
+      if (rr && !rr.addressed && !rr.seen) { rr.seen = true; rr.seenAt = now; changed = true; }
+    });
+    (c.programs || []).forEach(function(p) {
+      (p.sessionNotes || []).forEach(function(n) {
+        if (n && n.reviewRequested && !n.reviewSeen) { n.reviewSeen = true; n.reviewSeenAt = now; changed = true; }
+      });
+    });
+    if (changed) clientsToSave.push(c);
+  });
+  // Persist all changed clients in parallel — these saves are idempotent
+  // and use the optimistic-concurrency machinery so multi-device safe.
+  for (var i = 0; i < clientsToSave.length; i++) {
+    try { await persistClient(clientsToSave[i]); } catch (e) { /* save queue picks it up */ }
   }
   if (typeof renderHome === 'function') renderHome();
   if (typeof branded !== 'undefined' && branded.toast) branded.toast('✓ Marked all as seen');
