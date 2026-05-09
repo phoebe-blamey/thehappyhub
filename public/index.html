@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11600 — community engagement + resource viewability + data cleanup. (1) MDC Community tab gets a 📈 momentum banner ('4 wins this week · 6 of 8 posting'), a 👥 member directory (mini-cards with initials, business, recent-win indicator, self highlighted), and threaded 💬 replies on every feed entry (reply count badge, collapsed by default, mobile-keyboard-friendly composer). (2) Save-as-resource flow now prompts for full audience visibility ('private' / 'all' / 'mdc' / cohort-id / program key) — same model the Hub library uses. New 'recording' type wired into Happy Hub (icon, type filter, audience pill). (3) Live data cleaned: Sarah Chen + Ann Dettori demo personas deleted; Lou Syphers / Jenn Donovan / Samantha Zoom + stub records merged into their canonical clients (66 → 62 records, all 7 canonical real clients + Elodie intact). Skipped Amelia ×3 (3 different bizs — Phoebe to review manually). 26 topic-only Zoom orphans left for Phoebe to assign via Settings → Unmatched Zoom Recordings (recordings inside may be valuable). Wisdom card links from v11590 unchanged.">
+<meta name="hmh-build" content="v11610 — cohort-wide goals + audience leak fixes + final pre-Phoebe pass. (1) 🎯 Cohort goal banner — Phoebe sets a shared goal per cohort (label, target, unit, current OR auto-tallied from member revenue wins). Members see a progress bar at the top of their Community tab; coach sees it on the cohort manager with edit affordance. Hits a 🎉 goal-smashed state at 100%. Empty-state CTA on the cohort manager when no goal set. (2) Three audience leak bugs fixed across the resource flow: 'private' (coach-only) audience type now correctly hides resources from clients in the My Resources drawer, the cohort broadcast picker, AND the new-resource notify path. Default-deny on unknown audience types. (3) Audience pill on Happy Hub library now renders a distinct '🔒 Coach only' tag for private resources (was incorrectly showing program-pill text). All v11600 community features (momentum banner, member directory, threaded replies) intact. Bracket balance perfect (4680 / 17732 / 1694).">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -12921,14 +12921,20 @@ async function renderHappyHub(filterTag, searchTerm, typeFilter) {
       var icon = typeIcons[r.type]||'📌';
       var bg   = typeColors[r.type]||'white';
       var tc   = typeText[r.type]||'var(--magenta)';
-      // v11200: audience pill — shows who can see this resource
+      // v11200: audience pill — shows who can see this resource.
+      // v11610 fix: 'private' type explicitly handled (was falling through
+      // to the else branch and showing "🌍 All", which was wrong AND a
+      // leak risk if any client-side filter later defaulted to allow).
       var aud = r.audience;
       var audPill = '';
-      if (aud && aud.type && aud.type !== 'all') {
-        var audLabel = aud.type === 'cohorts'
-          ? ('💡 ' + (aud.ids||[]).length + ' cohort' + ((aud.ids||[]).length===1?'':'s'))
-          : ('📚 ' + (aud.ids||[]).length + ' program type' + ((aud.ids||[]).length===1?'':'s'));
-        audPill = '<span style="background:rgba(232,160,32,0.18);color:#A07030;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px" title="Only clients in these audiences can see this resource">' + audLabel + '</span>';
+      if (aud && aud.type === 'private') {
+        audPill = '<span style="background:rgba(64,64,80,0.10);color:#5A5A6A;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px" title="Coach only — no clients can see this">🔒 Coach only</span>';
+      } else if (aud && aud.type === 'cohorts') {
+        var n = (aud.ids||[]).length;
+        audPill = '<span style="background:rgba(232,160,32,0.18);color:#A07030;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px" title="Only members of these cohorts can see this">💡 ' + n + ' cohort' + (n===1?'':'s') + '</span>';
+      } else if (aud && aud.type === 'programs') {
+        var nP = (aud.ids||[]).length;
+        audPill = '<span style="background:rgba(232,160,32,0.18);color:#A07030;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px" title="Only clients on these programs can see this">📚 ' + nP + ' program type' + (nP===1?'':'s') + '</span>';
       } else {
         audPill = '<span style="background:rgba(95,163,168,0.15);color:var(--teal);font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px" title="All your clients can see this">🌍 All</span>';
       }
@@ -12999,18 +13005,23 @@ function readResourceAudienceFromForm() {
 
 // Decide whether a given resource should be visible to a given client.
 // Used by the client-portal Help drawer "My resources" list.
+// v11610 hardening: was default-ALLOW on misconfigured / unknown audience
+// types — that's a privacy leak risk. 'private' (coach-only) resources
+// MUST never reach a client. Now default-deny anything we don't
+// explicitly recognise as shareable.
 function isResourceVisibleToClient(resource, client) {
   if (!resource) return false;
   var aud = resource.audience;
   if (!aud || !aud.type || aud.type === 'all') return true;
-  if (!client || !aud.ids || !aud.ids.length) return true; // misconfigured = show
-  if (aud.type === 'cohorts') {
+  if (aud.type === 'private') return false; // coach-only — never visible to any client
+  if (!client) return false;
+  if (aud.type === 'cohorts' && Array.isArray(aud.ids) && aud.ids.length) {
     return (client.programs || []).some(function(p) { return p && p.cohort && aud.ids.indexOf(p.cohort) >= 0; });
   }
-  if (aud.type === 'programs') {
+  if (aud.type === 'programs' && Array.isArray(aud.ids) && aud.ids.length) {
     return (client.programs || []).some(function(p) { return p && aud.ids.indexOf(p.program) >= 0; });
   }
-  return true;
+  return false; // unknown audience type — deny by default
 }
 
 // Remove a resource from the library. Custom resources (added via "+ Add
@@ -13074,6 +13085,8 @@ function addHubResource() {
 // targets specific cohorts only, never broadcast to OTHER cohorts even
 // if they're opted in.
 async function offerToBroadcastNewResource(resource) {
+  // v11610: never offer to broadcast a private (coach-only) resource
+  if (resource && resource.audience && resource.audience.type === 'private') return;
   var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
   var optedIn = cohorts.filter(function(c){ return c.notifyOnNewResource && _cohortMembers(c.id).length > 0; });
   // Audience filter — drop cohorts that aren't in the resource's audience
@@ -17813,6 +17826,21 @@ function renderCohortCard(co) {
       '<div style="font-size:11px;color:var(--stone);margin-top:8px;font-style:italic">Members who have notifications turned off (per-client setting) won\'t receive any of these.</div>' +
     '</div>';
 
+  // v11610: cohort-wide goal banner (with edit affordance) — Phoebe's
+  // primary motivational lever. Same renderer the client side uses.
+  var goalBanner = (typeof _renderCohortGoalBanner === 'function')
+    ? _renderCohortGoalBanner(co, members, 'coach')
+    : '';
+  // No goal yet? Show a "set one" CTA so it's discoverable.
+  var goalEmptyCta = (!co.goal || !co.goal.target)
+    ? '<div style="margin-top:14px;padding:12px 14px;background:rgba(229,4,139,0.06);border:1.5px dashed rgba(229,4,139,0.3);border-radius:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<div style="font-size:18px">🎯</div>' +
+        '<div style="flex:1;min-width:200px;font-size:12px;color:var(--magenta);line-height:1.5">' +
+          '<strong>No cohort goal set yet.</strong> A shared goal is the single biggest driver of cohort engagement — a number every member is rowing toward together.' +
+        '</div>' +
+        '<button onclick="editCohortGoal(\'' + co.id + '\')" class="btn-sm primary" style="font-size:11px">+ Set a cohort goal</button>' +
+      '</div>'
+    : '';
   // v11330 §3: cohort progress overview — at-a-glance view of where the
   // cohort stands collectively
   var progressOverview = renderCohortProgressOverview(co, members);
@@ -17826,6 +17854,7 @@ function renderCohortCard(co) {
   return '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:16px 18px">' +
     head +
     detailFields +
+    goalBanner + goalEmptyCta +
     progressOverview +
     sessionsHtml +
     insightsPanel +
@@ -18248,14 +18277,16 @@ function renderClientCommunityTab(client) {
   var sections = cos.map(function(co) {
     var prog = (client.programs || []).find(function(p) { return p && p.cohort === co.id; });
     if (!prog) return '';
-    // v11600: per-cohort container — momentum banner + member directory + feed
     var members  = (clients || []).filter(function(c) {
       return (c.programs || []).some(function(p) { return p && p.cohort === co.id; });
     });
+    // v11610: cohort goal banner top of stack — most motivating thing on
+    // the page when set. Hides cleanly when no goal is configured.
+    var goalHtml     = _renderCohortGoalBanner(co, members, 'client');
     var momentumHtml = _renderCohortMomentumBanner(co, members);
     var memberDirHtml = _renderCohortMemberDirectory(co, members, client);
     var feedHtml = (typeof renderClientCohortFeed === 'function') ? renderClientCohortFeed(client, prog) : '';
-    return momentumHtml + memberDirHtml + feedHtml;
+    return goalHtml + momentumHtml + memberDirHtml + feedHtml;
   }).join('');
 
   area.innerHTML =
@@ -18267,6 +18298,125 @@ function renderClientCommunityTab(client) {
       '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">Hey ' + escapeHtml(firstName) + ' — this is private to your cohort. Wins, shoutouts and session highlights all land here. Add a shoutout when someone\'s done something brilliant. 👇</p>' +
     '</div>' +
     sections;
+}
+
+// v11610: COHORT-WIDE GOAL renderer — visible to members on the Community
+// tab + to Phoebe on the cohort manager. Goal lives at co.goal:
+//   {
+//     label:       "$1M combined revenue by end of round",
+//     target:      1000000,
+//     unit:        "$" | "clients" | "wins" | "" (free text),
+//     current:     420000,             (manual mode)
+//     autoCompute: 'wins.revenue'      (optional — sums member wins by metric)
+//   }
+// When autoCompute is set, current = the sum of matching wins across all
+// cohort members. Otherwise Phoebe sets it manually via the cohort manager.
+// The bar fills proportionally; hits a 🎉 confetti state at 100%.
+function _renderCohortGoalBanner(co, members, viewerScope) {
+  if (!co || !co.goal || !co.goal.target) return '';
+  var g = co.goal;
+  var label = g.label || ('Cohort goal · ' + (g.target || ''));
+  var unit = g.unit || '';
+  var current = (typeof g.current === 'number' && !isNaN(g.current)) ? g.current : 0;
+  // Auto-compute mode — totals up matching wins across cohort members.
+  if (g.autoCompute === 'wins.revenue') {
+    current = 0;
+    members.forEach(function(m) {
+      var allWins = (m.wins || []).concat(...(m.programs || []).map(function(p) { return p.wins || []; }));
+      allWins.forEach(function(w) {
+        if (!w) return;
+        var metric = (w.metric || '').toLowerCase();
+        if (metric.indexOf('revenue') < 0 && metric.indexOf('income') < 0 && metric.indexOf('sales') < 0) return;
+        // Pull a number out of the `after` field (e.g. "$120k" -> 120000)
+        var n = (w.after || '').toString().replace(/[^\d.]/g, '');
+        var val = parseFloat(n) || 0;
+        // "$120k" / "$120K" → multiply by 1000
+        if (/k\s*$/i.test(w.after || '')) val *= 1000;
+        if (/m\s*$/i.test(w.after || '')) val *= 1000000;
+        current += val;
+      });
+    });
+  }
+  var pct = g.target > 0 ? Math.min(100, Math.round((current / g.target) * 100)) : 0;
+  var hit = pct >= 100;
+  var formatNum = function(n) {
+    if (unit === '$' && n >= 1000) return '$' + (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k';
+    if (unit === '$') return '$' + Math.round(n).toLocaleString();
+    return Math.round(n).toLocaleString() + (unit ? (' ' + unit) : '');
+  };
+  var coachEditBtn = (viewerScope === 'coach')
+    ? '<button onclick="editCohortGoal(\'' + co.id + '\')" class="btn-sm" style="margin-left:auto;font-size:11px">✏️ Edit goal</button>'
+    : '';
+  return '<div class="client-section" style="background:linear-gradient(135deg,#FFFBE8 0%,#FDEFF5 50%,#E8F5FF 100%);border:1.5px solid ' + (hit ? '#6FA56F' : 'rgba(229,4,139,0.35)') + ';padding:14px 18px">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
+      '<div style="font-size:22px">' + (hit ? '🎉' : '🎯') + '</div>' +
+      '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700">' + (hit ? 'Goal smashed — ' : '') + 'Cohort goal' + '</div>' +
+      coachEditBtn +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--magenta);font-weight:600;margin-bottom:8px;line-height:1.4">' + escapeHtml(label) + '</div>' +
+    // Progress bar
+    '<div style="background:white;border-radius:99px;height:14px;overflow:hidden;border:1px solid rgba(229,4,139,0.2);position:relative">' +
+      '<div style="background:linear-gradient(90deg,var(--hot-pink),' + (hit ? '#6FA56F' : 'var(--sunshine)') + ');height:100%;width:' + pct + '%;transition:width 0.4s ease;position:absolute;top:0;left:0;border-radius:99px"></div>' +
+      '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--magenta);letter-spacing:0.04em">' + formatNum(current) + ' / ' + formatNum(g.target) + ' · ' + pct + '%</div>' +
+    '</div>' +
+    (g.autoCompute === 'wins.revenue'
+      ? '<div style="font-size:11px;color:var(--stone);margin-top:6px;font-style:italic">Auto-tallied from revenue wins logged across the cohort. Log a win to push the bar.</div>'
+      : '') +
+  '</div>';
+}
+
+// Coach-side: open a prompt cluster to set or edit the cohort goal.
+async function editCohortGoal(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var current = co.goal || {};
+  var label = await branded.prompt(
+    'Goal headline (one sentence — what are you collectively going for?):',
+    current.label || '',
+    'e.g. $1M combined revenue by end of round',
+    { title: '🎯 Set cohort goal', okLabel: 'Next' }
+  );
+  if (label == null) return;
+  var unit = await branded.prompt(
+    'Unit — type "$" / "clients" / "wins" / a custom word, or leave blank:',
+    current.unit || '$',
+    '$',
+    { title: 'Unit', okLabel: 'Next' }
+  );
+  if (unit == null) return;
+  var targetRaw = await branded.prompt(
+    'Target number (just digits — e.g. 1000000 for a million-dollar goal):',
+    String(current.target || ''),
+    '1000000',
+    { title: 'Target', okLabel: 'Next' }
+  );
+  if (targetRaw == null) return;
+  var target = parseFloat((targetRaw || '').replace(/[^\d.]/g, '')) || 0;
+  if (target <= 0) { branded.alert('Target must be a number greater than zero.'); return; }
+  // Auto-compute? Only relevant for revenue-style goals
+  var autoCompute = '';
+  if (unit === '$') {
+    var auto = await branded.confirm(
+      'Auto-tally from each member\'s revenue wins? (Tips: log wins with a "Revenue" metric and a $ value to feed this.)\n\nPick "No" to type the current number manually instead.',
+      { title: 'Auto-tally?', okLabel: 'Yes, auto-tally', cancelLabel: 'No, manual' }
+    );
+    autoCompute = auto ? 'wins.revenue' : '';
+  }
+  var currentVal = current.current || 0;
+  if (!autoCompute) {
+    var currentRaw = await branded.prompt(
+      'Current progress (just digits):',
+      String(currentVal),
+      '0',
+      { title: 'Current', okLabel: 'Save' }
+    );
+    if (currentRaw == null) return;
+    currentVal = parseFloat((currentRaw || '').replace(/[^\d.]/g, '')) || 0;
+  }
+  co.goal = { label: label.trim(), target: target, unit: unit.trim(), current: currentVal, autoCompute: autoCompute };
+  _saveCohorts();
+  branded.success('Goal saved — members will see it in their Community tab.');
+  if (typeof renderCohortManager === 'function') renderCohortManager();
 }
 
 // v11600: cohort momentum banner — auto-derived stats from the last 7 days
@@ -19025,12 +19175,16 @@ async function sendResourceToCohort(cohortId) {
   // Load resources (lazy-loaded helper exists in the codebase)
   var resources = (typeof loadHubResources === 'function') ? await loadHubResources() : [];
   if (!resources.length) { branded.alert('No resources in your Happy Hub yet — add some first via the Happy Hub page.'); return; }
-  // Filter resources by audience compatibility (audience='all' or matches MDC)
+  // Filter resources by audience compatibility (audience='all' or matches MDC).
+  // v11610 fix: was `return true` on the fallback — that leaked 'private'
+  // (coach-only) resources into the cohort broadcast picker. Now default-deny
+  // anything we don't explicitly recognise as shareable.
   var compatible = resources.filter(function(r) {
     if (!r.audience || r.audience.type === 'all') return true;
+    if (r.audience.type === 'private') return false; // coach-only, never shareable
     if (r.audience.type === 'cohorts' && Array.isArray(r.audience.ids)) return r.audience.ids.indexOf(co.id) !== -1;
     if (r.audience.type === 'programs' && Array.isArray(r.audience.ids)) return r.audience.ids.indexOf('mdc') !== -1;
-    return true;
+    return false; // unknown audience type — deny by default rather than leak
   });
   if (!compatible.length) { branded.alert('No resources are targeted at this cohort. Open Happy Hub → Audience → "All" or "Cohorts" → pick this cohort.'); return; }
   var menu = compatible.slice(0, 20).map(function(r, i) { return (i + 1) + '. [' + (r.type || 'resource') + '] ' + r.title; }).join('\n');
