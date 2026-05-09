@@ -19,7 +19,7 @@
 // vNNNN tag in index.html; we read that tag at install time so this file
 // doesn't need a separate version literal.
 
-const VERSION    = 'peabe-v2';                 // bump if SW logic changes
+const VERSION    = 'peabe-v3';                 // bump if SW logic changes
 const STATIC     = 'peabe-static-' + VERSION;
 const API        = 'peabe-api-'    + VERSION;
 // Precache the full critical-path bundle so a returning user (especially

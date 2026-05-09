@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11310 — coach client profile redesign: 2-column header card · status+health moved into header · 4 primary actions + 'More' dropdown · clickable stat cards · program tabs deduped · inner tabs wrap on desktop · brighter visibility badges">
+<meta name="hmh-build" content="v11320 — bulk actions on Clients page (select mode + floating bar: email all · mark seen · set status · add to cohort · award badge · archive) · cohort sessions filtered to within cohort date window · Settings integration cards (Gmail · Zoom · Calendly · Stripe · WhatsApp · Twilio · Anthropic) with live status pills via /api/integrations-status · new PeaBe PNG icons (180/192/256/512) + SW bumped to v3">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -214,6 +214,8 @@
           <button id="show-archived-toggle" class="btn-sm" style="display:none;margin-left:auto;align-items:center;gap:6px;font-size:12px" onclick="toggleShowArchived()" title="Toggle archived clients">
             📦 <span class="toggle-state">Show archived</span> · <span class="toggle-count" style="font-weight:700">0</span>
           </button>
+          <!-- v11320: bulk select toggle — flips selection mode on every card -->
+          <button class="btn-sm" onclick="toggleBulkSelectMode('clients')" title="Select multiple clients to action together" style="font-size:12px">☑ Select</button>
           <button class="btn-sm primary" onclick="openAddClient()">+ Add client</button>
         </div>
         <div class="clients-grid" id="clients-grid">
@@ -863,16 +865,94 @@
           </div>
         </div>
 
-        <div class="settings-card">
-          <h4>📧 Email sending (Gmail API — live)</h4>
-          <p>Outbound emails from the platform send via the Gmail API as <strong>phoebe@phoebeblamey.com.au</strong> and appear in your Gmail Sent folder automatically.</p>
-          <p style="margin-top:8px;font-size:12px;color:var(--stone)">Configured via Netlify env vars: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, GOOGLE_SENDER_EMAIL. To rotate credentials, see CLAUDE.md.</p>
-        </div>
+        <!-- v11320: integrations card cluster — live status pills (driven
+             by /api/integrations-status). Each card explains what env vars
+             are needed and where to get them. The status pill auto-updates
+             when env vars are set on Netlify and the page refreshes. -->
+        <div id="integrations-cluster">
+          <div class="settings-card" id="integration-gmail">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h4 style="margin:0">📧 Gmail (outbound email)</h4>
+              <span class="integration-status integration-status-loading" data-int="gmail">Checking…</span>
+            </div>
+            <p>Outbound emails from the platform send via the Gmail API as <strong>phoebe@phoebeblamey.com.au</strong>. Used for welcome emails, session reminders, AI-summary deliveries, broadcast.</p>
+            <p style="margin-top:6px;font-size:12px;color:var(--stone)">Env vars required: GOOGLE_CLIENT_ID · GOOGLE_CLIENT_SECRET · GOOGLE_REFRESH_TOKEN · GOOGLE_SENDER_EMAIL.</p>
+          </div>
 
-        <div class="settings-card">
-          <h4>💬 SMS setup (Twilio)</h4>
-          <p>To send SMS texts to clients, add three variables to Netlify: <strong>TWILIO_ACCOUNT_SID</strong>, <strong>TWILIO_AUTH_TOKEN</strong>, <strong>TWILIO_FROM_NUMBER</strong></p>
-          <p style="margin-top:8px">Get these from <a href="https://twilio.com" target="_blank" style="color:var(--hot-pink)">twilio.com</a> → Console → Account Info. Cost is ~$0.01/SMS.</p>
+          <div class="settings-card" id="integration-zoom">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h4 style="margin:0">🎬 Zoom (meetings + recordings + transcripts)</h4>
+              <span class="integration-status integration-status-loading" data-int="zoom">Checking…</span>
+            </div>
+            <p>Auto-creates Phoebe-branded meetings, pulls recordings + transcripts via webhook, AI-summarises into review queue.</p>
+            <p style="margin-top:6px;font-size:12px;color:var(--stone)">Env vars: ZOOM_ACCOUNT_ID · ZOOM_CLIENT_ID · ZOOM_CLIENT_SECRET · ZOOM_VERIFICATION_TOKEN.</p>
+          </div>
+
+          <div class="settings-card" id="integration-calendly">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h4 style="margin:0">📅 Calendly (auto-create clients on booking)</h4>
+              <span class="integration-status integration-status-loading" data-int="calendly">Checking…</span>
+            </div>
+            <p>When a Calendly booking lands, the webhook auto-creates the client + their first program + runs a background AI research brief.</p>
+            <p style="margin-top:6px;font-size:12px;color:var(--stone)">Env var: CALENDLY_API_TOKEN.</p>
+          </div>
+
+          <div class="settings-card" id="integration-stripe">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h4 style="margin:0">💳 Stripe Standard (course/upsell payments)</h4>
+              <span class="integration-status integration-status-loading" data-int="stripe">Checking…</span>
+            </div>
+            <p>When live, the "Phoebe's picks for you" card on a client's program-recommendation card becomes one-click checkout. Each product link can become a real Stripe payment link instead of an external URL.</p>
+            <details style="margin-top:8px">
+              <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600">Setup steps for Phoebe →</summary>
+              <ol style="font-size:12px;color:var(--stone);line-height:1.7;padding-left:22px;margin-top:8px">
+                <li>Create / sign in to a Stripe account at <a href="https://stripe.com" target="_blank" style="color:var(--hot-pink)">stripe.com</a> (Standard, not Connect — your own account)</li>
+                <li>Stripe Dashboard → Developers → API keys → copy <strong>Secret key</strong> + <strong>Publishable key</strong></li>
+                <li>Add to Netlify env vars: <code>STRIPE_SECRET_KEY</code> · <code>STRIPE_PUBLISHABLE_KEY</code></li>
+                <li>(Optional) Set up a webhook endpoint in Stripe pointing at <code>/api/stripe-webhook</code> — secret env var <code>STRIPE_WEBHOOK_SECRET</code></li>
+                <li>Redeploy. The "Connect Stripe" pill will flip to "Live ✓".</li>
+              </ol>
+            </details>
+            <p style="margin-top:6px;font-size:12px;color:var(--stone)">Env vars: STRIPE_SECRET_KEY · STRIPE_PUBLISHABLE_KEY · STRIPE_WEBHOOK_SECRET (optional).</p>
+          </div>
+
+          <div class="settings-card" id="integration-whatsapp">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h4 style="margin:0">💬 WhatsApp Business (cohort groups + messaging)</h4>
+              <span class="integration-status integration-status-loading" data-int="whatsapp">Checking…</span>
+            </div>
+            <p>When live, Phoebe can create per-cohort WhatsApp groups, send meeting invites + reminders, and broadcast win celebrations from inside the platform.</p>
+            <details style="margin-top:8px">
+              <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600">Setup steps for Phoebe →</summary>
+              <ol style="font-size:12px;color:var(--stone);line-height:1.7;padding-left:22px;margin-top:8px">
+                <li>Create a Meta Business account at <a href="https://business.facebook.com" target="_blank" style="color:var(--hot-pink)">business.facebook.com</a></li>
+                <li>Set up the WhatsApp Business API — Meta Business Suite → WhatsApp → Get Started. Approval can take 1-3 days.</li>
+                <li>Verify a phone number for messaging.</li>
+                <li>From the WhatsApp Manager: copy your <strong>Phone Number ID</strong> + a <strong>Permanent Access Token</strong> (System User).</li>
+                <li>Add to Netlify env vars: <code>WHATSAPP_PHONE_NUMBER_ID</code> · <code>WHATSAPP_ACCESS_TOKEN</code> · <code>WHATSAPP_VERIFY_TOKEN</code> (any random string for the webhook handshake).</li>
+                <li>Redeploy. The status pill flips to "Live ✓".</li>
+              </ol>
+            </details>
+            <p style="margin-top:6px;font-size:12px;color:var(--stone)">Env vars: WHATSAPP_PHONE_NUMBER_ID · WHATSAPP_ACCESS_TOKEN · WHATSAPP_VERIFY_TOKEN.</p>
+          </div>
+
+          <div class="settings-card" id="integration-twilio">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h4 style="margin:0">💬 Twilio SMS (text reminders)</h4>
+              <span class="integration-status integration-status-loading" data-int="twilio">Checking…</span>
+            </div>
+            <p>When live, the "Send a text" option appears in the Message tab + automated session reminders go out as SMS. ~$0.01 per text.</p>
+            <p style="margin-top:6px;font-size:12px;color:var(--stone)">Get your Account SID + Auth Token at <a href="https://twilio.com" target="_blank" style="color:var(--hot-pink)">twilio.com</a> → Console.<br>Env vars: TWILIO_ACCOUNT_SID · TWILIO_AUTH_TOKEN · TWILIO_FROM_NUMBER.</p>
+          </div>
+
+          <div class="settings-card" id="integration-anthropic">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h4 style="margin:0">✦ Anthropic AI (Claude — research, summaries, recommendations)</h4>
+              <span class="integration-status integration-status-loading" data-int="anthropic">Checking…</span>
+            </div>
+            <p>Powers every AI feature: research brief, deep dive, session summaries, why suggestions, program recommendations, Knowledge Bank.</p>
+            <p style="margin-top:6px;font-size:12px;color:var(--stone)">Env var: ANTHROPIC_API_KEY. Get one at <a href="https://console.anthropic.com" target="_blank" style="color:var(--hot-pink)">console.anthropic.com</a>.</p>
+          </div>
         </div>
 
         <div class="settings-card">
@@ -890,6 +970,10 @@
     </div>
   </div>
 </div>
+
+<!-- v11320: floating bulk-action bar — appears at the bottom of the
+     viewport when bulk-select mode is on AND 1+ items are selected. -->
+<div id="bulk-action-bar" style="display:none"></div>
 
 <!-- v11300: 5-step onboarding flow modal — first-visit only.
      Driven by maybeShowFirstVisitWelcome → startOnboardingFlow → renderOnboardingStep. -->
@@ -2489,6 +2573,33 @@ async function editCustomProgramType(typeId) {
   applyCustomProgramTypes();
   renderCustomProgramTypesList();
   branded.toast('Saved');
+}
+
+// v11320: integrations status — fetches /api/integrations-status (which
+// reports which env vars are set) and updates the green/grey pills next
+// to each integration card heading. Auto-runs when Settings opens.
+async function refreshIntegrationStatusPills() {
+  try {
+    var r = await fetch('/api/integrations-status');
+    if (!r.ok) throw new Error('status ' + r.status);
+    var data = await r.json();
+    var st = (data && data.status) || {};
+    document.querySelectorAll('.integration-status').forEach(function(el) {
+      var key = el.dataset.int;
+      var on = !!st[key];
+      el.classList.remove('integration-status-loading', 'integration-status-on', 'integration-status-off');
+      el.classList.add(on ? 'integration-status-on' : 'integration-status-off');
+      el.textContent = on ? '✓ Live' : '○ Not configured';
+      el.title = on ? 'Env vars detected on this Netlify deploy' : 'Add the required env vars on Netlify and redeploy to flip this on';
+    });
+  } catch (e) {
+    document.querySelectorAll('.integration-status').forEach(function(el) {
+      el.classList.remove('integration-status-loading');
+      el.classList.add('integration-status-off');
+      el.textContent = '? Unknown';
+      el.title = 'Could not reach the integrations-status endpoint';
+    });
+  }
 }
 
 // Recommendable products — Settings UI
@@ -4738,6 +4849,7 @@ function showPage(id) {
         if (typeof renderZoomTemplatesList==='function') renderZoomTemplatesList();
         if (typeof renderCustomProgramTypesList==='function') renderCustomProgramTypesList();
         if (typeof renderRecommendableProductsList==='function') renderRecommendableProductsList();
+        if (typeof refreshIntegrationStatusPills==='function') refreshIntegrationStatusPills();
       }
       else if (id === 'tasks')      { if (typeof renderAllTasks==='function') renderAllTasks(); }
       else if (id === 'settings')   { if (typeof initNotificationsToggle==='function') initNotificationsToggle(); }
@@ -14619,6 +14731,8 @@ function renderClients() {
       '</div></div>';
     return;
   }
+  // v11320: bulk-select mode — toggle on each card, checkbox visible
+  var bulkOn = window._bulkSelect && window._bulkSelect.scope === 'clients' && window._bulkSelect.mode;
   grid.innerHTML = list.map(function(c) {
     var progs = (c.programs||[]).filter(function(p){ return p.workbook!=='none'&&p.workbook!=='inquiry'; });
     var latestProg = progs[progs.length-1] || {};
@@ -14629,7 +14743,12 @@ function renderClients() {
       var pi = PROGRAMS[p.program]||{};
       return '<span class="prog-badge '+(pi.color||'prog-stone')+'">'+(pi.short||p.program)+(p.locked?' 🔒':'')+'</span>';
     }).join('');
-    return '<div class="client-card" data-cid="'+c.id+'" onclick="openClientById(this.dataset.cid)"> ' +
+    var checked = bulkOn && window._bulkSelect.items.has(c.id);
+    var checkboxHtml = bulkOn
+      ? '<div class="bulk-checkbox' + (checked ? ' on' : '') + '">' + (checked ? '✓' : '') + '</div>'
+      : '';
+    return '<div class="client-card' + (bulkOn ? ' bulk-mode' : '') + (checked ? ' bulk-selected' : '') + '" data-cid="'+c.id+'" onclick="openClientById(this.dataset.cid)"> ' +
+      checkboxHtml +
       '<div class="client-card-top">' +
       '<div class="client-avatar">'+initials+'</div>' +
       '<div style="flex:1;min-width:0">' +
@@ -14644,7 +14763,297 @@ function renderClients() {
   }).join('');
 }
 
-function openClientById(id) { openClient(id); }
+function openClientById(id) {
+  // v11320: when bulk-select is on, clicking a card toggles selection instead
+  if (window._bulkSelect && window._bulkSelect.scope === 'clients' && window._bulkSelect.mode) {
+    toggleBulkSelectItem(id);
+    return;
+  }
+  openClient(id);
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// BULK ACTIONS — v11320
+// Selection mode for the Clients page + Task Sheet. Each surface enters
+// "select mode" via a toggle button; rows get checkboxes; a floating
+// action bar appears at the bottom of the viewport with grouped actions.
+// ═════════════════════════════════════════════════════════════════════
+window._bulkSelect = window._bulkSelect || { mode: false, scope: null, items: new Set() };
+
+function toggleBulkSelectMode(scope) {
+  if (window._bulkSelect.scope !== scope) {
+    window._bulkSelect = { mode: true, scope: scope, items: new Set() };
+  } else {
+    window._bulkSelect.mode = !window._bulkSelect.mode;
+    if (!window._bulkSelect.mode) window._bulkSelect.items.clear();
+  }
+  if (scope === 'clients' && typeof renderClients === 'function') renderClients();
+  if (scope === 'tasks' && typeof renderTaskSheet === 'function') renderTaskSheet();
+  renderBulkActionBar();
+}
+
+function exitBulkSelect() {
+  window._bulkSelect = { mode: false, scope: null, items: new Set() };
+  if (typeof renderClients === 'function') renderClients();
+  if (typeof renderTaskSheet === 'function') renderTaskSheet();
+  renderBulkActionBar();
+}
+
+function toggleBulkSelectItem(id) {
+  if (!id) return;
+  if (window._bulkSelect.items.has(id)) window._bulkSelect.items.delete(id);
+  else window._bulkSelect.items.add(id);
+  // Re-render the relevant surface so checkbox state updates
+  if (window._bulkSelect.scope === 'clients' && typeof renderClients === 'function') renderClients();
+  if (window._bulkSelect.scope === 'tasks' && typeof renderTaskSheet === 'function') renderTaskSheet();
+  renderBulkActionBar();
+}
+
+function renderBulkActionBar() {
+  var bar = document.getElementById('bulk-action-bar');
+  if (!bar) return;
+  var sel = window._bulkSelect;
+  if (!sel || !sel.mode || sel.items.size === 0) {
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+    return;
+  }
+  bar.style.display = 'flex';
+  var n = sel.items.size;
+  var actions;
+  if (sel.scope === 'clients') {
+    actions =
+      '<button class="bulk-action-btn primary" onclick="bulkEmailClients()">📧 Email all</button>' +
+      '<button class="bulk-action-btn" onclick="bulkMarkClientsSeen()">🔔 Mark all seen</button>' +
+      '<button class="bulk-action-btn" onclick="bulkSetClientStatus()">🌱 Set status</button>' +
+      '<button class="bulk-action-btn" onclick="bulkAddToCohort()">💡 Add to cohort</button>' +
+      '<button class="bulk-action-btn" onclick="bulkAwardBadge()">🎖 Award badge</button>' +
+      '<button class="bulk-action-btn danger" onclick="bulkArchiveClients()">🔒 Archive</button>';
+  } else {
+    // tasks
+    actions =
+      '<button class="bulk-action-btn primary" onclick="bulkMarkTasksDone()">✓ Mark done</button>' +
+      '<button class="bulk-action-btn" onclick="bulkSetTaskDueDate()">📅 Bulk due-date</button>' +
+      '<button class="bulk-action-btn" onclick="bulkSetTaskVisibility(true)">👁 Make client-visible</button>' +
+      '<button class="bulk-action-btn" onclick="bulkSetTaskVisibility(false)">🔒 Make coach-only</button>' +
+      '<button class="bulk-action-btn danger" onclick="bulkDeleteTasks()">× Delete</button>';
+  }
+  bar.innerHTML =
+    '<div class="bulk-action-bar-count"><span class="bulk-action-bar-num">' + n + '</span> selected</div>' +
+    '<div class="bulk-action-bar-actions">' + actions + '</div>' +
+    '<button class="bulk-action-bar-cancel" onclick="exitBulkSelect()" title="Cancel selection">× Cancel</button>';
+}
+
+// ─── Bulk client actions ────────────────────────────────────────────
+async function bulkEmailClients() {
+  var ids = Array.from(window._bulkSelect.items);
+  var targets = clients.filter(function(c) { return ids.indexOf(c.id) !== -1 && c.email && !c.notificationsDisabled; });
+  if (!targets.length) { branded.alert('No selected clients have an email on file (or notifications are off for all of them).'); return; }
+  // Open the message tab with a multi-recipient warning. Phoebe types once;
+  // we send one email per recipient via /api/send-message in series.
+  var subject = await branded.prompt('Subject for ' + targets.length + ' email' + (targets.length === 1 ? '' : 's') + ':', '', 'A message from Phoebe', { title: 'Bulk email · ' + targets.length + ' clients', okLabel: 'Next' });
+  if (subject == null || !subject.trim()) return;
+  var body = await branded.prompt('Message body — supports {firstName} as a placeholder:', '', 'Hi {firstName},\n\n…', { title: 'Bulk email · message', okLabel: 'Send' });
+  if (body == null || !body.trim()) return;
+  var ok = await branded.confirm('Send this email to ' + targets.length + ' client' + (targets.length === 1 ? '' : 's') + '?', { title:'Confirm send', okLabel:'Send', danger: false });
+  if (!ok) return;
+  branded.toast('Sending…');
+  var sent = 0, failed = 0;
+  for (var i = 0; i < targets.length; i++) {
+    var c = targets[i];
+    var personal = body.replace(/\{firstName\}/g, (c.name||'').split(' ')[0] || 'there');
+    try {
+      var r = await fetch('/api/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ type:'email', to: c.email, subject: subject, message: personal, clientName: c.name }),
+      });
+      if (r.ok) sent++; else failed++;
+    } catch (e) { failed++; }
+  }
+  branded.success(sent + ' sent' + (failed ? ' · ' + failed + ' failed' : ''));
+  exitBulkSelect();
+}
+
+async function bulkMarkClientsSeen() {
+  var ids = Array.from(window._bulkSelect.items);
+  var nowIso = new Date().toISOString();
+  for (var i = 0; i < ids.length; i++) {
+    var c = clients.find(function(x){ return x.id === ids[i]; });
+    if (!c) continue;
+    // Mark all unaddressed review requests as seen for this client
+    (c.reviewRequests || []).forEach(function(rr) { if (!rr.addressed && !rr.seen) { rr.seen = true; rr.seenAt = nowIso; } });
+    (c.programs || []).forEach(function(p) {
+      (p.sessionNotes || []).forEach(function(n) { if (n.reviewRequested && !n.reviewSeen) { n.reviewSeen = true; n.reviewSeenAt = nowIso; } });
+    });
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ Marked ' + ids.length + ' clients as seen');
+  exitBulkSelect();
+}
+
+async function bulkSetClientStatus() {
+  var ids = Array.from(window._bulkSelect.items);
+  var status = await branded.prompt('Set status for ' + ids.length + ' client' + (ids.length === 1 ? '' : 's') + ' — type "active", "nurture", or "complete":', 'active', '', { title: 'Bulk status', okLabel: 'Apply' });
+  if (status == null) return;
+  var s = (status || '').toLowerCase().trim();
+  if (!/^(active|nurture|complete)$/.test(s)) { branded.alert('Status must be active, nurture, or complete.'); return; }
+  var ok = await branded.confirm('Set ' + ids.length + ' client' + (ids.length === 1 ? '' : 's') + ' to ' + s + '?', { title: 'Confirm', okLabel: 'Apply' });
+  if (!ok) return;
+  for (var i = 0; i < ids.length; i++) {
+    var c = clients.find(function(x){ return x.id === ids[i]; });
+    if (!c) continue;
+    c.status = s;
+    c.statusChangedAt = new Date().toISOString();
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ Status set on ' + ids.length + ' clients');
+  exitBulkSelect();
+}
+
+async function bulkArchiveClients() {
+  var ids = Array.from(window._bulkSelect.items);
+  var ok = await branded.confirm('Archive ' + ids.length + ' client' + (ids.length === 1 ? '' : 's') + '? They\'ll be hidden from your active list — restore via "Show archived".', { title: 'Confirm archive', okLabel: 'Archive', danger: true });
+  if (!ok) return;
+  for (var i = 0; i < ids.length; i++) {
+    var c = clients.find(function(x){ return x.id === ids[i]; });
+    if (!c) continue;
+    c.archived = true;
+    c.archivedAt = new Date().toISOString();
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ Archived ' + ids.length + ' clients');
+  exitBulkSelect();
+}
+
+async function bulkAddToCohort() {
+  var ids = Array.from(window._bulkSelect.items);
+  var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
+  if (!cohorts.length) { branded.alert('No cohorts to add to. Create one in the Cohort Manager first.'); return; }
+  // Simple picker — list cohort names, accept the index
+  var menu = cohorts.map(function(c, i){ return (i+1) + '. ' + c.name; }).join('\n');
+  var pick = await branded.prompt('Pick a cohort to add ' + ids.length + ' client' + (ids.length === 1 ? '' : 's') + ' to:\n\n' + menu, '1', '', { title: 'Add to cohort', okLabel: 'Add' });
+  if (pick == null) return;
+  var idx = parseInt(pick, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= cohorts.length) { branded.alert('Invalid choice.'); return; }
+  var co = cohorts[idx];
+  var ok = await branded.confirm('Add ' + ids.length + ' client' + (ids.length === 1 ? '' : 's') + ' to "' + co.name + '"? Each will get a new MDC program tagged to this cohort.', { title: 'Confirm', okLabel: 'Add' });
+  if (!ok) return;
+  for (var i = 0; i < ids.length; i++) {
+    var c = clients.find(function(x){ return x.id === ids[i]; });
+    if (!c) continue;
+    var alreadyMember = (c.programs || []).some(function(p) { return p.cohort === co.id; });
+    if (alreadyMember) continue;
+    var newProg = {
+      id: 'mdc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      program: 'mdc',
+      label: 'MDC',
+      workbook: 'mdc',
+      cohort: co.id,
+      sessionDate: co.start || '',
+      status: 'upcoming',
+      locked: false,
+      mdcSprint: 1, mdcWeek: 1,
+      notes: { themes:'', leaks:'', opps:'', patterns:'', private:'', research:'', summary:'' },
+      plan: [], taskDone: {},
+      mdcWorkbook: { businessSnapshot:'', vision:'', meNow:'', sprintFocus:'', weeklyCheckins:{} },
+      createdAt: new Date().toISOString(),
+      source: 'manual-bulk',
+    };
+    c.programs = c.programs || [];
+    c.programs.push(newProg);
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ Added to "' + co.name + '"');
+  exitBulkSelect();
+}
+
+async function bulkAwardBadge() {
+  var ids = Array.from(window._bulkSelect.items);
+  // Open the existing award-badge modal but apply to all selected
+  var badgeId = await branded.prompt('Type a badge ID (e.g. "first-step", "plan-crafted") OR a custom name to create:', 'first-step', '', { title: 'Bulk award badge', okLabel: 'Award' });
+  if (badgeId == null || !badgeId.trim()) return;
+  var ok = await branded.confirm('Award "' + badgeId + '" to ' + ids.length + ' client' + (ids.length === 1 ? '' : 's') + '?', { title: 'Confirm', okLabel: 'Award' });
+  if (!ok) return;
+  var nowIso = new Date().toISOString();
+  for (var i = 0; i < ids.length; i++) {
+    var c = clients.find(function(x){ return x.id === ids[i]; });
+    if (!c) continue;
+    c.badges = c.badges || [];
+    if (c.badges.some(function(b){ return b && b.id === badgeId; })) continue;
+    c.badges.push({ id: badgeId, awardedAt: nowIso, source: 'bulk' });
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ Badge awarded to ' + ids.length + ' clients');
+  exitBulkSelect();
+}
+
+// ─── Bulk task actions ──────────────────────────────────────────────
+async function bulkMarkTasksDone() {
+  var ids = Array.from(window._bulkSelect.items);
+  // Tasks are scoped per-client; ids encode "clientId::taskId"
+  var nowIso = new Date().toISOString();
+  for (var i = 0; i < ids.length; i++) {
+    var parts = ids[i].split('::');
+    var c = clients.find(function(x){ return x.id === parts[0]; });
+    if (!c) continue;
+    var t = (c.tasks || []).find(function(x){ return x.id === parts[1]; });
+    if (!t) continue;
+    t.done = true;
+    t.completedAt = nowIso;
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ Marked ' + ids.length + ' task' + (ids.length === 1 ? '' : 's') + ' done');
+  exitBulkSelect();
+}
+
+async function bulkSetTaskDueDate() {
+  var ids = Array.from(window._bulkSelect.items);
+  var date = await branded.prompt('New due date (YYYY-MM-DD) for ' + ids.length + ' task' + (ids.length === 1 ? '' : 's') + ':', new Date().toISOString().split('T')[0], '', { title: 'Bulk due-date', okLabel: 'Apply' });
+  if (date == null) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { branded.alert('Date must be YYYY-MM-DD.'); return; }
+  for (var i = 0; i < ids.length; i++) {
+    var parts = ids[i].split('::');
+    var c = clients.find(function(x){ return x.id === parts[0]; });
+    if (!c) continue;
+    var t = (c.tasks || []).find(function(x){ return x.id === parts[1]; });
+    if (!t) continue;
+    t.dueDate = date;
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ Due dates updated');
+  exitBulkSelect();
+}
+
+async function bulkSetTaskVisibility(visible) {
+  var ids = Array.from(window._bulkSelect.items);
+  for (var i = 0; i < ids.length; i++) {
+    var parts = ids[i].split('::');
+    var c = clients.find(function(x){ return x.id === parts[0]; });
+    if (!c) continue;
+    var t = (c.tasks || []).find(function(x){ return x.id === parts[1]; });
+    if (!t) continue;
+    t.clientVisible = !!visible;
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ ' + ids.length + ' task' + (ids.length === 1 ? '' : 's') + ' set to ' + (visible ? 'client-visible' : 'coach-only'));
+  exitBulkSelect();
+}
+
+async function bulkDeleteTasks() {
+  var ids = Array.from(window._bulkSelect.items);
+  var ok = await branded.confirm('Delete ' + ids.length + ' task' + (ids.length === 1 ? '' : 's') + '? This can\'t be undone.', { title: 'Confirm delete', okLabel: 'Delete', danger: true });
+  if (!ok) return;
+  for (var i = 0; i < ids.length; i++) {
+    var parts = ids[i].split('::');
+    var c = clients.find(function(x){ return x.id === parts[0]; });
+    if (!c) continue;
+    c.tasks = (c.tasks || []).filter(function(x){ return x.id !== parts[1]; });
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ Deleted ' + ids.length + ' tasks');
+  exitBulkSelect();
+}
 
 // ============================================================
 // TASK SHEET — bulletproof v3
@@ -15042,13 +15451,32 @@ function renderCohortCard(co) {
 // cohort.sessions = [{ id, date, time, topic, zoomMeetingId, zoomJoinUrl,
 // zoomPasscode }].
 function renderCohortSessionsList(co) {
-  var sessions = (co.sessions || []).slice().sort(function(a, b) {
+  // v11320: filter sessions to within the cohort's date window. Sessions
+  // outside cohort.start → cohort.end (e.g. data drift / mistakes) get
+  // pushed into a collapsed "Outside cohort range" section so they're not
+  // lost but also don't dominate the active list. Elodie's brief: "only
+  // show cohort members for sessions within" — interpreted as "filter
+  // sessions to the cohort's session window".
+  var allSessions = (co.sessions || []).slice().sort(function(a, b) {
     return (a.date || '').localeCompare(b.date || '');
   });
+  var inWindow = allSessions, outOfWindow = [];
+  if (co.start || co.end) {
+    var startMs = co.start ? new Date(co.start).getTime() : -Infinity;
+    var endMs   = co.end   ? new Date(co.end).getTime() + 86400000 : Infinity; // inclusive end-day
+    inWindow = []; outOfWindow = [];
+    allSessions.forEach(function(s) {
+      if (!s.date) { inWindow.push(s); return; }
+      var t = new Date(s.date).getTime();
+      if (t >= startMs && t <= endMs) inWindow.push(s);
+      else outOfWindow.push(s);
+    });
+  }
+  var sessions = inWindow;
   var html =
     '<div style="margin-top:18px">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
-        '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em">📅 All sessions · ' + sessions.length + '</div>' +
+        '<div style="font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em">📅 Sessions in cohort range · ' + sessions.length + '</div>' +
         '<button class="btn-sm primary" onclick="addCohortSession(\'' + co.id + '\')" style="font-size:11px">+ Add session</button>' +
       '</div>';
   if (!sessions.length) {
@@ -15085,6 +15513,21 @@ function renderCohortSessionsList(co) {
       '</div>';
     });
     html += '</div>';
+  }
+  // v11320: out-of-window sessions in a collapsed expander
+  if (outOfWindow.length) {
+    html += '<details style="margin-top:14px;background:#FFFAF0;border:1px solid rgba(232,160,32,0.35);border-radius:10px;padding:10px 14px"><summary style="cursor:pointer;font-size:11px;font-weight:700;color:#A07030;text-transform:uppercase;letter-spacing:0.06em;list-style:none">⚠ ' + outOfWindow.length + ' session' + (outOfWindow.length === 1 ? '' : 's') + ' outside cohort range</summary>';
+    html += '<div style="font-size:11px;color:var(--stone);margin:8px 0;font-style:italic">These sessions are dated before the cohort start (' + (co.start || 'unset') + ') or after the end (' + (co.end || 'unset') + '). Likely a date drift — fix the date or extend the cohort window above.</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:6px">';
+    outOfWindow.forEach(function(s) {
+      var dateLabel = s.date ? new Date(s.date).toLocaleDateString('en-AU', { day:'numeric', month:'short', year:'numeric' }) : '—';
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:white;border:1px solid var(--border-soft);border-radius:8px;font-size:12px;color:var(--magenta)">' +
+        '<span style="font-size:14px">📅</span>' +
+        '<span style="flex:1">' + dateLabel + (s.topic ? ' · ' + escapeHtml(s.topic) : '') + '</span>' +
+        '<button onclick="deleteCohortSession(\'' + co.id + '\',\'' + s.id + '\')" class="btn-sm" style="font-size:13px;padding:2px 6px;color:var(--stone);min-height:0;background:none;border:none" title="Delete">×</button>' +
+      '</div>';
+    });
+    html += '</div></details>';
   }
   html += '</div>';
   return html;

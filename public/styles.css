@@ -497,6 +497,134 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .tag-cf { background: rgba(95,163,168,0.14); color: var(--teal); border-color: rgba(95,163,168,0.4); }
 .tag-sh { background: rgba(232,160,32,0.14); color: #A07030; border-color: rgba(232,160,32,0.45); }
 
+/* v11320: integration status pills (Settings page) */
+.integration-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 99px;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+}
+.integration-status-loading { background: var(--marshmallow); color: var(--stone); border-color: var(--border); }
+.integration-status-on      { background: rgba(95,163,168,0.15); color: var(--teal); border-color: rgba(95,163,168,0.4); }
+.integration-status-off     { background: rgba(232,160,32,0.12); color: #A07030; border-color: rgba(232,160,32,0.4); }
+
+/* v11320: bulk-select checkbox + selected-state on cards */
+.bulk-checkbox {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: white;
+  z-index: 2;
+  transition: all 0.15s;
+}
+.bulk-checkbox.on {
+  background: var(--hot-pink);
+  border-color: var(--hot-pink);
+  transform: scale(1.05);
+}
+.client-card.bulk-mode { position: relative; }
+.client-card.bulk-mode { padding-left: 38px !important; }
+.client-card.bulk-selected {
+  border-color: var(--hot-pink) !important;
+  background: linear-gradient(135deg, #FFF8FB, white) !important;
+  box-shadow: 0 4px 14px rgba(229,4,139,0.15) !important;
+}
+
+/* Floating bulk-action bar — anchored to the bottom of the viewport. */
+#bulk-action-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--magenta);
+  color: white;
+  padding: 10px 16px;
+  border-radius: 14px;
+  box-shadow: 0 10px 32px rgba(0,0,0,0.25);
+  max-width: calc(100vw - 32px);
+  flex-wrap: wrap;
+  animation: bulkBarIn 0.2s ease-out;
+}
+@keyframes bulkBarIn {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.bulk-action-bar-count {
+  font-size: 12px;
+  font-weight: 600;
+  padding-right: 12px;
+  border-right: 1px solid rgba(255,255,255,0.25);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.bulk-action-bar-num {
+  background: var(--sunshine);
+  color: var(--magenta);
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-weight: 800;
+  font-size: 13px;
+}
+.bulk-action-bar-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.bulk-action-btn {
+  background: rgba(255,255,255,0.16);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.25);
+  padding: 7px 14px;
+  border-radius: 99px;
+  font-family: var(--f-body);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.bulk-action-btn:hover { background: rgba(255,255,255,0.28); }
+.bulk-action-btn.primary { background: var(--sunshine); color: var(--magenta); border-color: var(--sunshine); }
+.bulk-action-btn.primary:hover { background: #FFE94A; }
+.bulk-action-btn.danger { background: rgba(192,57,43,0.85); border-color: rgba(192,57,43,0.95); color: white; }
+.bulk-action-btn.danger:hover { background: #B23B2D; }
+.bulk-action-bar-cancel {
+  background: transparent;
+  color: rgba(255,255,255,0.85);
+  border: none;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.bulk-action-bar-cancel:hover { color: white; }
+@media (max-width: 720px) {
+  #bulk-action-bar { bottom: 80px; padding: 10px 12px; gap: 8px; }
+  .bulk-action-bar-count { padding-right: 8px; }
+  .bulk-action-btn { padding: 6px 10px; font-size: 11px; }
+}
+
 /* v11310: program-tab dupe warning indicator */
 .prog-tab-dupe {
   background: rgba(229,4,139,0.12);
