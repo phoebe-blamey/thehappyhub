@@ -22,19 +22,22 @@
    pairings (4.5:1+) and large UI text (3:1+).
    ════════════════════════════════════════════════════════════════════ */
 :root, [data-theme="light"] {
-  /* Brand layer — raw colours (unchanged) */
+  /* Brand layer — raw colours.
+     v11210: --magenta updated from #C9266B → #C2185B per Phoebe's brand
+     pack. Tiny perceptual shift, but Elodie flagged a brand-pink mismatch
+     in the review. Border alphas updated to match the new RGB. */
   --paper:       #FFFDFA;
   --marshmallow: #FDEFF5;
   --bubblegum:   #F0A3C7;
   --hot-pink:    #EC2C8A;
-  --magenta:     #C9266B;
+  --magenta:     #C2185B;
   --sunshine:    #FBF219;
   --sand:        #C9A88D;
   --stone:       #ACA495;
   --mist:        #D7E9E7;
   --teal:        #5FA3A8;
-  --border:      rgba(201,38,107,0.12);
-  --border-soft: rgba(201,38,107,0.06);
+  --border:      rgba(194,24,91,0.12);
+  --border-soft: rgba(194,24,91,0.06);
   --f-head: "AllRoundGothic", "Poppins", sans-serif;
   --f-body: "Poppins", sans-serif;
   /* Semantic layer — light theme (default).
@@ -123,16 +126,24 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 .access-card .prog-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
 .prog-tag { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; padding: 3px 9px;
   border-radius: 99px; background: var(--marshmallow); color: var(--hot-pink); text-transform: uppercase; }
-.pin-row { display: flex; gap: 8px; }
-.pin-row input { flex: 1; border: 1.5px solid var(--border); border-radius: 99px;
+.pin-row { display: flex; gap: 8px; min-width: 0; }
+.pin-row input { flex: 1; min-width: 0; border: 1.5px solid var(--border); border-radius: 99px;
   padding: 10px 16px; font-family: var(--f-body); font-size: 13px; color: var(--magenta);
   background: var(--marshmallow); outline: none; transition: border-color 0.2s; }
 .pin-row input:focus { border-color: var(--hot-pink); }
 .btn-enter { background: var(--hot-pink); color: white; border: none; border-radius: 99px;
   padding: 10px 20px; font-family: var(--f-body); font-size: 13px; font-weight: 600;
-  cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+  cursor: pointer; transition: background 0.2s; white-space: nowrap; flex-shrink: 0; }
 .btn-enter:hover { background: var(--magenta); }
 .error-msg { font-size: 12px; color: #C0392B; margin-top: 8px; min-height: 16px; }
+/* v11210: phone-edge clipping — landing page padding could push the
+   Enter button off-screen on narrow phones. Tighten card padding + ensure
+   the access-card has predictable width. Elodie §6. */
+@media (max-width: 480px) {
+  #landing { padding: 24px 12px !important; }
+  .access-card { padding: 20px 16px; }
+  .access-grid { max-width: 100%; }
+}
 
 /* ========== SHARED HUB LAYOUT ========== */
 .hub { display: none; min-height: 100vh; overflow-y: auto; }
@@ -152,6 +163,122 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   border-radius: 99px; padding: 6px 14px; font-family: var(--f-body); font-size: 12px;
   cursor: pointer; transition: background 0.2s; }
 .btn-logout:hover { background: rgba(255,255,255,0.25); }
+
+/* v11210: topbar action cluster — theme toggle + settings + sign out.
+   Default = horizontal row. On phones (≤600px) collapses to a vertical
+   column so Sign Out sits BELOW Settings (Elodie's review §1). */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.topbar-action-btn {
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.22);
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+.topbar-action-btn:hover { background: rgba(255,255,255,0.24); }
+/* v11210: tap-feedback animation on every interactive topbar element.
+   Mobile users tap-without-hover, so they need an explicit press state. */
+.topbar-tap { transition: transform 0.1s ease, opacity 0.15s ease; }
+.topbar-tap:active { transform: scale(0.92); opacity: 0.85; }
+@media (max-width: 600px) {
+  .topbar-actions {
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+    padding: 6px 0;
+  }
+  .topbar-actions .btn-logout {
+    width: auto;
+    padding: 4px 10px;
+    font-size: 10px;
+  }
+  .topbar { min-height: 54px; height: auto !important; padding: 6px 12px !important; flex-wrap: wrap; gap: 8px; }
+}
+
+/* v11210: lock horizontal scroll. Page-wide guard against any errant
+   wide element (flex children that don't shrink, fixed-width tables,
+   etc) from creating an unwanted horizontal scrollbar. */
+html, body { overflow-x: hidden; max-width: 100vw; }
+
+/* v11210: client portal "More" sheet (mobile bottom-tab overflow). */
+.more-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  text-decoration: none;
+  color: var(--magenta);
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+.more-sheet-row:last-child { border-bottom: none; }
+.more-sheet-row:hover { background: var(--marshmallow); }
+.more-sheet-icon { font-size: 20px; flex-shrink: 0; width: 28px; text-align: center; }
+@media (min-width: 700px) {
+  /* Hide the "More" sheet on desktop — bottom tabs hidden anyway, but
+     we don't want to ever show this on a bigger screen. */
+  #client-more-sheet { display: none !important; }
+}
+
+/* v11210: rendered markdown preview for the research brief.
+   Mirrors prose styles you'd expect from a coaching document. */
+.md-render-preview h1,
+.md-render-preview h2,
+.md-render-preview h3,
+.md-render-preview h4 { font-family: var(--f-head); }
+.md-render-preview ul,
+.md-render-preview ol { padding-left: 22px; }
+.md-render-preview li { margin: 4px 0; }
+.md-render-preview p { margin: 8px 0; }
+.md-render-preview hr { margin: 14px 0; }
+.md-render-preview strong { color: var(--magenta); font-weight: 700; }
+.md-render-preview code { font-size: 0.92em; }
+
+/* v11210: tasks UX fixes (Elodie's review §4)
+   - Bigger, more obvious tickbox (was 18px, now 22px) with subtle "✓" hint
+   - Hover state on row keeps tickbox above any animation overlay
+   - Smooth row hover that doesn't fight the checkbox z-index
+   The CSS targets inline-styled tickboxes via partial attribute selector
+   (border-radius:99px) since they're scattered across many render paths. */
+[onclick*="toggleTaskDone"] {
+  position: relative;
+  z-index: 2;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s !important;
+}
+[onclick*="toggleTaskDone"]:hover {
+  transform: scale(1.15);
+  border-color: var(--hot-pink) !important;
+  background: rgba(236,44,138,0.08) !important;
+}
+/* Task rows (the parent div that contains a toggleTaskDone child) — ensure
+   no max-height clipping on desktop, hover doesn't overlap children. */
+.client-section [onclick*="toggleTaskDone"] + div,
+[id="task-sheet-content"] > * { max-height: none !important; overflow: visible; }
+.client-section { overflow: visible; }
+
+/* v11210: gentle pulse on the contextual "Join your session" button.
+   Catches the eye without being annoying — fires when a session is
+   imminent (within 4h before / 2h after start time). */
+@keyframes joinPulse {
+  0%, 100% { box-shadow: 0 4px 12px rgba(0,0,0,0.15), 0 0 0 0 rgba(251,242,25,0.6); }
+  50%      { box-shadow: 0 4px 12px rgba(0,0,0,0.15), 0 0 0 8px rgba(251,242,25,0); }
+}
 
 /* ========== COACH HUB ========== */
 .coach-layout { display: flex; flex: 1; overflow: auto; min-height: 0; }
@@ -1248,13 +1375,19 @@ body{padding-top:0}
   font-weight: 600;
   color: white;
   text-align: center;
-  line-height: 1.15;
+  line-height: 1.2;
   letter-spacing: 0.01em;
   opacity: 0.95;
-  max-width: 64px;
+  max-width: 76px;
+  /* v11210: allow up to 2 lines on mobile so "Plan Crafted" / "Sprint Master"
+     / "90-Day Champion" don't truncate. Elodie's review §2. */
+  white-space: normal;
+  word-break: break-word;
+  hyphens: auto;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 /* "+N more" variant — sits at the end of the row, sunshine-yellow centred */
 .hero-medallion-orb-more {
@@ -1277,10 +1410,10 @@ body{padding-top:0}
   100% { transform: scale(1) rotate(0); }
 }
 @media (max-width: 640px) {
-  .hero-medallion { width: 56px; }
+  .hero-medallion { width: 64px; }
   .hero-medallion-orb { width: 38px; height: 38px; }
   .hero-medallion-icon { font-size: 18px; }
-  .hero-medallion-label { font-size: 9px; max-width: 56px; }
+  .hero-medallion-label { font-size: 9px; max-width: 64px; }
 }
 
 /* Greeting strip — replaces the old separate greeting card. Inline w/ Phoebe says. */
@@ -1599,14 +1732,14 @@ body.workbook-design-view #help-fab { opacity: 0.4; }
 /* ── 3. Decorative hero accent — gentle sunshine blob in the top-right
    corner of the client hero. CSS-only, scales with vw so it doesn't
    distort. Adds personality without adding payload. ── */
-/* v10800: hero kept ON-BRAND magenta. The previous yellow radial in the
-   top-right looked out of place against the pink (Elodie flagged). Now
-   uses two soft-pink/coral radials that subtly warm the corners without
-   reading as a different colour family. */
+/* v11210: hero is now PURE brand pink (--magenta = #C2185B), no gradient.
+   Elodie's review flagged the desktop top bar / hero colour as not matching
+   the brand pack. Solid colour matches the topbar, the buttons, the tab
+   active state — all driven from the same token. */
 #client-hub .client-hero {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, var(--magenta) 0%, #B83574 60%, #C9266B 100%) !important;
+  background: var(--magenta) !important;
 }
 #client-hub .client-hero::before {
   content: '';

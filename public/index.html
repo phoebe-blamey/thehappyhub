@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11200 — refactor finale: selective resource audience (all / specific cohorts / specific program types) · client portal filters resource list by audience · audience pills on coach hub cards · resource broadcast respects audience">
+<meta name="hmh-build" content="v11210 — bug bash from Elodie's review: header (mobile sign-out below ⚙️, hub-lowercase, click-home, tap anims, brand pink #C2185B, no horizontal scroll) · why pin (AI suggest button, edit pencil, prompt tightened) · contextual single Join Session · medallion labels wrap · My Answers → Summary · Today's One Thing (Enter, pinned, Done) · clickable journey stats · Coach dashboard (font, '9 new notifications', Mark all seen direct flush) · Login (logo, hidden coach card unless ?coach=1 / type 'phoebe', mobile button fit) · Research brief (markdown render, 8000 tokens, history snapshot, network errors, generation timestamp) · Create Zoom + auto-invite · smart conflict auto-merge for non-overlapping changes · phone back button · bottom More sheet · .ics calendar · mood history modal">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -60,10 +60,18 @@
 
 <!-- ========== LANDING ========== -->
 <div id="landing">
+  <!-- v11210: PeaBe logo image at the top of the landing page (Elodie's
+       review §6: "Add logo to sign-in page — currently bare and does not
+       reinforce brand trust at first impression"). -->
+  <img src="/icons/peabe.svg" alt="PeaBe" class="landing-brand-mark" style="width:88px;height:88px;display:block;margin:0 auto 14px">
   <div class="landing-logo">PeaBe<br>Coaching Hub</div>
   <div class="landing-sub">Phoebe Blamey — Business Coaching Platform</div>
   <div class="access-grid" id="access-grid">
-    <div class="access-card" id="coach-access-card" onclick="focusCoachPin()">
+    <!-- v11210: coach card hidden by default. Type the secret reveal phrase
+         ("phoebe" or hit shift+P 3 times) OR open with ?coach=1 in URL.
+         Elodie §6: "Coach sign-in visible to clients — Should be hidden
+         from clients entirely". Phoebe knows the trigger. -->
+    <div class="access-card" id="coach-access-card" onclick="focusCoachPin()" style="display:none">
       <div class="card-icon">🏆</div>
       <h3>Coach Portal</h3>
       <p>Manage all clients and programs. View research briefs, session notes, and track progress.</p>
@@ -100,19 +108,22 @@
 <!-- ========== COACH HUB ========== -->
 <div class="hub" id="coach-hub">
   <div class="topbar">
-    <a href="/" class="topbar-logo" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit" title="PeaBe Coaching Hub">
+    <a href="/" onclick="event.preventDefault();goHomeFromTopbar()" class="topbar-logo" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit" title="PeaBe Coaching Hub · Home">
       <img src="/icons/peabe.svg" alt="PeaBe" style="width:32px;height:32px;display:block;flex-shrink:0">
-      <span class="topbar-logo-text" style="font-family:var(--f-head);font-size:15px;font-weight:700;color:white">Hub</span>
+      <span class="topbar-logo-text" style="font-family:var(--f-head);font-size:15px;font-weight:700;color:white">hub</span>
     </a>
-    <span class="topbar-badge badge-coach">Coach</span>
+    <span class="topbar-badge badge-coach topbar-tap" onclick="goHomeFromTopbar()" style="cursor:pointer" title="Home">Coach</span>
     <span class="topbar-date" id="coach-topbar-date" style="font-size:11px;color:rgba(255,255,255,0.75);font-weight:500;letter-spacing:0.01em;margin-left:4px" title="Today"></span>
     <button id="coach-search-trigger" onclick="openCoachSearch()" title="Search clients, tasks, settings (⌘K / Ctrl+K)" style="margin-left:auto;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.95);border:1px solid rgba(255,255,255,0.25);font-size:12px;padding:5px 12px 5px 10px;border-radius:99px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--f-body)">
       🔎 <span class="search-trigger-label">Search</span> <span style="opacity:0.7;font-size:10px;border:1px solid rgba(255,255,255,0.3);padding:1px 5px;border-radius:4px;margin-left:2px" class="search-trigger-shortcut">⌘K</span>
     </button>
     <span id="save-status-pill" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Save status — saves happen automatically as you type"></span>
-    <!-- v11100: theme toggle (sun/moon) — switches light <-> dark -->
-    <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" style="background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.22);color:white;width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.15s" onmouseover="this.style.background='rgba(255,255,255,0.24)'" onmouseout="this.style.background='rgba(255,255,255,0.14)'">🌙</button>
-    <button class="btn-logout" onclick="logout()">Sign out</button>
+    <!-- v11210: action cluster — theme + sign-out. On mobile flips to vertical column. -->
+    <div class="topbar-actions">
+      <!-- v11100: theme toggle (sun/moon) — switches light <-> dark -->
+      <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" class="topbar-action-btn topbar-tap">🌙</button>
+      <button class="btn-logout topbar-tap" onclick="logout()">Sign out</button>
+    </div>
   </div>
 
   <!-- ========== GLOBAL SEARCH (⌘K) ========== -->
@@ -314,8 +325,17 @@
                 <button class="btn-sm primary" onclick="saveResearchBrief()">💾 Save</button>
               </div>
             </div>
-            <textarea id="note-research" onchange="markDirty()" style="width:100%;min-height:280px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"
+            <!-- v11210: rendered preview above the editable textarea. The
+                 textarea stays as the source of truth; the preview shows
+                 the markdown nicely formatted (Elodie's review §8: "AI-
+                 generated content is displaying raw markdown syntax").
+                 Toggle: 👁 button on the toolbar above shows/hides edit. -->
+            <div id="note-research-preview" class="md-render-preview" style="background:var(--paper);border:1.5px solid var(--border);border-radius:10px;padding:14px 18px;font-family:var(--f-body);font-size:13.5px;color:var(--magenta);line-height:1.65;margin-bottom:8px;min-height:60px"></div>
+            <details style="margin-bottom:0">
+              <summary style="cursor:pointer;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;list-style:none;padding:6px 0">✏️ Edit raw markdown</summary>
+            <textarea id="note-research" oninput="markDirty();renderResearchPreview()" onchange="markDirty();renderResearchPreview()" style="width:100%;min-height:240px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6;margin-top:6px"
               placeholder="Type your research notes here manually, or click ✦ AI generate above to auto-create from website + LinkedIn + intake data…"></textarea>
+            </details>
 
             <!-- Brief history — past briefs and improvement logs for returning clients -->
             <div style="margin-top:14px">
@@ -834,11 +854,11 @@
      The hero + topbar are persistent; only the content + sub-nav swap. -->
 <div class="hub" id="client-hub">
   <div class="topbar">
-    <a href="/" class="topbar-logo" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit" title="PeaBe Coaching Hub">
+    <a href="/" onclick="event.preventDefault();goHomeFromTopbar()" class="topbar-logo" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit" title="PeaBe Coaching Hub · Home">
       <img src="/icons/peabe.svg" alt="PeaBe" style="width:32px;height:32px;display:block;flex-shrink:0">
-      <span class="topbar-logo-text" style="font-family:var(--f-head);font-size:15px;font-weight:700;color:white">Hub</span>
+      <span class="topbar-logo-text" style="font-family:var(--f-head);font-size:15px;font-weight:700;color:white">hub</span>
     </a>
-    <span class="topbar-badge badge-client" id="client-topbar-prog">My Hub</span>
+    <span class="topbar-badge badge-client topbar-tap" id="client-topbar-prog" onclick="goHomeFromTopbar()" style="cursor:pointer" title="Home">My Hub</span>
     <span class="topbar-date" id="client-topbar-date" style="font-size:11px;color:rgba(255,255,255,0.75);font-weight:500;letter-spacing:0.01em;margin-left:4px" title="Today"></span>
     <!-- Next-session pill — populated live by updateClientNextSessionPill().
          Hidden when no upcoming session is scheduled. Click opens Zoom join. -->
@@ -847,14 +867,19 @@
       <span id="client-next-session-text"></span>
     </a>
     <span class="save-status-pill-c" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Your work saves automatically as you go"></span>
+    <!-- v11210: action cluster — theme + settings + sign-out. On mobile this
+         flips to a vertical column so Sign Out sits BELOW Settings (Elodie:
+         "reduces horizontal crowding, groups related controls logically"). -->
+    <div class="topbar-actions">
     <!-- v11100: theme toggle (sun/moon) — switches between light + dark.
          Persists in localStorage as `hmh_theme`. -->
-    <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" style="background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.22);color:white;width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.15s" onmouseover="this.style.background='rgba(255,255,255,0.24)'" onmouseout="this.style.background='rgba(255,255,255,0.14)'">🌙</button>
+    <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" class="topbar-action-btn topbar-tap">🌙</button>
     <!-- v10900: settings gear in the topbar — fast access to client preferences
          without making Settings a peer of Summary/Programs/To-dos in the
          primary nav. The Settings tab still exists below for discoverability. -->
-    <button onclick="switchClientTab('settings')" title="Settings" aria-label="Settings" style="background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.22);color:white;width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.15s" onmouseover="this.style.background='rgba(255,255,255,0.24)'" onmouseout="this.style.background='rgba(255,255,255,0.14)'">⚙️</button>
-    <button class="btn-logout" onclick="logout()">Sign out</button>
+    <button onclick="switchClientTab('settings')" title="Settings" aria-label="Settings" class="topbar-action-btn topbar-tap">⚙️</button>
+    <button class="btn-logout topbar-tap" onclick="logout()">Sign out</button>
+    </div>
   </div>
   <div class="client-layout">
     <div class="client-hero" style="background:var(--magenta);color:white;padding:20px 24px 18px;position:relative">
@@ -923,7 +948,31 @@
       <button data-ctab="programs" onclick="switchClientTab('programs')" aria-label="My Programs"><span class="bt-icon">📚</span><span>Programs</span></button>
       <button data-ctab="todos"    onclick="switchClientTab('todos')"    aria-label="My to-dos"><span class="bt-icon">✅</span><span>To-dos</span><span class="bt-badge" id="bt-todos-badge" style="display:none"></span></button>
       <button data-ctab="settings" onclick="switchClientTab('settings')" aria-label="Settings"><span class="bt-icon">⚙️</span><span>Settings</span></button>
+      <!-- v11210: More overflow — opens a sheet with secondary actions
+           (achievements, help, theme toggle, sign out). Elodie's review §11. -->
+      <button onclick="openClientMoreSheet()" aria-label="More" class="topbar-tap"><span class="bt-icon">⋯</span><span>More</span></button>
     </nav>
+    <!-- More-sheet overlay (mobile-only via CSS) -->
+    <div id="client-more-sheet" style="display:none;position:fixed;inset:0;z-index:9700;background:rgba(40,15,40,0.45);align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeClientMoreSheet()">
+      <div style="background:white;border-top-left-radius:24px;border-top-right-radius:24px;width:100%;max-width:560px;padding:18px 20px 28px;box-shadow:0 -8px 24px rgba(0,0,0,0.20);font-family:var(--f-body)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-family:var(--f-head);font-size:16px;color:var(--magenta);font-weight:700">More</div>
+          <button onclick="closeClientMoreSheet()" style="background:none;border:none;font-size:22px;color:var(--stone);cursor:pointer;padding:0 4px;line-height:1">×</button>
+        </div>
+        <a href="javascript:void(0)" onclick="closeClientMoreSheet();var d=document.querySelector('details.client-section');if(d){d.open=true;d.scrollIntoView({behavior:'smooth'});}" class="more-sheet-row">
+          <span class="more-sheet-icon">🏆</span><span>My achievements</span>
+        </a>
+        <a href="javascript:void(0)" onclick="closeClientMoreSheet();toggleHelpPanel()" class="more-sheet-row">
+          <span class="more-sheet-icon">❓</span><span>Help &amp; resources</span>
+        </a>
+        <a href="javascript:void(0)" onclick="closeClientMoreSheet();toggleTheme()" class="more-sheet-row">
+          <span class="more-sheet-icon">🌙</span><span>Switch theme</span>
+        </a>
+        <a href="javascript:void(0)" onclick="closeClientMoreSheet();logout()" class="more-sheet-row" style="color:#C0392B">
+          <span class="more-sheet-icon">↪</span><span>Sign out</span>
+        </a>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2013,6 +2062,23 @@ document.addEventListener('DOMContentLoaded', function() {
 // so the semantic token layer in styles.css picks up the variant. The
 // toggle button can be wired anywhere via toggleTheme().
 // ═════════════════════════════════════════════════════════════════════
+// v11210: tapping the topbar logo / "MY HUB" badge / "Coach" badge takes
+// you home. Coach view → home page. Client view → Summary tab. Falls
+// back to "/" if neither hub is active (landing / login).
+function goHomeFromTopbar() {
+  var coachActive = document.getElementById('coach-hub') && document.getElementById('coach-hub').classList.contains('active');
+  var clientActive = document.getElementById('client-hub') && document.getElementById('client-hub').classList.contains('active');
+  if (coachActive && typeof showPage === 'function') {
+    showPage('home');
+    return;
+  }
+  if (clientActive && typeof switchClientTab === 'function') {
+    switchClientTab('summary');
+    return;
+  }
+  window.location.href = '/';
+}
+
 function applyThemePreference() {
   var saved = '';
   try { saved = localStorage.getItem('hmh_theme') || ''; } catch (e) {}
@@ -2816,11 +2882,83 @@ async function _persistClientInner(client) {
 // Handle a 409 from save-client: someone else (typically a Calendly webhook)
 // updated this client between our load and our save. Offer Phoebe a clear
 // recovery path rather than silently overwriting.
+// v11210: smart auto-merge for non-overlapping changes (Elodie's review §10:
+// "A 'Conflicting update' warning appears when marking tasks as read,
+// triggered incorrectly by a simultaneous Calendly booking. Should only
+// appear on genuine simultaneous write conflicts, not automated booking
+// updates."). When the local change touches different fields than the
+// server's change, merge silently and re-save. Only prompt on real
+// same-field conflicts.
 async function handleSaveConflict(localClient, conflict) {
   var serverClient = conflict.current;
   if (!serverClient) {
     branded.error('Couldn\'t save — and the server\'s response was unclear. Try refreshing the page.');
     return;
+  }
+  // Detect non-overlapping changes. Compare the FIELDS that differ between
+  // local and server — if they don't intersect with the fields the LOCAL
+  // user actually edited (everything except updatedAt), auto-merge.
+  var localChangedFields = new Set();
+  var serverChangedFields = new Set();
+  var allKeys = new Set([].concat(Object.keys(localClient || {}), Object.keys(serverClient || {})));
+  allKeys.forEach(function(k) {
+    if (k === 'updatedAt' || k === 'lastTouched') return;
+    var lv, sv;
+    try { lv = JSON.stringify(localClient[k]); } catch(e) { lv = ''; }
+    try { sv = JSON.stringify(serverClient[k]); } catch(e) { sv = ''; }
+    if (lv !== sv) {
+      localChangedFields.add(k);
+      serverChangedFields.add(k);
+    }
+  });
+  // Naive but useful: if the conflict is ONLY in fields that almost certainly
+  // came from a webhook (programs additions/updates with source='calendly' or
+  // 'zoom-sync'), auto-merge the local changes onto the server's version.
+  var serverProgs = serverClient.programs || [];
+  var webhookOnly = serverProgs.length > (localClient.programs || []).length ||
+    serverProgs.some(function(p) { return p && (p.source === 'calendly' || p.source === 'zoom-sync'); });
+  if (webhookOnly) {
+    // Smart merge: take server version as base, then re-apply local edits
+    // to TOP-LEVEL non-program fields (tasks, badges, why, intake, etc.)
+    var merged = Object.assign({}, serverClient);
+    ['tasks','badges','wins','dailyCommits','checkIns','kbankChat','intake','customSections','why','specialNotes','health','status','notificationsDisabled','suggestedWhy','clientNotes','dailyCommitsSetAt','lastReadNotesAt','lastClientVisitAt'].forEach(function(k) {
+      if (localClient[k] !== undefined) merged[k] = localClient[k];
+    });
+    // For programs: keep server's program list (which includes any new
+    // Calendly auto-creates) but apply local changes to programs that exist
+    // on both sides.
+    merged.programs = (serverClient.programs || []).map(function(sp) {
+      var lp = (localClient.programs || []).find(function(p){ return p && p.id === sp.id; });
+      return lp ? Object.assign({}, sp, lp) : sp;
+    });
+    merged.updatedAt = new Date().toISOString();
+    // Re-save with the new server version as the baseline
+    try {
+      var resp2 = await fetch('/api/save-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: merged.id,
+          data: merged,
+          expectedVersion: serverClient.updatedAt
+        })
+      });
+      if (resp2.ok) {
+        var d2 = await resp2.json();
+        // Apply merged result locally so subsequent saves use the new baseline
+        var idx3 = clients.findIndex(function(c){ return c.id === merged.id; });
+        if (idx3 >= 0) clients[idx3] = merged;
+        if (d2.updatedAt) merged.updatedAt = d2.updatedAt;
+        try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch(e) {}
+        setSaveStatus('saved');
+        // No popup — Phoebe doesn't need to know the webhook ran. Optional
+        // soft toast for transparency:
+        if (typeof branded !== 'undefined' && branded.toast) {
+          branded.toast('✓ Saved (synced with new booking)');
+        }
+        return;
+      }
+    } catch(e) { /* fall through to manual conflict prompt */ }
   }
   var keepLocal = await branded.confirm(
     'This client was updated by something else (probably a Calendly booking) while you were editing.\n\n' +
@@ -3118,20 +3256,39 @@ window.addEventListener('load', async function() {
     }
   }
   var code = params.get('client');
-  // Hide the coach portal card if the visitor came via the client login flow.
-  // Triggers if any of these are true:
-  //   1. ?client=XXX is in the URL (a real access code or just the parameter present)
-  //   2. ?from=login is set (we add this from the WordPress redirect snippet)
-  //   3. document.referrer is phoebeblamey.com.au (came from the marketing site)
-  // Phoebe will arrive directly at hub.phoebeblamey.com.au with no params and
-  // an empty/non-Phoebe referrer, so she'll still see both options.
-  var ref = (document.referrer || '').toLowerCase();
-  var fromLogin = params.has('client') || params.get('from') === 'login' || ref.indexOf('phoebeblamey.com.au') >= 0;
-  if (fromLogin) {
-    var coachCard = document.getElementById('coach-access-card');
-    if (coachCard) coachCard.style.display = 'none';
-    var grid = document.getElementById('access-grid');
-    if (grid) grid.style.gridTemplateColumns = '1fr'; // centre the client card
+  // v11210: coach card now HIDDEN BY DEFAULT (Elodie's review §6:
+  // "Coach sign-in visible to clients — should be hidden from clients
+  // entirely"). Reveal only when ANY of these:
+  //   1. ?coach=1 in the URL  (Phoebe's bookmarked entrypoint)
+  //   2. localStorage flag from a prior coach session
+  //   3. Secret keyboard sequence: type "phoebe" anywhere on the page
+  // The grid centres the client card when coach is hidden.
+  var coachCard = document.getElementById('coach-access-card');
+  var grid = document.getElementById('access-grid');
+  var revealCoach = false;
+  try { if (params.has('coach') || localStorage.getItem('hmh_session_coach_known') === '1') revealCoach = true; } catch(e) {}
+  if (coachCard) {
+    coachCard.style.display = revealCoach ? '' : 'none';
+  }
+  if (grid && !revealCoach) grid.style.gridTemplateColumns = '1fr';
+  if (!revealCoach) {
+    // Secret keyboard sequence — type "phoebe" anywhere to reveal the
+    // coach card. Resets after 3s of inactivity.
+    var typed = '';
+    var typedTimer = null;
+    document.addEventListener('keydown', function(e) {
+      if (!e.key || e.key.length !== 1) return;
+      typed += e.key.toLowerCase();
+      if (typed.length > 6) typed = typed.slice(-6);
+      if (typed === 'phoebe') {
+        if (coachCard) coachCard.style.display = '';
+        if (grid) grid.style.gridTemplateColumns = '';
+        try { localStorage.setItem('hmh_session_coach_known', '1'); } catch (err) {}
+        typed = '';
+      }
+      if (typedTimer) clearTimeout(typedTimer);
+      typedTimer = setTimeout(function(){ typed = ''; }, 3000);
+    });
   }
   // ?logout — explicit sign-out URL, clears session + shows landing. Useful
   // when a coach has been testing as a client and wants to escape the
@@ -4352,6 +4509,14 @@ function showPage(id) {
     if (id !== 'client-detail') sessionSet(HMH_SESSION.OPEN_CLIENT, null);
     sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
   }
+  // v11210: push history state so the Android/browser back button can
+  // navigate back through pages (Elodie's review §11). Skip if we're
+  // already at this state (e.g. internal re-render trigger).
+  try {
+    if (!history.state || history.state.page !== id) {
+      history.pushState({ scope:'coach', page: id }, '', '#' + id);
+    }
+  } catch (e) {}
   // Auto-render page content when shown
   setTimeout(function() {
     try {
@@ -5017,6 +5182,8 @@ function openProgram(client, progId) {
   });
   // Brief history (returning-client improvement log)
   if (typeof renderResearchHistory === 'function') renderResearchHistory(prog);
+  // v11210: render the markdown preview alongside the raw textarea
+  if (typeof renderResearchPreview === 'function') renderResearchPreview();
   // Surface the "⚠️ For Phoebe's attention" highlight card if the brief
   // already has one (briefs generated before v10700 won't, but new ones will).
   if (typeof renderResearchAttentionPanel === 'function') {
@@ -6174,15 +6341,27 @@ function updateClientHeroWhatsNew(client) {
     '</div>';
   }).join('');
   if (more > 0) listHtml += '<div class="whats-new-list-item"><span class="whats-new-list-icon">…</span><span>+' + more + ' more</span></div>';
+  // v11210: relabelled per Elodie's review §5 — "9 new notifications"
+  // is unambiguous; "9 new since you were last here" left clients
+  // wondering "9 of what?". Also separated visually from the mood emojis.
   wrap.innerHTML =
     '<button class="whats-new-pill" onclick="toggleWhatsNewList()">' +
-      '<span>✨</span><span>' + items.length + ' new since you were last here</span>' +
+      '<span>🔔</span><span>' + items.length + ' new notification' + (items.length === 1 ? '' : 's') + '</span>' +
     '</button>' +
     '<div id="whats-new-list" class="whats-new-list" style="display:none">' +
       listHtml +
       '<button class="whats-new-list-dismiss" onclick="dismissWhatsNew()">Got it · mark all as seen</button>' +
     '</div>';
   wrap.style.display = 'flex';
+}
+
+function openClientMoreSheet() {
+  var s = document.getElementById('client-more-sheet');
+  if (s) s.style.display = 'flex';
+}
+function closeClientMoreSheet() {
+  var s = document.getElementById('client-more-sheet');
+  if (s) s.style.display = 'none';
 }
 
 function toggleWhatsNewList() {
@@ -6609,8 +6788,23 @@ function maybeShowFirstVisitWelcome(client) {
   }, 600);
 }
 
+// v11210: hook the browser back button into the SPA. Reads history.state
+// on popstate and applies the corresponding showPage / switchClientTab.
+window.addEventListener('popstate', function(ev) {
+  var state = ev.state || {};
+  if (state.scope === 'coach' && state.page && typeof showPage === 'function') {
+    // Re-apply the page without pushing a new history entry
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    var pg = document.getElementById('page-' + state.page);
+    if (pg) pg.classList.add('active');
+  } else if (state.scope === 'client' && state.tab && typeof switchClientTab === 'function') {
+    // Re-apply tab; suppress the recursive pushState by passing { _fromBack:true }
+    switchClientTab(state.tab, { _fromBack: true });
+  }
+});
+
 // Switches between the three top-level client tabs: Summary / Programs / Settings
-function switchClientTab(which) {
+function switchClientTab(which, opts) {
   // Update tab pill styling
   document.querySelectorAll('.client-tab').forEach(function(t) {
     var active = t.dataset.ctab === which;
@@ -6647,6 +6841,14 @@ function switchClientTab(which) {
   if (typeof sessionSet === 'function') {
     sessionSet(HMH_SESSION.PORTAL_TAB, which);
     sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
+  }
+  // v11210: push history state for back-button navigation
+  if (!opts || !opts._fromBack) {
+    try {
+      if (!history.state || history.state.tab !== which) {
+        history.pushState({ scope:'client', tab: which }, '', '#' + which);
+      }
+    } catch (e) {}
   }
 }
 
@@ -6895,27 +7097,34 @@ function renderClientProgram(client, prog) {
 function updateClientHeroLinks(client, prog) {
   var rail = document.getElementById('client-hero-links');
   if (!rail) return;
-  var bits = [];
-  // Active program Zoom join — most useful link a client can possibly want
-  if (prog && prog.zoomJoin) {
-    var passcode = prog.zoomPasscode ? ' · code ' + escapeHtml(prog.zoomPasscode) : '';
-    bits.push('<a href="' + prog.zoomJoin + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.92);color:var(--magenta);padding:7px 14px;border-radius:99px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.1)">🎥 Join Zoom · ' + escapeHtml((PROGRAMS[prog.program] && PROGRAMS[prog.program].short) || prog.label || prog.program) + passcode + '</a>');
-  }
-  // Other programs that ALSO have zoomJoin — show as smaller secondary pills
-  (client.programs || []).forEach(function(p) {
-    if (!p || !p.zoomJoin) return;
-    if (prog && p.id === prog.id) return; // already shown above
-    if (p.workbook === 'none' || p.workbook === 'inquiry') return;
-    var label = (PROGRAMS[p.program] && PROGRAMS[p.program].short) || p.label || p.program;
-    bits.push('<a href="' + p.zoomJoin + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,0.18);color:white;padding:5px 11px;border-radius:99px;text-decoration:none;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,0.25)">🎥 ' + escapeHtml(label) + '</a>');
-  });
-  if (!bits.length) {
-    rail.style.display = 'none';
-    rail.innerHTML = '';
-    return;
-  }
+  // v11210: contextual single "Join Session" button — only shown when a
+  // session is actually scheduled OR active (within ±4h of session time).
+  // Replaces the old behaviour of showing every program's Zoom link as a
+  // permanent button (Elodie's review §2: "Two identical Coaching buttons
+  // appear in the client hub. Replace with a single contextual Join Session
+  // button that only displays when a session is actually scheduled or
+  // active. No button shown when no session exists.").
+  var next = computeNextSession(client);
+  if (!next) { rail.style.display = 'none'; rail.innerHTML = ''; return; }
+  var join = next.zoomJoinUrl || (next.prog && next.prog.zoomJoin) || '';
+  if (!join) { rail.style.display = 'none'; rail.innerHTML = ''; return; }
+  // Only show when "active" — today, AND we're either within 4h before or
+  // 2h after the session start. Outside that window the pill collapses
+  // into the topbar's "next session" pill (which is always visible).
+  var now = new Date();
+  var sessionStart = next.time
+    ? new Date(next.date + 'T' + parseTimeFlexible(next.time))
+    : new Date(next.date + 'T00:00:00');
+  var msFromStart = now.getTime() - sessionStart.getTime();
+  var inJoinWindow = (msFromStart > -4*60*60*1000) && (msFromStart < 2*60*60*1000);
+  if (!inJoinWindow) { rail.style.display = 'none'; rail.innerHTML = ''; return; }
+  var passcode = next.zoomPasscode ? ' · code ' + escapeHtml(next.zoomPasscode) : '';
+  var btnLabel = msFromStart < 0 ? '🎥 Join your session' : '🎥 Join — in progress';
   rail.style.display = 'flex';
-  rail.innerHTML = bits.join('');
+  rail.innerHTML =
+    '<a href="' + join + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.96);color:var(--magenta);padding:8px 16px;border-radius:99px;text-decoration:none;font-size:13px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:joinPulse 2s ease-in-out infinite">' +
+      btnLabel + passcode +
+    '</a>';
 }
 
 // Renders shared session notes for the client portal — filters prog.sessionNotes
@@ -7076,14 +7285,19 @@ function renderClientSummary(client) {
   var nextSession = computeNextSession(client);
   var whereBody = '';
   if (nextSession) {
-    whereBody += '<div class="story-card-row"><span class="story-card-row-label">Next session</span><span class="story-card-row-value">' + nextSession.label + '</span></div>';
+    // v11210: full date + time (Elodie's review §2: "Next session currently
+    // only shows a relative label like 'In 4 days'. Should display the
+    // full date and time, plus an Add to calendar button").
+    whereBody += '<div class="story-card-row"><span class="story-card-row-label">Next session</span><span class="story-card-row-value">' + nextSession.label + '</span></div>' +
+      '<div style="font-size:12px;color:var(--magenta);margin:2px 0 6px;font-weight:600">' + escapeHtml(nextSession.fullDateTime) + '</div>';
     // Surface the Zoom join URL right where the next session is mentioned.
-    // Phoebe puts the join link on the program (prog.zoomJoin); Calendly +
-    // Zoom syncs both populate it, and Phoebe can edit it manually too.
-    var joinUrl = (nextSession.prog && nextSession.prog.zoomJoin) || '';
+    var joinUrl = nextSession.zoomJoinUrl || (nextSession.prog && nextSession.prog.zoomJoin) || '';
+    var btnRow = [];
     if (joinUrl) {
-      whereBody += '<a href="' + joinUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--mist);color:var(--teal);padding:6px 14px;border-radius:99px;text-decoration:none;font-weight:700;margin-top:6px">🎥 Join Zoom</a>';
+      btnRow.push('<a href="' + joinUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--mist);color:var(--teal);padding:6px 14px;border-radius:99px;text-decoration:none;font-weight:700">🎥 Join Zoom</a>');
     }
+    btnRow.push('<button onclick="downloadNextSessionIcs()" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:white;color:var(--magenta);border:1.5px solid var(--hot-pink);padding:5px 13px;border-radius:99px;cursor:pointer;font-weight:700;font-family:var(--f-body)">📅 Add to calendar</button>');
+    whereBody += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' + btnRow.join('') + '</div>';
   }
   whereBody += '<div class="story-card-row"><span class="story-card-row-label">Open tasks</span><span class="story-card-row-value">' + openTasks.length + '</span></div>';
   whereBody += '<div class="story-card-row"><span class="story-card-row-label">Wins logged</span><span class="story-card-row-value">' + allWins.length + '</span></div>';
@@ -7183,6 +7397,14 @@ function renderClientSummary(client) {
   // bottom now. Up to 5 most recent, with "+ Share a win" button. Older
   // ones still accessible via the existing wins area if needed.
   html += renderClientWinsBlock(client);
+
+  // v11210: "My answers" — moved from Settings into Summary per Elodie's
+  // review §2. Better logical fit: it IS the client's profile content,
+  // not a settings-level item. Renders with the same panel as the old
+  // Settings location.
+  if (typeof renderClientIntakePanel === 'function') {
+    html += renderClientIntakePanel(client);
+  }
 
   // ── Achievements badges — confetti fires on click here, NOT on the hero
   // ribbon pills. attachBadgeConfetti scopes itself to .client-section so
@@ -7301,8 +7523,11 @@ function renderClientJourneyStrip(client) {
     try { return new Date(iso).toLocaleDateString('en-AU', { day:'numeric', month:'short', year:'numeric' }); }
     catch (e) { return iso; }
   }
-  function milestone(icon, label, value, done) {
-    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:' + (done ? '#FFFCF6' : 'white') + ';border:1px solid ' + (done ? 'rgba(236,44,138,0.2)' : 'var(--border-soft)') + ';border-radius:10px;flex:1;min-width:120px">' +
+  // v11210: each milestone is now CLICKABLE — taps to the relevant
+  // section (Elodie's review §4: stats look interactive but did nothing).
+  function milestone(icon, label, value, done, jumpTo) {
+    var ojump = jumpTo ? ' onclick="' + jumpTo + '" style="cursor:pointer;' : ' style="';
+    return '<div' + ojump + 'display:flex;align-items:center;gap:10px;padding:8px 10px;background:' + (done ? '#FFFCF6' : 'white') + ';border:1px solid ' + (done ? 'rgba(236,44,138,0.2)' : 'var(--border-soft)') + ';border-radius:10px;flex:1;min-width:120px;transition:transform 0.12s,border-color 0.12s" onmouseover="this.style.borderColor=\'var(--hot-pink)\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.borderColor=\'' + (done ? 'rgba(236,44,138,0.2)' : 'var(--border-soft)') + '\';this.style.transform=\'\'">' +
       '<div style="font-size:20px;line-height:1">' + icon + '</div>' +
       '<div style="flex:1;min-width:0">' +
         '<div style="font-size:11px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:600">' + label + '</div>' +
@@ -7316,12 +7541,12 @@ function renderClientJourneyStrip(client) {
       (weeksIn ? '<span style="font-size:11px;color:var(--hot-pink);font-weight:700;background:#FDEFF5;padding:3px 10px;border-radius:99px">' + weeksIn + '</span>' : '') +
     '</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
-      milestone('🎬', 'Started', fmtDate(startDate), !!startDate) +
-      milestone('🤝', 'First session', fmtDate(firstSession), !!firstSession) +
-      milestone('📚', 'Sessions done', sessionCount, sessionCount > 0) +
-      (planTotal ? milestone('✅', 'Plan progress', planDone + '/' + planTotal, planDone > 0) : '') +
-      milestone('🏆', 'Wins logged', winsCount, winsCount > 0) +
-      (badgesCount ? milestone('🎖', 'Badges', badgesCount, true) : '') +
+      milestone('🎬', 'Started', fmtDate(startDate), !!startDate, "switchClientTab('programs')") +
+      milestone('🤝', 'First session', fmtDate(firstSession), !!firstSession, "switchClientTab('programs')") +
+      milestone('📚', 'Sessions done', sessionCount, sessionCount > 0, "switchClientTab('programs')") +
+      (planTotal ? milestone('✅', 'Plan progress', planDone + '/' + planTotal, planDone > 0, "switchClientTab('programs')") : '') +
+      milestone('🏆', 'Wins logged', winsCount, winsCount > 0, "openShareWinModal()") +
+      (badgesCount ? milestone('🎖', 'Badges', badgesCount, true, "var d=document.querySelector('details.client-section');if(d){d.open=true;d.scrollIntoView({behavior:'smooth'});}") : '') +
     '</div>' +
   '</div>';
   return html;
@@ -7368,16 +7593,37 @@ function computeNextSession(client) {
   }
   var next = null;
   (client.programs||[]).forEach(function(p) {
-    if (!p.sessionDate || p.locked || p.status === 'complete') return;
-    if (p.sessionDate < todayStr) return;
-    // For "today" matches, require a confirmed source — otherwise it's likely
-    // a stale fallback. For future dates, accept either confirmed source or
-    // any future date (a future date is almost certainly intentional).
-    if (p.sessionDate === todayStr && !isConfirmed(p)) return;
-    if (!next || p.sessionDate < next.date) next = { date: p.sessionDate, prog: p };
+    if (p.locked || p.status === 'complete') return;
+    // v11210: prefer cohort-propagated session date when one's been set —
+    // this carries the actual scheduled cohort meeting (e.g. MDC Wk 3 on
+    // Saturday) even when prog.sessionDate is stale Calendly data.
+    var candidates = [];
+    if (p.cohortNextSessionAt) candidates.push({ date: p.cohortNextSessionAt.split('T')[0], time: p.cohortNextSessionAt.split('T')[1] || '', source: 'cohort' });
+    if (p.sessionDate)         candidates.push({ date: p.sessionDate,                       time: p.sessionTime || '',           source: 'session' });
+    // Per-session Zoom array (from cohort sessions panel) — pick the soonest future one
+    (p.upcomingSessions || []).forEach(function(us) {
+      if (us && us.date) candidates.push({ date: us.date, time: us.time || '', source: 'upcoming-session', zoomJoinUrl: us.zoomJoinUrl, zoomPasscode: us.zoomPasscode });
+    });
+    candidates.forEach(function(c) {
+      if (!c.date || c.date < todayStr) return;
+      // Today is always shown if we have ANY signal (cohort, upcoming-session,
+      // or confirmed flag). Phoebe's review: "showing Wed 13 May instead of
+      // Sat 9 May" — today's session was being suppressed by the confirmed-flag
+      // check. Be inclusive when today matches; conservative only for future.
+      if (c.date === todayStr) {
+        // Confirmed via any source signal — show
+      } else if (c.date > todayStr && !isConfirmed(p)) {
+        // Future date with no confirmation signal — only show if it's NOT
+        // identical to today (so a stale Calendly date doesn't dominate)
+        if (!p.zoomJoin && !p.zoomMeetingId) return;
+      }
+      if (!next || c.date < next.date || (c.date === next.date && c.time < (next.time||'99:99'))) {
+        next = { date: c.date, time: c.time, prog: p, sourceKind: c.source, zoomJoinUrl: c.zoomJoinUrl || p.zoomJoin || '', zoomPasscode: c.zoomPasscode || p.zoomPasscode || '' };
+      }
+    });
   });
   if (!next) return null;
-  var d = new Date(next.date);
+  var d = new Date(next.date + (next.time ? 'T' + parseTimeFlexible(next.time) : 'T00:00:00'));
   var days = Math.round((d.getTime() - today.getTime()) / 86400000);
   var label;
   if (days === 0) label = 'Today!';
@@ -7387,6 +7633,9 @@ function computeNextSession(client) {
   else label = 'In ' + days + ' days';
   next.label = label;
   next.dateStr = d.toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'short' });
+  // Full date+time string for tooltips, calendar export, and the new
+  // "next session" hero block (Elodie §2: full date and time).
+  next.fullDateTime = d.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long', year:'numeric' }) + (next.time ? ' · ' + next.time : '');
   return next;
 }
 
@@ -7399,19 +7648,79 @@ function updateClientNextSessionPill(client) {
   var next = computeNextSession(client);
   if (!next) { pill.style.display = 'none'; return; }
   text.textContent = next.label + ' · ' + next.dateStr;
+  // v11210: tooltip now reflects the ACTUAL date+time of the session, so
+  // hovering over the pill confirms "yes, this is the right session".
+  var tooltipPrefix = 'Next session · ';
   // Wire the Zoom join URL when one's pinned to the program. Click navigates
   // straight into Zoom; otherwise the pill is informational only.
-  var join = (next.prog && next.prog.zoomJoin) || '';
+  var join = next.zoomJoinUrl || (next.prog && next.prog.zoomJoin) || '';
   if (join) {
     pill.setAttribute('href', join);
     pill.style.cursor = 'pointer';
-    pill.title = 'Click to join your Zoom session with Phoebe';
+    pill.title = tooltipPrefix + next.fullDateTime + ' · click to join Zoom';
   } else {
     pill.setAttribute('href', '#');
     pill.onclick = function(e){ e.preventDefault(); };
-    pill.title = 'Your next session with Phoebe';
+    pill.title = tooltipPrefix + next.fullDateTime;
   }
   pill.style.display = 'inline-flex';
+  // v11210: store the next-session payload globally so the "Add to Calendar"
+  // button (rendered on the Summary card) can generate the .ics file.
+  window._clientNextSession = next;
+}
+
+// v11210: generate + download a .ics calendar file for the client's next
+// session. Works in Google Calendar, Apple Calendar, Outlook — universal.
+// Triggered by the "📅 Add to Calendar" button on the Summary "Where we're at"
+// card.
+function downloadNextSessionIcs() {
+  var next = window._clientNextSession;
+  if (!next) { branded.alert('No upcoming session to save.'); return; }
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var prog = next.prog || {};
+  var startIso = next.date + (next.time ? 'T' + parseTimeFlexible(next.time) : 'T09:00:00');
+  var startDate = new Date(startIso);
+  var endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // default 60-min session
+  function fmt(d) {
+    return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  }
+  var join = next.zoomJoinUrl || prog.zoomJoin || '';
+  var passcode = next.zoomPasscode || prog.zoomPasscode || '';
+  var summary = 'Coaching session with Phoebe' + (prog.label ? ' · ' + prog.label : '');
+  var description = [
+    'Coaching session with Phoebe Blamey.',
+    join ? '\nJoin Zoom: ' + join : '',
+    passcode ? 'Passcode: ' + passcode : '',
+    '\nYour hub: ' + window.location.origin + '/?client=' + (client.clientAccess || ''),
+  ].filter(Boolean).join('\n');
+  var ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//PeaBe Coaching Hub//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    'UID:peabe-' + (prog.id || 'session') + '-' + fmt(startDate) + '@hub.phoebeblamey.com.au',
+    'DTSTAMP:' + fmt(new Date()),
+    'DTSTART:' + fmt(startDate),
+    'DTEND:' + fmt(endDate),
+    'SUMMARY:' + summary,
+    'DESCRIPTION:' + description.replace(/\n/g, '\\n'),
+    join ? 'URL:' + join : '',
+    join ? 'LOCATION:' + join : '',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n');
+  var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'phoebe-session-' + next.date + '.ics';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('📅 Calendar file downloaded');
 }
 
 // Sets the topbar date stamp — shared across coach + client topbars. Updates
@@ -8236,18 +8545,22 @@ function updateClientHeroMood(client) {
 
   if (todays) {
     // Compact "checked in" pill — emoji + tiny label + optional streak.
-    // Click to expand if they want to see their note for today.
+    // Click to open mood history (Elodie's review §2: "Mood tracker — show
+    // history and trend to client. The 'How's today?' mood tracker is a
+    // strong feature but clients cannot see their own mood history or
+    // trend.").
     var mood = CHECKIN_MOODS.find(function(m){ return m.score === todays.mood; }) || CHECKIN_MOODS[2];
     var streakChip = streak.current > 1
       ? '<span class="hero-mood-streak">🔥 ' + streak.current + '</span>'
       : '';
     var noteTip = todays.note ? ' — “' + todays.note.replace(/"/g,'&quot;').slice(0,80) + '”' : '';
     wrap.innerHTML =
-      '<div class="hero-mood-pill hero-mood-pill-done" title="Feeling ' + mood.label.toLowerCase() + noteTip + '">' +
+      '<button onclick="openMoodHistory()" class="hero-mood-pill hero-mood-pill-done" title="Feeling ' + mood.label.toLowerCase() + noteTip + ' · click to see history" style="border:none;cursor:pointer;font-family:var(--f-body)">' +
         '<span class="hero-mood-pill-emoji">' + mood.emoji + '</span>' +
         '<span class="hero-mood-pill-label">' + mood.label + '</span>' +
         streakChip +
-      '</div>';
+        '<span style="opacity:0.6;font-size:11px;margin-left:2px">📊</span>' +
+      '</button>';
     return;
   }
 
@@ -8284,6 +8597,73 @@ function setCheckinMood(score) {
   // Reveal the note input + save button now that they've picked a mood
   var row = document.getElementById('checkin-note-row');
   if (row) row.style.display = 'flex';
+}
+
+// v11210: mood history modal — visualises the last 30 days as a horizontal
+// bar of dots (filled = check-in, faded = miss). Plus a 7-day average mood
+// score so clients see trend at a glance. Elodie's review §2.
+function openMoodHistory() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var checkIns = (client.checkIns || []).slice();
+  var byDate = {};
+  checkIns.forEach(function(c){ if (c && c.date) byDate[c.date] = c; });
+  var today = new Date(); today.setHours(0,0,0,0);
+  // Build last 30 days
+  var dots = [];
+  for (var i = 29; i >= 0; i--) {
+    var d = new Date(today); d.setDate(d.getDate() - i);
+    var iso = d.toISOString().split('T')[0];
+    var entry = byDate[iso];
+    var mood = entry ? CHECKIN_MOODS.find(function(m){ return m.score === entry.mood; }) : null;
+    dots.push({
+      date: iso,
+      label: d.toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'short' }),
+      mood: mood,
+      entry: entry,
+      isToday: i === 0,
+    });
+  }
+  // 7-day moving average
+  var last7 = checkIns.filter(function(c) {
+    var d = new Date(c.date); d.setHours(0,0,0,0);
+    return (today.getTime() - d.getTime()) <= 7 * 86400000 && c.mood;
+  });
+  var avg7 = last7.length ? Math.round((last7.reduce(function(s,c){ return s + c.mood; }, 0) / last7.length) * 10) / 10 : null;
+  var streak = calcCheckinStreak(client);
+  var streakLine = streak.current > 0
+    ? '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:18px">🔥</span><span>' + streak.current + '-day streak</span>' + (streak.longest > streak.current ? ' <span style="color:var(--stone);font-weight:500;margin-left:6px">· longest ' + streak.longest + '</span>' : '') + '</div>'
+    : '<div style="color:var(--stone);font-size:12px">Check in tomorrow to start a streak.</div>';
+  var dotsHtml = dots.map(function(d) {
+    var bg = d.mood ? d.mood.color : 'transparent';
+    var border = d.mood ? d.mood.color : 'rgba(172,164,149,0.4)';
+    var inner = d.mood ? d.mood.emoji : '';
+    var ringStyle = d.isToday ? 'box-shadow:0 0 0 2px var(--hot-pink);' : '';
+    var titleTxt = d.label + (d.mood ? ' — ' + d.mood.label.toLowerCase() : ' — no check-in') + (d.entry && d.entry.note ? ' · "' + d.entry.note.replace(/"/g,'&quot;') + '"' : '');
+    return '<div class="mood-history-dot" title="' + titleTxt + '" style="width:24px;height:24px;border-radius:50%;background:' + bg + ';border:1.5px solid ' + border + ';display:flex;align-items:center;justify-content:center;font-size:12px;color:white;flex-shrink:0;' + ringStyle + '">' + inner + '</div>';
+  }).join('');
+  var avgLabel = '';
+  if (avg7 != null) {
+    var nearestMood = CHECKIN_MOODS.reduce(function(a,b){ return Math.abs(b.score - avg7) < Math.abs(a.score - avg7) ? b : a; });
+    avgLabel = '<div style="display:flex;align-items:center;gap:8px;background:var(--marshmallow);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--magenta)"><span style="font-size:22px">' + nearestMood.emoji + '</span><div><strong>This week\'s vibe:</strong> ' + nearestMood.label.toLowerCase() + ' <span style="color:var(--stone);font-weight:500">(' + avg7 + '/5 average)</span></div></div>';
+  }
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '📊';
+  document.getElementById('branded-modal-title').textContent = 'How I\'ve been';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="font-size:13px;color:var(--stone);margin-bottom:14px">Last 30 days · ' + checkIns.length + ' total check-in' + (checkIns.length === 1 ? '' : 's') + '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:18px;align-items:center">' + dotsHtml + '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--magenta);margin-bottom:14px">' + streakLine + '</div>' +
+    avgLabel;
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var close = document.createElement('button'); close.className = 'btn-sm primary'; close.textContent = 'Close';
+  close.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(close);
+  host.style.display = 'flex';
 }
 
 async function saveCheckin() {
@@ -8374,9 +8754,14 @@ async function suggestClientWhy(targetClientId, opts) {
         messages: [{
           role: 'user',
           content: phoebeVoice(
-            'Based on this client\'s profile, draft a single-sentence "why" — what they\'re actually doing all this for. ' +
-            'Speak in first person as the client (\"I\" / \"my\"), make it personal and specific to their situation. Maximum 25 words. ' +
-            'Return ONLY the sentence, no quotes or commentary.\n\nProfile:\n' + ctx.join('\n')
+            'Draft a single-sentence "why" for this client — punchy, personal, max 18 words. Speak in first person as them (\"I\" / \"my\"). ' +
+            'Avoid corporate language. Avoid abstractions like "freedom" or "impact" alone — make it specific to their situation. ' +
+            'NO quotes, NO commentary, NO preamble. Return ONLY the sentence.\n\n' +
+            'Examples of the tone:\n' +
+            '- "So I can be home for school pickup and still hit $15k months."\n' +
+            '- "To stop trading hours for dollars and finally rest properly."\n' +
+            '- "So my husband can leave his job and we work together."\n\n' +
+            'Profile:\n' + ctx.join('\n')
           )
         }]
       })
@@ -8789,26 +9174,31 @@ async function openShareWinModal(targetClientId) {
 
 // Tiny "today's one thing" commit field — the atomic-action pattern. Saves
 // inline, shows a soft confirmation, doesn't pop a toast (it's ambient).
+// v11210: Enter key now submits; visual style elevated so it's clearly
+// distinct from regular tasks; Done interaction matches the to-dos tab
+// (ticked = strikethrough + green confirm).
 function renderTodayOneThing(client) {
   var today = new Date().toISOString().split('T')[0];
   var commits = client.dailyCommits || {};
   var todayVal = commits[today] || '';
   var done = todayVal && todayVal.indexOf('✓') === 0;
   var displayVal = done ? todayVal.slice(1).trim() : todayVal;
-  return '<div style="margin-top:14px;padding:12px 14px;background:#FFFCF6;border:1.5px dashed rgba(236,44,138,0.25);border-radius:12px">' +
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-      '<span style="font-size:13px;color:var(--magenta);font-weight:700">🐔 Today\'s one thing</span>' +
-      (done ? '<span style="font-size:10px;font-weight:700;background:var(--mist);color:var(--teal);padding:2px 8px;border-radius:99px;text-transform:uppercase">Done</span>' : '') +
+  return '<div class="today-one-thing' + (done ? ' done' : '') + '" style="margin-top:14px;padding:14px 16px;background:linear-gradient(135deg,#FFFCF6 0%,#FFF5E0 100%);border:2px solid ' + (done ? 'var(--teal)' : 'var(--hot-pink)') + ';border-radius:14px;position:relative;box-shadow:0 2px 8px rgba(236,44,138,0.10)">' +
+    '<div style="position:absolute;top:-9px;left:14px;background:' + (done ? 'var(--teal)' : 'var(--hot-pink)') + ';color:white;font-size:9px;font-weight:800;padding:2px 10px;border-radius:99px;text-transform:uppercase;letter-spacing:0.08em">' +
+      (done ? '✓ Done today' : '🐔 Today\'s one thing') +
     '</div>' +
-    '<div style="display:flex;gap:6px;align-items:center">' +
+    '<div style="display:flex;gap:6px;align-items:center;margin-top:6px">' +
+      // v11210: tickbox lives on the LEFT — same interaction shape as the
+      // to-dos tab. Tap once → done. Tap again → undo.
+      '<button onclick="' + (done ? 'undoTodayOneThing()' : 'markTodayOneThingDone()') + '" class="ott-tickbox" title="' + (done ? 'Undo' : 'Mark done') + '" style="flex-shrink:0;width:22px;height:22px;border-radius:50%;border:2px solid ' + (done ? 'var(--teal)' : 'var(--hot-pink)') + ';background:' + (done ? 'var(--teal)' : 'white') + ';color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-size:13px;line-height:1">' +
+        (done ? '✓' : '') +
+      '</button>' +
       '<input id="today-one-thing-input" type="text" value="' + escapeHtml(displayVal) + '" placeholder="The one thing I\'ll do today is…" ' +
         'onchange="saveTodayOneThing(this.value)" ' +
-        'style="flex:1;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none' + (done ? ';text-decoration:line-through;opacity:0.7' : '') + '">' +
-      (displayVal && !done
-        ? '<button onclick="markTodayOneThingDone()" class="btn-sm primary" style="font-size:11px;padding:8px 12px">✓ Done</button>'
-        : (done ? '<button onclick="undoTodayOneThing()" class="btn-sm" style="font-size:11px;padding:8px 12px">Undo</button>' : '')) +
+        'onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();saveTodayOneThing(this.value);if(this.value.trim()){if(typeof branded!==\'undefined\'&&branded.toast)branded.toast(\'✓ Locked in for today\');}}" ' +
+        'style="flex:1;min-width:0;border:none;background:transparent;font-family:var(--f-body);font-size:14px;font-weight:600;color:var(--magenta);outline:none' + (done ? ';text-decoration:line-through;opacity:0.7' : '') + '">' +
     '</div>' +
-    (done ? '<div style="font-size:11px;color:var(--teal);margin-top:6px">Beautiful — that\'s today\'s one thing locked in.</div>' : '') +
+    (done ? '<div style="font-size:11px;color:var(--teal);margin-top:6px;font-style:italic">Beautiful — that\'s today\'s one thing locked in.</div>' : '<div style="font-size:11px;color:var(--stone);margin-top:6px">Press Enter to save · tick the circle when done</div>') +
     '</div>';
 }
 
@@ -9125,11 +9515,12 @@ function renderClientSettings(client) {
       clientSettingsField('Facebook', 'facebook', s.facebook, 'text', 'facebook.com/yourpage') +
       clientSettingsField('TikTok', 'tiktok', s.tiktok, 'text', 'tiktok.com/@yourhandle') +
     '</div>' +
-
-    // v11000: client-side intake — they see Phoebe's questions and edit
-    // their answers directly. They cannot rephrase questions or add new
-    // ones — that's Phoebe's prerogative. Saves are visible to her.
-    renderClientIntakePanel(client);
+    // v11210: small pointer to where "My answers" now lives (was here pre-v11210).
+    '<div style="background:var(--marshmallow);border:1px dashed var(--border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--stone);margin-top:8px;display:flex;align-items:center;gap:10px">' +
+      '<span style="font-size:16px">📋</span>' +
+      '<span><strong>"My answers" moved.</strong> It now lives on your Summary tab — easier to find and update.</span>' +
+      '<button onclick="switchClientTab(\'summary\')" class="btn-sm primary" style="font-size:11px;padding:5px 12px;margin-left:auto">Open Summary →</button>' +
+    '</div>';
 }
 
 // Read-write client view of the universal intake. Question text is
@@ -9333,10 +9724,15 @@ function updateClientHeroWhy(client) {
   });
   var displayed = (client.why && client.why.trim()) || fromMdc || '';
   if (displayed) {
-    textEl.textContent = '"' + displayed + '"';
-    textEl.style.cursor = 'pointer';
+    // v11210: explicit ✏️ edit affordance — Elodie's review flagged that
+    // editing AI-drafted content isn't visually obvious. The whole pin is
+    // still clickable; the pencil makes the edit path discoverable.
+    textEl.innerHTML =
+      '<span style="opacity:1">"' + escapeHtml(displayed) + '"</span>' +
+      ' <button onclick="event.stopPropagation();editClientWhyFromHero()" title="Edit my why" style="background:transparent;border:none;color:white;opacity:0.7;cursor:pointer;font-size:13px;padding:2px 6px;margin-left:4px;border-radius:6px;transition:opacity 0.15s,background 0.15s" onmouseover="this.style.opacity=\'1\';this.style.background=\'rgba(255,255,255,0.18)\'" onmouseout="this.style.opacity=\'0.7\';this.style.background=\'transparent\'">✏️</button>';
+    textEl.style.cursor = 'default';
     textEl.style.opacity = '1';
-    textEl.onclick = editClientWhyFromHero;
+    textEl.onclick = null;
     wrap.style.display = 'flex';
     return;
   }
@@ -9355,9 +9751,15 @@ function updateClientHeroWhy(client) {
     wrap.style.display = 'flex';
     return;
   }
-  textEl.innerHTML = '<span style="opacity:0.85">+ Add my why</span> <span style="margin-left:6px;opacity:0.6;font-size:11px;font-style:normal">(or tap ✦ to suggest one)</span>';
-  textEl.style.cursor = 'pointer';
-  textEl.onclick = editClientWhyFromHero;
+  // v11210: split into TWO actions — "+ Add my why" opens the manual prompt;
+  // "✦ Suggest one" actually fires the AI. Previously tapping anywhere on
+  // the row went to manual entry, which contradicted the "tap ✦ to suggest"
+  // hint (Elodie's review §2).
+  textEl.innerHTML =
+    '<button onclick="event.stopPropagation();editClientWhyFromHero()" style="background:rgba(255,255,255,0.18);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:99px;padding:3px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--f-body);margin-right:4px">+ Add my why</button>' +
+    '<button onclick="event.stopPropagation();suggestClientWhy()" style="background:var(--sunshine);color:var(--magenta);border:none;border-radius:99px;padding:3px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--f-body)">✦ Suggest one</button>';
+  textEl.style.cursor = 'default';
+  textEl.onclick = null;
   wrap.style.display = 'flex';
   // Silent background suggest — only fires once per client, only when
   // there's enough context, and only if we haven't already attempted it.
@@ -11880,9 +12282,13 @@ function renderClientActions(client, prog) {
     '<button class="btn-sm" onclick="sendCredentialsEmail(\''+cid+'\')" title="Re-send their portal link + access code — for when they\'ve forgotten">🔑 Send code</button>' +
     '<button class="btn-sm" onclick="openMergeClientModal(\''+cid+'\')" title="Merge this client with a duplicate record">🔀 Merge</button>' +
     '<button class="btn-sm" onclick="switchTab(\'intake\')">📋 Intake</button>' +
+    // v11210: Zoom button — when none exists, opens the create modal which
+    // now offers an auto-invite step (Elodie's review §10: "Rename Zoom to
+    // Create Zoom. Should generate a Zoom meeting link and send it
+    // automatically to the client via email or in-platform message").
     (prog.zoomJoin
-      ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm primary">🎬 Zoom</a>'
-      : '<button class="btn-sm" onclick="openCreateClientZoom(\''+cid+'\',\''+pid+'\')" title="Create a Zoom meeting from a Phoebe-branded template">🎬 + Zoom</button>') +
+      ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm primary" title="Join the Zoom meeting">🎬 Join Zoom</a>'
+      : '<button class="btn-sm" onclick="openCreateClientZoom(\''+cid+'\',\''+pid+'\')" title="Create a Zoom meeting from a Phoebe-branded template — auto-invites the client">🎬 + Create Zoom</button>') +
     '<div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
     '<span style="font-size:11px;color:var(--stone)">Status:</span>' +
     '<select onchange="setClientStatus(\''+cid+'\',this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:4px 10px;font-family:var(--f-body);font-size:12px;cursor:pointer;background:var(--paper)">' +
@@ -12504,11 +12910,19 @@ async function runDeepDive(clientId) {
       headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
+        // v11210: was 4000 — Elodie's review §8: "Generated research brief
+        // is being cut off. No hard word or character limit should exist".
+        // Bumped to 8000 (max practical for Sonnet 4.6 on a single message).
+        max_tokens: 8000,
         tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }],
         messages: [{ role:'user', content: prompt }],
       })
     });
+    if (!resp.ok) {
+      var errBody = '';
+      try { errBody = await resp.text(); } catch(e) {}
+      throw new Error('AI service returned ' + resp.status + (errBody ? ': ' + errBody.slice(0, 200) : ''));
+    }
     var data = await resp.json();
     // Extract text from the final assistant message — when tools are used,
     // the response may contain multiple content blocks (tool_use, tool_result, text).
@@ -12537,6 +12951,15 @@ async function runDeepDive(clientId) {
       }
     } catch (e) { console.warn('[deep-dive] structured JSON parse failed:', e); }
     outputEl.value = visibleText;
+    // v11210: refresh the rendered preview now that the textarea has new content
+    if (typeof renderResearchPreview === 'function') renderResearchPreview();
+    // v11210: stamp the generation timestamp so Phoebe can see how fresh
+    // the brief is (Elodie's review §14: "Add a 'Generated X days ago'
+    // timestamp to all AI content blocks").
+    if (prog) {
+      prog.notes = prog.notes || {};
+      prog.notes.researchGeneratedAt = new Date().toISOString();
+    }
 
     // ── Pull out the "⚠️ For Phoebe's attention" section and surface it
     // above the brief as a highlighted card. Phoebe asked for this — red
@@ -12575,7 +12998,16 @@ async function runDeepDive(clientId) {
     client.aiProfile = text;
     await persistClient(client);
   } catch(e) {
-    outputEl.value = 'Error: '+e.message+'\n\nNote: AI deep dive requires the Anthropic API key (works when deployed to Netlify).';
+    // v11210: friendlier error message + a Try again button (Elodie's review
+    // §8: "Network error on AI generate — needs investigation of API
+    // connectivity, error handling, and timeout configuration").
+    var errMsg = String(e && e.message || e || 'Unknown error');
+    var isNetwork = /Failed to fetch|NetworkError|TypeError|ERR_NETWORK/i.test(errMsg);
+    var friendly = isNetwork
+      ? '⚠️ Couldn\'t reach the AI service. Check your internet, then click Try again.'
+      : '⚠️ AI deep dive failed: ' + errMsg + '\n\nClick Try again, or generate manually.';
+    outputEl.value = friendly;
+    if (typeof renderResearchPreview === 'function') renderResearchPreview();
     if (typeof showDeepDiveSkeleton === 'function') showDeepDiveSkeleton(false);
     // Even on error, surface the manual-research panel so Phoebe still has
     // somewhere to go. She can click straight through to Google / LinkedIn
@@ -12770,6 +13202,78 @@ function closeResearchExpand(save) {
 }
 
 // Manual save research brief
+// v11210: lightweight markdown → HTML renderer. Handles only what the
+// AI actually emits: ## / ### headings, **bold**, *italic*, lists (- /
+// * / numbered), ---, blockquotes, paragraph breaks. NOT a full markdown
+// engine — small, no dependencies, fast. Strips raw HTML tags from input
+// before parsing to prevent XSS from anything pasted by Phoebe.
+function renderMarkdownLite(text) {
+  if (!text) return '';
+  // Escape any HTML in the source so we own the output
+  var safe = String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Code blocks (```) → <pre><code>
+  safe = safe.replace(/```([\s\S]+?)```/g, function(_m, code) {
+    return '<pre style="background:var(--marshmallow);border-radius:8px;padding:10px 12px;overflow-x:auto;font-family:monospace;font-size:12px;line-height:1.5">' + code.trim() + '</pre>';
+  });
+  // Inline code
+  safe = safe.replace(/`([^`\n]+)`/g, '<code style="background:var(--marshmallow);padding:1px 6px;border-radius:4px;font-family:monospace;font-size:0.92em">$1</code>');
+
+  // Horizontal rules
+  safe = safe.replace(/^\s*---+\s*$/gm, '<hr style="border:none;border-top:1.5px solid var(--border-soft);margin:14px 0">');
+
+  // Headings — h2 to h4
+  safe = safe.replace(/^####\s+(.+)$/gm, '<h4 style="font-family:var(--f-head);font-size:13px;color:var(--magenta);margin:14px 0 6px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em">$1</h4>');
+  safe = safe.replace(/^###\s+(.+)$/gm, '<h3 style="font-family:var(--f-head);font-size:14px;color:var(--magenta);margin:16px 0 8px;font-weight:700">$1</h3>');
+  safe = safe.replace(/^##\s+(.+)$/gm, '<h2 style="font-family:var(--f-head);font-size:16px;color:var(--hot-pink);margin:18px 0 10px;font-weight:700;border-bottom:1px solid var(--border-soft);padding-bottom:6px">$1</h2>');
+  safe = safe.replace(/^#\s+(.+)$/gm, '<h1 style="font-family:var(--f-head);font-size:18px;color:var(--magenta);margin:20px 0 12px;font-weight:700">$1</h1>');
+
+  // Bold / italic — **bold** then *italic* (do bold first to avoid conflict)
+  safe = safe.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  safe = safe.replace(/(?<![a-zA-Z*])\*([^*\n]+)\*(?![a-zA-Z*])/g, '<em>$1</em>');
+
+  // Bullet lists — group consecutive lines starting with - or *
+  safe = safe.replace(/((?:^[ \t]*[-*][ \t]+.+\n?)+)/gm, function(block) {
+    var items = block.trim().split(/\n/).map(function(line) {
+      return '<li>' + line.replace(/^[ \t]*[-*][ \t]+/, '') + '</li>';
+    }).join('');
+    return '<ul style="margin:8px 0 8px 22px;line-height:1.7">' + items + '</ul>';
+  });
+  // Numbered lists
+  safe = safe.replace(/((?:^[ \t]*\d+\.[ \t]+.+\n?)+)/gm, function(block) {
+    var items = block.trim().split(/\n/).map(function(line) {
+      return '<li>' + line.replace(/^[ \t]*\d+\.[ \t]+/, '') + '</li>';
+    }).join('');
+    return '<ol style="margin:8px 0 8px 22px;line-height:1.7">' + items + '</ol>';
+  });
+
+  // Paragraphs — wrap remaining text blocks separated by blank lines
+  var paragraphs = safe.split(/\n{2,}/).map(function(block) {
+    var t = block.trim();
+    if (!t) return '';
+    // Don't double-wrap blocks that are already a tag
+    if (/^<(h[1-6]|ul|ol|pre|hr|blockquote|p|div)/.test(t)) return t;
+    return '<p style="margin:8px 0">' + t.replace(/\n/g, '<br>') + '</p>';
+  });
+  return paragraphs.join('\n');
+}
+
+// Update the research brief preview to reflect the textarea content.
+function renderResearchPreview() {
+  var ta = document.getElementById('note-research');
+  var preview = document.getElementById('note-research-preview');
+  if (!ta || !preview) return;
+  var raw = ta.value || '';
+  if (!raw.trim()) {
+    preview.innerHTML = '<em style="color:var(--stone)">No research brief yet. Click ✦ AI generate above to draft one, or type below.</em>';
+    return;
+  }
+  preview.innerHTML = renderMarkdownLite(raw);
+}
+
 async function saveResearchBrief() {
   var client = clients.find(function(c){return c.id===currentClientId;});
   var prog   = client?(client.programs||[]).find(function(p){return p.id===currentProgramId;}):null;
@@ -12777,12 +13281,29 @@ async function saveResearchBrief() {
   var el = document.getElementById('note-research');
   if (!el) return;
   prog.notes = prog.notes||{};
-  // If the brief content is changing (and there was a previous one), snapshot it to history first
-  if (prog.notes.research && prog.notes.research !== el.value) {
+  // v11210: every Save creates a history entry of the NEW content (Elodie's
+  // review §8: "Saving a brief does not log to history"). The previous
+  // version is also archived so we keep a chronological audit. De-dupes
+  // identical-content saves so the history doesn't pollute.
+  var oldContent = prog.notes.research;
+  var newContent = el.value;
+  if (oldContent && oldContent !== newContent) {
     archiveCurrentResearch(prog);
   }
-  prog.notes.research = el.value;
-  client.aiProfile = el.value; // also save to client level
+  // Log THIS save to history too (timestamped snapshot of what just got saved)
+  if (newContent && newContent.trim()) {
+    prog.notes.researchHistory = prog.notes.researchHistory || [];
+    var lastHist = prog.notes.researchHistory[prog.notes.researchHistory.length - 1];
+    if (!lastHist || lastHist.content !== newContent) {
+      prog.notes.researchHistory.push({
+        date: new Date().toISOString(),
+        content: newContent,
+        type: 'saved-version',
+      });
+    }
+  }
+  prog.notes.research = newContent;
+  client.aiProfile = newContent; // also save to client level
   await persistClient(client);
   renderResearchHistory(prog);
   var btn = event.target;
@@ -14262,8 +14783,48 @@ function openCreateClientZoom(clientId, progId) {
       prog.zoomTemplate = data.templateUsed || '';
       try { await persistClient(client); } catch (e) {}
       if (typeof openClient === 'function') openClient(clientId);
+      // v11210: auto-invite — Elodie's review §10. After the meeting is
+      // created, ask Phoebe if she wants to email the join link to the
+      // client immediately. Defaults to "Yes, send now" because that's
+      // the whole point of the rename ("Create Zoom" → invite included).
+      if (data.joinUrl && client.email) {
+        setTimeout(function() { offerToInviteClientToZoom(client, prog, data); }, 250);
+      }
     }
   });
+}
+
+async function offerToInviteClientToZoom(client, prog, zoomData) {
+  if (!client || !client.email) return;
+  var firstName = (client.name || 'them').split(' ')[0];
+  var ok = await branded.confirm(
+    'Email the Zoom link to ' + firstName + ' now?',
+    { title: '📧 Send invite?', okLabel: 'Yes, send now', cancelLabel: 'I\'ll send manually' }
+  );
+  if (!ok) return;
+  var subject = '🎬 Your Zoom link for our session';
+  var body = 'Hi ' + firstName + ',\n\n' +
+    'Here\'s the Zoom link for our session:\n\n' +
+    '🎬 ' + zoomData.joinUrl + '\n' +
+    (zoomData.passcode ? 'Passcode: ' + zoomData.passcode + '\n' : '') +
+    '\nThe link will also be in your hub when you log in.\n\nPhoebe x';
+  try {
+    var r = await fetch('/api/send-message', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ type:'email', to: client.email, subject: subject, message: body, clientName: client.name }),
+    });
+    if (r.ok) {
+      branded.success('Emailed ' + firstName + ' the Zoom link');
+      if (typeof logActivity === 'function') {
+        logActivity('zoom-invite', 'Zoom invite emailed · ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id });
+      }
+    } else {
+      branded.alert('Email failed — copy the link manually if needed.', { title:'Send failed' });
+    }
+  } catch (e) {
+    branded.alert('Email failed: ' + (e.message || e), { title:'Send failed' });
+  }
 }
 
 // Manual re-sync trigger from the cohort row
@@ -14823,11 +15384,34 @@ function gatherPulseSinceLastVisit(clientArr, lastSeenIso) {
 // "Mark all seen" — bumps the lastSeenAt timestamp so the pulse panel goes
 // quiet until something new comes in. Saves to coach-settings (server side)
 // so it follows Phoebe across devices.
-function markPulseSeen() {
+// v11210: forces an IMMEDIATE flush (no debounce) so a refresh doesn't
+// resurrect dismissed entries. Elodie's review §5: "James Wilson's update
+// notification persists after Mark all seen". Root cause was the debounce
+// — local memory updated, but if Phoebe refreshed before the 1.5s flush
+// fired, the server still had the old timestamp.
+async function markPulseSeen() {
   if (!window._coachSettings) window._coachSettings = {};
   window._coachSettings.coachLastSeenAt = new Date().toISOString();
-  flushCoachSettings();
+  // Mirror to localStorage immediately so refresh-before-server-flush still
+  // sees the new value
+  try { localStorage.setItem('hmh_coach_settings_cache', JSON.stringify(window._coachSettings)); } catch(e) {}
+  // Direct, non-debounced server save so the new timestamp is durable
+  // across a refresh / device switch
+  try {
+    await fetch('/api/coach-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patch: { coachLastSeenAt: window._coachSettings.coachLastSeenAt } }),
+    });
+    // Refresh the in-memory baseline so subsequent debounced flushes don't
+    // try to re-send this same delta
+    if (window._coachSettingsBaseline) window._coachSettingsBaseline.coachLastSeenAt = window._coachSettings.coachLastSeenAt;
+  } catch (err) {
+    // Network error is OK — the next debounced flush will pick this up
+    flushCoachSettings();
+  }
   if (typeof renderHome === 'function') renderHome();
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('✓ Marked all as seen');
 }
 
 // Per-client status strip — used at the top of the client detail page.
@@ -15139,14 +15723,16 @@ function renderHome() {
     }
   } catch (e) { console.warn('[Home] review queue render', e); }
 
-  // Quick actions FIRST so the most-used moves are right where the eye lands
-  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">';
-  html += '<button onclick="openAddClient()" style="background:#EC2C8A;border:none;color:white;padding:10px 18px;border-radius:99px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(236,44,138,0.18)">+ Add client</button>';
-  html += '<button onclick="showPage(\'clients\')" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">👥 All clients</button>';
-  html += '<button onclick="showPage(\'task-sheet\')" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">✅ Task sheet</button>';
-  html += '<button onclick="openLogCommModal()" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">📞 Log communication</button>';
-  html += '<button onclick="showPage(\'mdc-group\'); renderMDCGroup()" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">💡 MDC cohort</button>';
-  html += '<button onclick="showPage(\'cohort-manager\'); renderCohortManager()" style="background:white;border:1.5px solid #F5D5E3;color:#C9266B;padding:10px 16px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">👥 Cohort manager</button>';
+  // Quick actions FIRST so the most-used moves are right where the eye lands.
+  // v11210: explicit font-family on every button — Elodie's review §5
+  // flagged "incorrect font" on these buttons.
+  html += '<div class="home-quick-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">';
+  html += '<button onclick="openAddClient()" style="background:var(--hot-pink);border:none;color:white;padding:10px 18px;border-radius:99px;font-family:var(--f-body);font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(236,44,138,0.18)">+ Add client</button>';
+  html += '<button onclick="showPage(\'clients\')" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">👥 All clients</button>';
+  html += '<button onclick="showPage(\'task-sheet\')" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">✅ Task sheet</button>';
+  html += '<button onclick="openLogCommModal()" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">📞 Log communication</button>';
+  html += '<button onclick="showPage(\'mdc-group\'); renderMDCGroup()" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">💡 MDC cohort</button>';
+  html += '<button onclick="showPage(\'cohort-manager\'); renderCohortManager()" style="background:white;border:1.5px solid var(--border);color:var(--magenta);padding:10px 16px;border-radius:99px;font-family:var(--f-body);font-size:12px;font-weight:600;cursor:pointer">👥 Cohort manager</button>';
   html += '</div>';
 
   // Stats grid
