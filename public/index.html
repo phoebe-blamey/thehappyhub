@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11510 — coach PIN → Happy_529 (case-sensitive, 9 chars, was PB2025). Login input now allows up to 20 chars + preserves case. Auto-migrates any device still holding the old PB2025 default to Happy_529 on first load (one-shot per device). PIN-guarded admin endpoints (seed-clients, calendly-setup-webhook, delete-client) updated; new optional COACH_ADMIN_PIN env-var override for future rotation. Settings → Your login PIN copy + reset_pin URL flow updated to drop forced uppercase. CLAUDE.md + docs/TESTING.md reflect the new PIN.">
+<meta name="hmh-build" content="v11520 — HOTFIX: removed orphan clientPostShoutout function body that was sitting at module scope without its declaration line, causing 'Illegal return statement' SyntaxError + breaking every function definition below it (incl. enterClient + enterCoach). Both logins were dead. Working copy of clientPostShoutout still lives at line ~14700 (was restored in v11399) — only the corrupt duplicate body is gone. Brace/paren balance now perfect (was -1 in the v11440 review).">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -16315,29 +16315,16 @@ async function autoFillIntakeWithAI(clientId) {
     branded.alert('Couldn\'t draft answers: ' + (e.message || e));
   }
 }
-  var co = _findCohort(cohortId);
-  if (!co) return;
-  var client = clients.find(function(c){ return c.id === currentClientId; });
-  if (!client) return;
-  var text = await branded.prompt('Write a shoutout for someone in the cohort — celebrate a win, say thanks, share something that landed for you.', '', '', { title: '👏 Shoutout', okLabel: 'Post' });
-  if (!text || !text.trim()) return;
-  co.feedEntries = co.feedEntries || [];
-  co.feedEntries.unshift({
-    id: 'fe-' + Date.now(),
-    kind: 'shoutout',
-    text: text.trim(),
-    author: client.name,
-    authorId: client.id,
-    ts: new Date().toISOString(),
-    reactions: {},
-  });
-  _saveCohorts();
-  branded.success('Posted to the cohort feed');
-  if (typeof renderClientProgram === 'function') {
-    var p = (client.programs || []).find(function(pp){ return pp.cohort === cohortId; });
-    if (p) renderClientProgram(client, p);
-  }
-}
+
+// v11520 fix: removed an orphan `clientPostShoutout` function body that
+// was sitting here without its declaration line. Caused a "Illegal return
+// statement" SyntaxError at module scope, which broke EVERY function
+// definition below this point — including `enterClient` and `enterCoach`,
+// which is why both logins stopped working. The working copy of
+// clientPostShoutout lives at the top of the script (~ line 14700) — it
+// was restored in v11399 but the corrupt orphan body wasn't cleaned up
+// until now. v11500's edits shifted the lines + made the parse error
+// surface where v11440 had been silently masking it.
 
 async function generateImpactStatement(clientId, progId) {
   var client = clients.find(function(c){return c.id===clientId;});
