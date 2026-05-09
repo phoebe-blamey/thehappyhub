@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11410 — message templates (Use + Save) on Message tab · Tasks: 📦 Archive + × Delete (Phoebe-only delete, with confirm) and Show-archived toggle · Tasks tab now Shareable · Why suggestion always returns something (12 standard Phoebe-style starters when no profile data) · Universal popup close: corner-X on every branded modal + Esc dismisses onboarding / more-sheet / search overlay too · For Phoebe's Attention panel now has reply box + Regenerate button (feeds her clarifications back into the brief and rewrites it).">
+<meta name="hmh-build" content="v11420 — Task Sheet bulk actions surfaced (☐ Bulk select toggle, per-row checkboxes, Mark done / Bulk due-date / Visibility / 📦 Archive / Delete in the floating bar). Archived tasks excluded from Task Sheet. Per-program 'Intake' tab renamed to 'Summary' with a sub-section jump-nav (Intake answers · Snapshot · AI brief · Past briefs · Coaching notes · Profitability). Calendar: explicit 'why no direct Google Calendar API' card on Settings — Calendly + .ics covers the use case, full API is a deferred-by-design add-on.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -300,6 +300,19 @@
         <!-- INTAKE TAB (now also holds Summary + Research brief) -->
         <div class="tab-pane" id="tab-intake">
           <div class="vis-bar vis-co"><span>🔒 Coach only</span> — intake answers, summary, and research brief in one place</div>
+          <!-- v11420: jump-nav across the Summary sub-sections. Anchors the
+               same in-page content; the last two pills jump out to the
+               existing Coaching Notes / Profitability tabs to keep one
+               source of truth instead of duplicating the editors. -->
+          <div id="summary-subnav" style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 14px;padding:10px 12px;background:var(--paper);border:1px solid var(--border-soft);border-radius:12px;align-items:center">
+            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--stone);margin-right:4px">Jump to →</span>
+            <button class="btn-sm" onclick="document.getElementById('intake-content').scrollIntoView({behavior:'smooth',block:'start'})" style="font-size:11px">📋 Intake answers</button>
+            <button class="btn-sm" onclick="document.getElementById('note-summary').scrollIntoView({behavior:'smooth',block:'center'})" style="font-size:11px">📝 Client snapshot</button>
+            <button class="btn-sm" onclick="document.getElementById('research-banner').scrollIntoView({behavior:'smooth',block:'start'})" style="font-size:11px">🔬 AI research brief</button>
+            <button class="btn-sm" onclick="document.getElementById('research-history').scrollIntoView({behavior:'smooth',block:'start'})" style="font-size:11px">📚 Past briefs</button>
+            <button class="btn-sm" onclick="switchTab('coaching')" style="font-size:11px">🧠 Coaching notes</button>
+            <button class="btn-sm" onclick="switchTab('profitability')" style="font-size:11px">💰 Profitability</button>
+          </div>
           <div id="intake-content"></div>
 
           <!-- SUMMARY subsection — single source of truth per client.
@@ -973,6 +986,27 @@
             </div>
             <p>Powers every AI feature: research brief, deep dive, session summaries, why suggestions, program recommendations, Knowledge Bank.</p>
             <p style="margin-top:6px;font-size:12px;color:var(--stone)">Env var: ANTHROPIC_API_KEY. Get one at <a href="https://console.anthropic.com" target="_blank" style="color:var(--hot-pink)">console.anthropic.com</a>.</p>
+          </div>
+
+          <!-- v11420: Calendar — explains the deliberate "no direct Google
+               Calendar API" choice. Calendly already pushes events to
+               Phoebe's calendar; the hub generates portable .ics files for
+               anything ad-hoc. Adding a second writer would be redundant. -->
+          <div class="settings-card" id="integration-calendar">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h4 style="margin:0">📅 Calendar (Google / Apple / Outlook)</h4>
+              <span class="integration-status" style="background:rgba(95,163,168,0.15);color:#5FA3A8">Already covered</span>
+            </div>
+            <p>The hub doesn't talk to your Google Calendar directly — it doesn't need to. <strong>Calendly already writes Calendly bookings into your calendar</strong> (configured at calendly.com → Integrations → Calendar). For one-off events the hub generates, you get a portable <code>.ics</code> file you can drop into any calendar app — Google, Apple, Outlook, all of them.</p>
+            <details style="margin-top:8px">
+              <summary style="cursor:pointer;font-size:12px;color:var(--magenta);font-weight:600">Why not full Google Calendar API? →</summary>
+              <ol style="font-size:12px;color:var(--stone);line-height:1.7;padding-left:22px;margin-top:8px">
+                <li>You'd end up with two writers (Calendly + the hub) fighting over the same events.</li>
+                <li>It would need a second OAuth token with calendar scope on top of the existing Gmail one.</li>
+                <li>The <code>.ics</code> path works in every calendar app — universal, no lock-in.</li>
+                <li>If you ever need direct API writes (e.g. auto-creating an availability hold), it's a small add-on — env vars: <code>GOOGLE_CALENDAR_ID</code> + reusing the existing Gmail OAuth refresh token with calendar scope appended.</li>
+              </ol>
+            </details>
           </div>
         </div>
 
@@ -5714,7 +5748,10 @@ function openProgram(client, progId) {
 
 function buildProgramTabs(client, prog) {
   var tabs = document.getElementById('detail-tabs');
-  var tabDefs = [{ id:'intake', label:'Intake', tag:'co' }];
+  // v11420: tab is the program "Summary" — universal intake answers, AI
+  // research brief, deep dive, profitability, plus space for ad-hoc notes.
+  // The id stays 'intake' so all existing switchTab/route calls keep working.
+  var tabDefs = [{ id:'intake', label:'Summary', tag:'co' }];
 
   if (prog.workbook === '90day' || prog.workbook === 'audit' || prog.workbook === 'accelerator') {
     tabDefs.push({ id:'session-notes', label:'Session notes', tag:'sh' });
@@ -15840,6 +15877,7 @@ function renderBulkActionBar() {
       '<button class="bulk-action-btn" onclick="bulkSetTaskDueDate()">📅 Bulk due-date</button>' +
       '<button class="bulk-action-btn" onclick="bulkSetTaskVisibility(true)">👁 Make client-visible</button>' +
       '<button class="bulk-action-btn" onclick="bulkSetTaskVisibility(false)">🔒 Make coach-only</button>' +
+      '<button class="bulk-action-btn" onclick="bulkArchiveTasks()">📦 Archive</button>' +
       '<button class="bulk-action-btn danger" onclick="bulkDeleteTasks()">× Delete</button>';
   }
   bar.innerHTML =
@@ -16046,7 +16084,7 @@ async function bulkSetTaskVisibility(visible) {
 
 async function bulkDeleteTasks() {
   var ids = Array.from(window._bulkSelect.items);
-  var ok = await branded.confirm('Delete ' + ids.length + ' task' + (ids.length === 1 ? '' : 's') + '? This can\'t be undone.', { title: 'Confirm delete', okLabel: 'Delete', danger: true });
+  var ok = await branded.confirm('Delete ' + ids.length + ' task' + (ids.length === 1 ? '' : 's') + ' forever? This can\'t be undone.\n\nIf you might want them back, use 📦 Archive instead.', { title: 'Delete forever?', okLabel: 'Delete', danger: true });
   if (!ok) return;
   for (var i = 0; i < ids.length; i++) {
     var parts = ids[i].split('::');
@@ -16056,6 +16094,26 @@ async function bulkDeleteTasks() {
     try { await persistClient(c); } catch(e) {}
   }
   branded.toast('✓ Deleted ' + ids.length + ' tasks');
+  exitBulkSelect();
+}
+
+// v11420: bulk archive — soft, restorable. Pairs with the per-row 📦 Archive
+// button. Phoebe's preferred way out of "I'm done with these but might want
+// them back" without forever-deleting.
+async function bulkArchiveTasks() {
+  var ids = Array.from(window._bulkSelect.items);
+  var nowIso = new Date().toISOString();
+  for (var i = 0; i < ids.length; i++) {
+    var parts = ids[i].split('::');
+    var c = clients.find(function(x){ return x.id === parts[0]; });
+    if (!c) continue;
+    var t = (c.tasks || []).find(function(x){ return x.id === parts[1]; });
+    if (!t) continue;
+    t.archived = true;
+    t.archivedAt = nowIso;
+    try { await persistClient(c); } catch(e) {}
+  }
+  branded.toast('✓ Archived ' + ids.length + ' task' + (ids.length === 1 ? '' : 's'));
   exitBulkSelect();
 }
 
@@ -16084,6 +16142,7 @@ function renderTaskSheet() {
     if (!c || !c.id) return;
     (c.tasks || []).forEach(function(t) {
       if (!t || !t.text) return;
+      if (t.archived) return; // v11410: archived tasks excluded from task sheet
       allItems.push({ client:c, task:t, dueDate:t.dueDate||t.due||'', done:!!t.done, visibility:t.clientVisible?'client':'coach' });
     });
     (c.programs || []).forEach(function(p) {
@@ -16139,8 +16198,16 @@ function renderTaskSheet() {
     return '<button onclick="setTaskFilter(\''+mode+'\')" style="border:1.5px solid '+(active?color:'#F5D5E3')+';background:'+(active?color:'white')+';color:'+(active?'white':'#C9266B')+';padding:7px 14px;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;margin:0">'+label+' <span style="opacity:0.7">·  '+count+'</span></button>';
   }
 
+  // v11420: bulk-select state for the task sheet (surfaces helpers wired in v11320)
+  var bulkOn = window._bulkSelect && window._bulkSelect.scope === 'tasks' && window._bulkSelect.mode;
   var html = '';
-  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px"><div style="font-family:var(--f-head, inherit);font-size:18px;color:#C9266B;font-weight:700">'+totalPending+' pending · '+totalOverdue+' overdue</div><button onclick="showGlobalAddTask()" style="background:#EC2C8A;color:white;border:none;padding:8px 16px;border-radius:99px;font-weight:700;font-size:12px;cursor:pointer">+ Add task</button></div>';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">' +
+    '<div style="font-family:var(--f-head, inherit);font-size:18px;color:#C9266B;font-weight:700">'+totalPending+' pending · '+totalOverdue+' overdue</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button onclick="toggleBulkSelectMode(\'tasks\')" title="' + (bulkOn ? 'Exit selection mode' : 'Pick multiple tasks for bulk actions') + '" style="background:' + (bulkOn ? '#C9266B' : 'white') + ';color:' + (bulkOn ? 'white' : '#C9266B') + ';border:1.5px solid #C9266B;padding:8px 14px;border-radius:99px;font-weight:600;font-size:12px;cursor:pointer">' + (bulkOn ? '× Cancel select' : '☐ Bulk select') + '</button>' +
+      '<button onclick="showGlobalAddTask()" style="background:#EC2C8A;color:white;border:none;padding:8px 16px;border-radius:99px;font-weight:700;font-size:12px;cursor:pointer">+ Add task</button>' +
+    '</div>' +
+  '</div>';
   html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">';
   html += pill('pending','All open',totalPending,'#EC2C8A');
   html += pill('coach','🔒 Coach only',totalCoach,'#C9266B');
@@ -16180,12 +16247,28 @@ function renderTaskSheet() {
         var visBadge = x.visibility==='client'?'<span style="font-size:9px;font-weight:700;background:#D7E9E7;color:#5FA3A8;padding:2px 6px;border-radius:99px;text-transform:uppercase">Client</span>':'<span style="font-size:9px;font-weight:700;background:#FDEFF5;color:#ACA495;padding:2px 6px;border-radius:99px;text-transform:uppercase">Coach</span>';
         var taskId = (x.task && x.task.id) || '';
         var taskText = (x.task && x.task.text) || '';
+        // v11420: composite id for bulk selection (clientId::taskId — matches bulkMarkTasksDone et al.)
+        var bulkId = clientId + '::' + taskId;
+        var bulkChecked = bulkOn && window._bulkSelect.items.has(bulkId);
+        var bulkBoxHtml = bulkOn
+          ? '<div onclick="event.stopPropagation();toggleBulkSelectItem(\'' + bulkId + '\')" style="width:20px;height:20px;border-radius:5px;border:2px solid ' + (bulkChecked ? '#EC2C8A' : '#F0C8DA') + ';background:' + (bulkChecked ? '#EC2C8A' : 'white') + ';color:white;flex-shrink:0;cursor:pointer;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">' + (bulkChecked ? '✓' : '') + '</div>'
+          : '';
+        var rowOnclick = bulkOn ? ' onclick="toggleBulkSelectItem(\'' + bulkId + '\')" style="cursor:pointer"' : '';
 
-        html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid '+(isOverdue?'rgba(236,44,138,0.3)':'#FCE8F0')+';border-radius:8px;margin-bottom:6px;background:'+(isOverdue?'#FFF8FB':'white')+'"><div onclick="toggleTaskDone(\''+clientId+'\',\''+taskId+'\')" style="width:18px;height:18px;border-radius:99px;border:2px solid #F5D5E3;flex-shrink:0;cursor:pointer;margin-top:2px;'+(x.done?'background:#EC2C8A;border-color:#EC2C8A':'')+'"></div><div style="flex:1;min-width:0"><div style="font-size:13px;color:#C9266B;'+(x.done?'text-decoration:line-through;opacity:0.5':'')+';margin-bottom:4px;word-break:break-word">'+taskText+'</div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+visBadge;
+        html += '<div' + (bulkOn ? rowOnclick : '') + ' style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid '+(isOverdue?'rgba(236,44,138,0.3)':(bulkChecked ? '#EC2C8A' : '#FCE8F0'))+';border-radius:8px;margin-bottom:6px;background:'+(bulkChecked ? '#FFF0F8' : (isOverdue?'#FFF8FB':'white'))+(bulkOn ? ';cursor:pointer' : '')+'">' +
+          bulkBoxHtml +
+          '<div onclick="event.stopPropagation();toggleTaskDone(\''+clientId+'\',\''+taskId+'\')" style="width:18px;height:18px;border-radius:99px;border:2px solid #F5D5E3;flex-shrink:0;cursor:pointer;margin-top:2px;'+(x.done?'background:#EC2C8A;border-color:#EC2C8A':'')+'"></div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:13px;color:#C9266B;'+(x.done?'text-decoration:line-through;opacity:0.5':'')+';margin-bottom:4px;word-break:break-word">'+taskText+'</div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+visBadge;
         if (x.task && x.task.isAuto) html += '<span style="font-size:9px;font-weight:700;background:#FFF5E8;color:#A07030;padding:2px 6px;border-radius:99px;text-transform:uppercase">⚡ Auto</span>';
         if (isOverdue) html += '<span style="font-size:9px;font-weight:700;background:#EC2C8A;color:white;padding:2px 6px;border-radius:99px;text-transform:uppercase">Overdue</span>';
         if (dueStr) html += '<span style="font-size:11px;color:'+(isOverdue?'#EC2C8A':'#ACA495')+'">Due '+dueStr+'</span>';
-        html += '</div></div><button onclick="deleteTask(\''+clientId+'\',\''+taskId+'\')" style="background:none;border:none;cursor:pointer;font-size:14px;color:#ACA495;padding:0 4px;flex-shrink:0">×</button></div>';
+        html += '</div></div>';
+        if (!bulkOn) {
+          // v11410: archive (📦, soft) + delete (×, with confirm) buttons
+          html += '<button onclick="event.stopPropagation();archiveTask(\''+clientId+'\',\''+taskId+'\')" title="Archive (restorable)" style="background:none;border:none;cursor:pointer;font-size:13px;color:#ACA495;padding:0 4px;flex-shrink:0">📦</button>';
+          html += '<button onclick="event.stopPropagation();deleteTask(\''+clientId+'\',\''+taskId+'\')" title="Delete forever" style="background:none;border:none;cursor:pointer;font-size:14px;color:#C0392B;padding:0 4px;flex-shrink:0">×</button>';
+        }
+        html += '</div>';
       });
 
       html += '</div>';
@@ -16193,6 +16276,8 @@ function renderTaskSheet() {
   }
 
   el.innerHTML = html;
+  // v11420: keep the bottom action bar in sync with the current selection
+  if (typeof renderBulkActionBar === 'function') renderBulkActionBar();
   console.log('[TaskSheet] rendered successfully, html length:', html.length);
 }
 
