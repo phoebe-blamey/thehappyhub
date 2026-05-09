@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11220 — brand pink corrected to #E5048B · Mark all seen now also clears review-request entries (was the persistence bug — review requests filter on !addressed, not timestamp, so they survived mark-all-seen)">
+<meta name="hmh-build" content="v11300 — feature batch: client health auto-updates (green/amber/red rules) with manual override · coach notification prefs (categorical + channel) · Today's One Thing client history modal + streak · Today's One Thing strip on coach home · 5-step onboarding flow (welcome → why → mood → plan → ask) · AI program recommendation card (last 4 weeks) + recommendable products in coach Settings">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -621,6 +621,16 @@
           <button class="btn-sm primary" style="margin-top:10px" onclick="addCustomProgramType()">+ Add a custom program type</button>
         </div>
 
+        <!-- v11300: recommendable products — appears on the program-recommendation
+             card on the client portal when ≤4 weeks remain on their current
+             program. Stripe checkout = v11500; for now link is a URL string. -->
+        <div class="settings-card">
+          <h4>📦 Products to recommend</h4>
+          <p>Add courses, books, or services here. They appear on a client's "What's next?" card during the last 4 weeks of their current program — alongside Phoebe's AI-suggested next program.</p>
+          <div id="recommendable-products-list" style="margin-top:12px"></div>
+          <button class="btn-sm primary" style="margin-top:10px" onclick="addRecommendableProduct()">+ Add a product</button>
+        </div>
+
         <!-- Zoom templates — one-click "create the MDC template in Zoom" so
              every cohort meeting + per-client Zoom inherits the same branding,
              agenda, recording defaults and accessibility settings. Once
@@ -801,6 +811,31 @@
           </label>
         </div>
 
+        <!-- v11300: notification preferences for Phoebe (coach-facing).
+             Configures what surfaces in the Pulse panel + what triggers
+             the optional 8am email digest. -->
+        <div class="settings-card">
+          <h4>🔔 What I want to be notified about</h4>
+          <p>Tick what you want to see in your Pulse panel + your daily digest. Granular control — only the things that matter to your day.</p>
+          <div id="coach-notif-prefs" style="display:flex;flex-direction:column;gap:10px;margin-top:14px"></div>
+          <hr style="border:none;border-top:1px solid var(--border-soft);margin:18px 0">
+          <h5 style="font-family:var(--f-head);font-size:13px;color:var(--magenta);margin-bottom:8px">📨 How I want to receive them</h5>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--magenta)">
+              <input type="radio" name="coach-notif-channel" value="pulse-only" onchange="saveCoachNotifChannel(this.value)">
+              <span>In-app pulse panel only — no emails</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--magenta)">
+              <input type="radio" name="coach-notif-channel" value="digest" onchange="saveCoachNotifChannel(this.value)">
+              <span>Pulse + 8am email digest (recommended)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--magenta)">
+              <input type="radio" name="coach-notif-channel" value="per-event" onchange="saveCoachNotifChannel(this.value)">
+              <span>Pulse + email per event (chatty)</span>
+            </label>
+          </div>
+        </div>
+
         <div class="settings-card">
           <h4>🔑 Coach PIN</h4>
           <p>Your login PIN to access this dashboard. Default is <code>PB2025</code>. Change it any time — only you need it.</p>
@@ -848,6 +883,10 @@
     </div>
   </div>
 </div>
+
+<!-- v11300: 5-step onboarding flow modal — first-visit only.
+     Driven by maybeShowFirstVisitWelcome → startOnboardingFlow → renderOnboardingStep. -->
+<div id="onboarding-flow-host" style="display:none;position:fixed;inset:0;background:rgba(40,15,40,0.55);backdrop-filter:blur(3px);z-index:9800;align-items:center;justify-content:center;padding:20px"></div>
 
 <!-- ========== CLIENT PORTAL ==========
      Three-tab layout: Summary (home), My Programs, Settings.
@@ -1756,6 +1795,84 @@ function initNotificationsToggle() {
   var lbl = document.getElementById('notifications-status-label');
   if (t) t.checked = isNotificationsEnabled();
   if (lbl) lbl.textContent = 'Notifications: ' + (isNotificationsEnabled() ? 'ON' : 'OFF');
+  // v11300: also render the categorical notification prefs UI
+  if (typeof renderCoachNotifPrefs === 'function') renderCoachNotifPrefs();
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// COACH NOTIFICATION PREFS — v11300
+// Categorical control over what surfaces in Phoebe's Pulse panel + the
+// optional 8am email digest.
+//   coachSettings.coachNotifPrefs = {
+//     newBookings: true, askPhoebe: true, redMoodOnly: true,
+//     clientNeedsHelp: true, aiSummaryReady: true, recordingPulled: false,
+//     channel: 'pulse-only' | 'digest' | 'per-event',
+//   }
+// Defaults match Elodie's specified list.
+// ═════════════════════════════════════════════════════════════════════
+
+var COACH_NOTIF_DEFAULTS = {
+  newBookings: true,
+  askPhoebe: true,
+  redMoodOnly: true,
+  clientNeedsHelp: true,
+  aiSummaryReady: true,
+  recordingPulled: false,
+  channel: 'digest',
+};
+
+function getCoachNotifPrefs() {
+  var s = (window._coachSettings && window._coachSettings.coachNotifPrefs) || {};
+  return Object.assign({}, COACH_NOTIF_DEFAULTS, s);
+}
+
+function setCoachNotifPref(key, value) {
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.coachNotifPrefs = Object.assign({}, getCoachNotifPrefs(), pickPair(key, value));
+  flushCoachSettings();
+  function pickPair(k, v) { var o = {}; o[k] = v; return o; }
+}
+
+function saveCoachNotifPref(key, checked) {
+  setCoachNotifPref(key, !!checked);
+}
+function saveCoachNotifChannel(channel) {
+  setCoachNotifPref('channel', channel || 'digest');
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('Saved · ' + channel.replace('-', ' '));
+}
+
+// Helper for other code paths to check whether the coach wants pinged about
+// a specific category before deciding to add to pulse / send email.
+function shouldNotifyCoachAbout(category) {
+  return !!getCoachNotifPrefs()[category];
+}
+
+function renderCoachNotifPrefs() {
+  var host = document.getElementById('coach-notif-prefs');
+  if (!host) return;
+  var p = getCoachNotifPrefs();
+  var rows = [
+    { key: 'newBookings',     label: '📅 New Calendly bookings',                desc: 'A new client books a session.' },
+    { key: 'askPhoebe',       label: '🙋 Client asks for help',                  desc: '"Ask Phoebe" task helper or review-request flagged.' },
+    { key: 'redMoodOnly',     label: '😞 Red-mood check-ins',                    desc: 'A client logs feeling tough or struggling — gentle red-only ping, not every mood.' },
+    { key: 'clientNeedsHelp', label: '⚠️ Client needs help (review-requests)',  desc: 'A client flagged a session note saying "I need your eyes on this".' },
+    { key: 'aiSummaryReady',  label: '✨ AI session summary ready',              desc: 'Webhook pulled a transcript and AI-summarised it. Ready to review and share.' },
+    { key: 'recordingPulled', label: '🎬 Recording auto-pulled',                 desc: 'Off by default — automatic, no action needed. Tick if you want a confirmation ping.' },
+  ];
+  host.innerHTML = rows.map(function(r) {
+    return '<label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:10px 12px;background:var(--paper);border:1px solid var(--border-soft);border-radius:10px">' +
+      '<input type="checkbox"' + (p[r.key] ? ' checked' : '') + ' onchange="saveCoachNotifPref(\'' + r.key + '\',this.checked)" style="margin-top:3px">' +
+      '<div style="flex:1">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--magenta)">' + r.label + '</div>' +
+        '<div style="font-size:11px;color:var(--stone);margin-top:2px;line-height:1.4">' + r.desc + '</div>' +
+      '</div>' +
+    '</label>';
+  }).join('');
+  // Channel radio
+  var current = p.channel || 'digest';
+  document.querySelectorAll('input[name="coach-notif-channel"]').forEach(function(r) {
+    r.checked = r.value === current;
+  });
 }
 
 // Send the welcome email to a brand-new client (no-op if notifications off)
@@ -2365,6 +2482,87 @@ async function editCustomProgramType(typeId) {
   applyCustomProgramTypes();
   renderCustomProgramTypesList();
   branded.toast('Saved');
+}
+
+// Recommendable products — Settings UI
+function renderRecommendableProductsList() {
+  var el = document.getElementById('recommendable-products-list');
+  if (!el) return;
+  var products = (window._coachSettings && Array.isArray(window._coachSettings.recommendableProducts))
+    ? window._coachSettings.recommendableProducts : [];
+  if (!products.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--stone);font-style:italic;padding:8px 0">No products yet — add things you genuinely recommend (your book, a course, the next program). They show up on clients\' "What\'s next" card in their final weeks.</div>';
+    return;
+  }
+  el.innerHTML = products.map(function(p) {
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:white;border:1.5px solid var(--border);border-radius:10px;margin-bottom:6px;font-size:12px">' +
+      '<span style="font-size:18px">📦</span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-weight:700;color:var(--magenta)">' + escapeHtml(p.name || 'Unnamed') + (p.price ? ' <span style="font-weight:500;color:var(--stone)">· ' + escapeHtml(p.price) + '</span>' : '') + '</div>' +
+        (p.description ? '<div style="font-size:11px;color:var(--stone);margin-top:1px">' + escapeHtml(p.description) + '</div>' : '') +
+        (p.audience && p.audience !== 'all' ? '<div style="font-size:10px;color:var(--hot-pink);margin-top:1px;font-weight:600">For: ' + escapeHtml(p.audience) + '</div>' : '') +
+      '</div>' +
+      '<button class="btn-sm" style="font-size:10px;padding:3px 8px" onclick="editRecommendableProduct(\'' + p.id + '\')">✏️ Edit</button>' +
+      '<button class="btn-sm" style="font-size:10px;padding:3px 8px;background:transparent;color:#C0392B;border:1px solid rgba(192,57,43,0.3)" onclick="deleteRecommendableProduct(\'' + p.id + '\')">Delete</button>' +
+    '</div>';
+  }).join('');
+}
+
+async function addRecommendableProduct() {
+  var name = await branded.prompt('Product name?', '', 'e.g. Money Dollars Cents Workbook', { title: 'Add product', okLabel: 'Next' });
+  if (!name || !name.trim()) return;
+  var price = await branded.prompt('Price (optional, e.g. "$47" or "$497/month"):', '', '$47', { title: 'Price', okLabel: 'Next' });
+  var link = await branded.prompt('Link — Stripe page, your website, Calendly, anything URL-shaped:', '', 'https://...', { title: 'Link', okLabel: 'Next' });
+  if (!link || !link.trim()) { branded.alert('Link is required so clients can actually click through.'); return; }
+  var description = await branded.prompt('Short description (one sentence, optional):', '', 'What it is, who it\'s for', { title: 'Description', okLabel: 'Next' });
+  var audienceRaw = await branded.prompt('Who is this for? Leave blank for all clients, or type a program key (e.g. "mdc", "90day") to target.', '', 'all', { title: 'Audience', okLabel: 'Save' });
+  var newProd = {
+    id: 'prod-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    name: name.trim(),
+    price: (price || '').trim(),
+    link: link.trim(),
+    description: (description || '').trim(),
+    audience: (audienceRaw || 'all').trim() || 'all',
+  };
+  window._coachSettings = window._coachSettings || {};
+  window._coachSettings.recommendableProducts = (window._coachSettings.recommendableProducts || []).concat([newProd]);
+  flushCoachSettings();
+  renderRecommendableProductsList();
+  branded.success('Added "' + newProd.name + '" — visible to ' + (newProd.audience === 'all' ? 'all clients' : 'clients on ' + newProd.audience));
+}
+
+async function editRecommendableProduct(productId) {
+  var products = (window._coachSettings && Array.isArray(window._coachSettings.recommendableProducts))
+    ? window._coachSettings.recommendableProducts : [];
+  var p = products.find(function(x){ return x.id === productId; });
+  if (!p) return;
+  var name = await branded.prompt('Edit name:', p.name || '', '', { title: 'Edit product', okLabel: 'Next' });
+  if (name == null) return;
+  if (name.trim()) p.name = name.trim();
+  var price = await branded.prompt('Edit price:', p.price || '', '', { title: 'Edit product', okLabel: 'Next' });
+  if (price != null) p.price = price.trim();
+  var link = await branded.prompt('Edit link:', p.link || '', '', { title: 'Edit product', okLabel: 'Next' });
+  if (link != null && link.trim()) p.link = link.trim();
+  var desc = await branded.prompt('Edit description:', p.description || '', '', { title: 'Edit product', okLabel: 'Next' });
+  if (desc != null) p.description = desc.trim();
+  var aud = await branded.prompt('Edit audience (program key, or "all"):', p.audience || 'all', '', { title: 'Edit product', okLabel: 'Save' });
+  if (aud != null && aud.trim()) p.audience = aud.trim();
+  flushCoachSettings();
+  renderRecommendableProductsList();
+  branded.toast('Saved');
+}
+
+async function deleteRecommendableProduct(productId) {
+  var products = (window._coachSettings && Array.isArray(window._coachSettings.recommendableProducts))
+    ? window._coachSettings.recommendableProducts : [];
+  var p = products.find(function(x){ return x.id === productId; });
+  if (!p) return;
+  var ok = await branded.confirm('Delete "' + p.name + '"?', { title: 'Delete product?', okLabel: 'Delete', danger: true });
+  if (!ok) return;
+  window._coachSettings.recommendableProducts = products.filter(function(x){ return x.id !== productId; });
+  flushCoachSettings();
+  renderRecommendableProductsList();
+  branded.toast('Deleted');
 }
 
 async function deleteCustomProgramType(typeId) {
@@ -4532,6 +4730,7 @@ function showPage(id) {
         if (typeof renderCustomBadgeList==='function') renderCustomBadgeList();
         if (typeof renderZoomTemplatesList==='function') renderZoomTemplatesList();
         if (typeof renderCustomProgramTypesList==='function') renderCustomProgramTypesList();
+        if (typeof renderRecommendableProductsList==='function') renderRecommendableProductsList();
       }
       else if (id === 'tasks')      { if (typeof renderAllTasks==='function') renderAllTasks(); }
       else if (id === 'settings')   { if (typeof initNotificationsToggle==='function') initNotificationsToggle(); }
@@ -6750,42 +6949,383 @@ function wrapText(ctx, text, maxWidth) {
 // branded modal since it matches the rest of the portal. Suppressed if the
 // client has already seen it (localStorage flag) OR if they came in via the
 // review FAB / are an existing client with prior session notes.
+// ═════════════════════════════════════════════════════════════════════
+// PROGRAM RECOMMENDATION CARD — v11300
+// Surfaces in the client portal Programs tab when ≤28 days remain on the
+// current program (or last 4 weeks of MDC). AI generates a personalised
+// recommendation grounded in their progress / wins / goals. Recommendation
+// is cached on prog.programRecommendation so the AI only runs when Phoebe
+// or the client click "Generate". Renders Phoebe's recommendable products
+// from coachSettings.recommendableProducts alongside.
+// ═════════════════════════════════════════════════════════════════════
+
+function _programRemainingDays(prog) {
+  if (!prog) return null;
+  if (prog.workbook === 'mdc') {
+    var sprint = prog.mdcSprint || 1;
+    var week = prog.mdcWeek || 1;
+    var weekFlat = (sprint - 1) * 6 + week;
+    return Math.max(0, (24 - weekFlat) * 7);
+  }
+  var pi = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog.program]) || {};
+  var totalDays = (prog.lengthDays != null) ? prog.lengthDays : (pi.lengthDays != null ? pi.lengthDays : null);
+  if (!totalDays || !prog.sessionDate) return null;
+  var elapsed = Math.floor((Date.now() - new Date(prog.sessionDate).getTime()) / 86400000);
+  return Math.max(0, totalDays - elapsed);
+}
+
+function renderProgramRecommendationCard(client, prog) {
+  if (!client || !prog || prog.locked) return '';
+  var daysLeft = _programRemainingDays(prog);
+  if (daysLeft == null || daysLeft > 28 || daysLeft < 0) return '';
+  var pi = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog.program]) || {};
+  var firstName = (client.name || '').split(' ')[0] || 'you';
+  var weeksLeft = Math.ceil(daysLeft / 7);
+  var existing = prog.programRecommendation || null;
+  var products = (window._coachSettings && Array.isArray(window._coachSettings.recommendableProducts))
+    ? window._coachSettings.recommendableProducts : [];
+  // Filter products by audience (if audience is set, match against current
+  // program / workbook). Simple match on now — Phoebe can refine later.
+  var matchedProducts = products.filter(function(p) {
+    if (!p || !p.name) return false;
+    if (!p.audience || p.audience === 'all') return true;
+    return p.audience === prog.program || p.audience === prog.workbook;
+  });
+
+  var body = '';
+  if (existing && existing.text) {
+    var ageDays = existing.generatedAt ? Math.floor((Date.now() - new Date(existing.generatedAt).getTime()) / 86400000) : null;
+    body = '<div style="font-size:13px;color:var(--magenta);line-height:1.65;white-space:pre-wrap;margin-bottom:10px">' + escapeHtml(existing.text) + '</div>' +
+      '<div style="font-size:11px;color:var(--stone);font-style:italic">Generated ' + (ageDays === 0 ? 'today' : ageDays === 1 ? 'yesterday' : ageDays + ' days ago') + ' · <a href="javascript:void(0)" onclick="generateProgramRecommendation(\'' + client.id + '\',\'' + prog.id + '\')" style="color:var(--hot-pink)">refresh</a></div>';
+  } else {
+    body = '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:10px">You\'re ' + (weeksLeft === 1 ? 'in the final week' : weeksLeft + ' weeks from finishing') + ' of ' + escapeHtml(pi.label || prog.program) + '. Want a personalised look at what would suit you next?</p>' +
+      '<button onclick="generateProgramRecommendation(\'' + client.id + '\',\'' + prog.id + '\')" class="btn-sm primary" style="font-size:12px">✦ Show me what\'s next</button>';
+  }
+
+  var productsHtml = '';
+  if (matchedProducts.length > 0) {
+    productsHtml = '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">📦 Phoebe\'s picks for you</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+      matchedProducts.slice(0, 3).map(function(p) {
+        var price = p.price ? '<span style="font-size:11px;color:var(--stone);font-weight:500">· ' + escapeHtml(p.price) + '</span>' : '';
+        return '<a href="' + escapeHtml(p.link || '#') + '" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--paper);border:1px solid var(--border-soft);border-radius:8px;text-decoration:none;color:var(--magenta);transition:border-color 0.15s" onmouseover="this.style.borderColor=\'var(--hot-pink)\'" onmouseout="this.style.borderColor=\'var(--border-soft)\'">' +
+          '<div style="font-size:18px">📦</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:12px;font-weight:700;color:var(--magenta)">' + escapeHtml(p.name) + ' ' + price + '</div>' +
+            (p.description ? '<div style="font-size:11px;color:var(--stone);margin-top:1px">' + escapeHtml(p.description) + '</div>' : '') +
+          '</div>' +
+          '<div style="font-size:14px;color:var(--stone);flex-shrink:0">→</div>' +
+        '</a>';
+      }).join('') +
+      '</div></div>';
+  }
+
+  return '<div class="client-section" style="background:linear-gradient(135deg,#FFF8E8,#FFFBE8);border-color:rgba(232,160,32,0.5);border-width:1.5px">' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+      '<div style="font-size:22px">✨</div>' +
+      '<h3 style="margin:0;font-size:15px;color:var(--magenta)">What\'s next, ' + escapeHtml(firstName) + '?</h3>' +
+      '<span style="margin-left:auto;font-size:10px;color:#A07030;background:#FFFBE8;border:1px solid rgba(232,160,32,0.4);padding:3px 9px;border-radius:99px;font-weight:700;text-transform:uppercase">' + (weeksLeft <= 1 ? 'final week' : weeksLeft + 'w left') + '</span>' +
+    '</div>' +
+    body +
+    productsHtml +
+  '</div>';
+}
+
+async function generateProgramRecommendation(clientId, progId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var prog = (client.programs || []).find(function(p){ return p.id === progId; });
+  if (!prog) return;
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('Drafting…');
+  // Build context: current program, plan progress, recent wins, intake answers
+  var pi = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog.program]) || {};
+  var planTotal = (prog.plan || []).reduce(function(s, m){ return s + ((m.tasks || []).length); }, 0);
+  var planDone = 0;
+  (prog.plan || []).forEach(function(s, sIdx) {
+    (s.tasks || []).forEach(function(_t, tIdx) {
+      var key = (s.month != null ? String(s.month) : ('s' + sIdx)) + '-' + tIdx;
+      if (prog.taskDone && prog.taskDone[key]) planDone++;
+    });
+  });
+  var wins = ((prog.wins || []).concat(client.wins || [])).slice(-5).map(function(w) {
+    return '- ' + (w.metric || w.title || 'win') + (w.before && w.after ? ': ' + w.before + ' → ' + w.after : '');
+  }).join('\n');
+  var intakeCtx = (typeof buildIntakeContextForAI === 'function') ? buildIntakeContextForAI(client, prog) : '';
+  // List of OTHER programs Phoebe offers (built-in + custom)
+  var otherProgs = Object.keys(PROGRAMS).filter(function(k) {
+    var p = PROGRAMS[k];
+    return p && k !== prog.program && p.workbook !== 'none' && p.workbook !== 'inquiry';
+  }).map(function(k) {
+    var p = PROGRAMS[k];
+    return '- ' + (p.label || k) + (p.lengthDays ? ' (' + p.lengthDays + ' days)' : '') + (p._custom ? ' [custom]' : '');
+  }).join('\n');
+
+  var prompt = phoebeVoice(
+    'You are Phoebe Blamey writing a short personalised "what\'s next" recommendation for one of your clients. ' +
+    'They\'re in the last few weeks of their current program; this card appears in their portal so they can think about whether to continue, upgrade, or step into something different.\n\n' +
+    'Tone: warm, direct, no upsell-y language. You\'re a coach offering a thoughtful next step, not a salesperson. ' +
+    'Length: 2 short paragraphs MAX. First paragraph reflects on where they\'re at. Second paragraph names ONE recommended next program with a single sentence on WHY it fits them. ' +
+    'No headings. No bullet points. Plain prose. Maximum 100 words total.\n\n' +
+    'CLIENT:\n' +
+    'Name: ' + (client.name || '') + ' (' + ((client.name || '').split(' ')[0] || '') + ')\n' +
+    'Business: ' + (client.biz || 'unknown') + '\n' +
+    'Current program: ' + (pi.label || prog.program) + '\n' +
+    'Plan progress: ' + planDone + ' of ' + planTotal + ' tasks done\n' +
+    (wins ? 'Recent wins:\n' + wins + '\n' : '') +
+    (intakeCtx ? 'Their intake answers:\n' + intakeCtx + '\n\n' : '') +
+    'PROGRAMS YOU OFFER (pick from these):\n' + otherProgs + '\n\n' +
+    'Return ONLY the 2 paragraphs of recommendation prose. No preamble.'
+  );
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 500,
+        messages: [{ role:'user', content: prompt }],
+      }),
+    });
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) {
+      data.content.forEach(function(b) { if (b && b.type === 'text' && b.text) text += b.text; });
+    }
+    text = text.trim();
+    if (!text) {
+      branded.alert('Couldn\'t draft a recommendation right now — try again in a moment.');
+      return;
+    }
+    prog.programRecommendation = {
+      text: text,
+      generatedAt: new Date().toISOString(),
+    };
+    await persistClient(client);
+    if (typeof renderClientProgram === 'function') renderClientProgram(client, prog);
+    if (typeof branded !== 'undefined' && branded.success) branded.success('✨ Recommendation drafted');
+  } catch (e) {
+    branded.alert('Couldn\'t reach the AI just now: ' + (e.message || e));
+  }
+}
+
+// v11300: 5-step onboarding flow — replaces the legacy single-modal welcome.
+// Shows once per client (persisted in client.onboardingDone) on first
+// portal visit. Steps:
+//   1. Welcome (name + session date)
+//   2. Set your why (with AI suggest)
+//   3. First mood log
+//   4. Look at your plan (preview)
+//   5. Ask Phoebe anything (help drawer explanation)
 function maybeShowFirstVisitWelcome(client) {
   if (!client) return;
-  var key = 'hmh_welcomed_' + client.id;
-  try {
-    if (localStorage.getItem(key)) return;
-    // If they've already got session notes / completed tasks, don't pop up.
-    var hasHistory = (client.programs || []).some(function(p) {
-      return (p.sessionNotes && p.sessionNotes.length) || (p.taskDone && Object.values(p.taskDone).some(Boolean));
-    });
-    if (hasHistory) { localStorage.setItem(key, '1'); return; }
-  } catch (e) {}
-  if (typeof branded === 'undefined' || !branded.alert) return;
-  var firstName = (client.name || '').split(' ')[0] || 'there';
-  var prog = (client.programs || [])[0] || {};
-  var pi = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog.program]) || {};
-  var sessionLine = '';
-  if (prog.sessionDate) {
-    try {
-      var d = new Date(prog.sessionDate);
-      sessionLine = '\nYour first ' + (pi.short || 'session') + ': ' +
-        d.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' }) +
-        ' at ' + d.toLocaleTimeString('en-AU', { hour:'numeric', minute:'2-digit', hour12:true }) + '\n';
-    } catch (e) {}
+  if (client.onboardingDone) return;
+  // Don't show if they already have history (session notes, ticked tasks)
+  // — they're a returning client who'd been using the old welcome flow.
+  var hasHistory = (client.programs || []).some(function(p) {
+    return (p.sessionNotes && p.sessionNotes.length) || (p.taskDone && Object.values(p.taskDone).some(Boolean));
+  });
+  if (hasHistory) {
+    client.onboardingDone = true;
+    if (typeof persistClient === 'function') persistClient(client).catch(function(){});
+    return;
   }
-  var body =
-    'Welcome ' + firstName + ' — lovely to have you here.\n' +
-    sessionLine +
-    '\nThis is your private space with Phoebe. Three things to know:\n\n' +
-    '• 📚 My Programs holds your plan, your tasks and your wins\n' +
-    '• ⚙️ Settings is where you change your access code\n' +
-    '• ❓ Bottom-right has Phoebe\'s Knowledge Bank — ask it anything\n\n' +
-    'Have a poke around. We\'ll go through everything together in our first session.';
-  setTimeout(function() {
-    branded.alert(body, { title: 'Welcome to your hub 💛', okLabel: 'Let\'s go' });
-    try { localStorage.setItem(key, '1'); } catch (e) {}
-  }, 600);
+  setTimeout(function() { startOnboardingFlow(client); }, 500);
+}
+
+window._onboardingStep = 0;
+
+async function startOnboardingFlow(client) {
+  if (!client) return;
+  window._onboardingStep = 1;
+  renderOnboardingStep(client);
+}
+
+function renderOnboardingStep(client) {
+  var step = window._onboardingStep || 1;
+  var host = document.getElementById('onboarding-flow-host');
+  if (!host) return;
+  var firstName = (client.name || '').split(' ')[0] || 'there';
+
+  var content = '';
+  if (step === 1) {
+    var prog = (client.programs || [])[0] || {};
+    var pi = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog.program]) || {};
+    var sessionLine = '';
+    if (prog.sessionDate) {
+      try {
+        var d = new Date(prog.sessionDate);
+        sessionLine = '<div style="background:#FFFBE8;border:1px solid rgba(232,160,32,0.4);border-radius:10px;padding:10px 14px;margin:14px 0;font-size:13px;color:#A07030"><strong>Your first ' + (pi.short || 'session') + ':</strong><br>' + d.toLocaleDateString('en-AU', { weekday:'long', day:'numeric', month:'long' }) + ' at ' + d.toLocaleTimeString('en-AU', { hour:'numeric', minute:'2-digit', hour12:true }) + '</div>';
+      } catch (e) {}
+    }
+    content =
+      '<div style="font-size:48px;line-height:1;margin-bottom:12px">💛</div>' +
+      '<h2 style="font-family:var(--f-head);font-size:22px;color:var(--magenta);margin-bottom:8px">Welcome, ' + escapeHtml(firstName) + '</h2>' +
+      '<p style="font-size:14px;color:var(--magenta);line-height:1.6">This is your private space with Phoebe — set up just for you.</p>' +
+      sessionLine +
+      '<p style="font-size:13px;color:var(--stone);margin-top:14px">Quick 2-min tour to get you oriented?</p>';
+  }
+  else if (step === 2) {
+    var existing = (client.why || client.suggestedWhy || '').trim();
+    content =
+      '<div style="font-size:40px;line-height:1;margin-bottom:8px">🌟</div>' +
+      '<h2 style="font-family:var(--f-head);font-size:20px;color:var(--magenta);margin-bottom:8px">Set your "why"</h2>' +
+      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">In one sentence — what are you actually doing all this for? You\'ll see it at the top of your hub every visit. Reminds you on the days when it\'s hard.</p>' +
+      '<textarea id="onb-why-input" placeholder="e.g. So I can be home for school pickup and still hit $15k months." style="width:100%;min-height:80px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.5">' + escapeHtml(existing) + '</textarea>' +
+      '<div style="display:flex;gap:6px;margin-top:8px">' +
+        '<button onclick="onbSuggestWhy()" id="onb-suggest-btn" class="btn-sm" style="font-size:11px">✦ Suggest one for me</button>' +
+        '<span id="onb-suggest-status" style="font-size:11px;color:var(--stone);align-self:center"></span>' +
+      '</div>';
+  }
+  else if (step === 3) {
+    var moodButtons = CHECKIN_MOODS.map(function(m) {
+      return '<button onclick="onbPickMood(' + m.score + ')" data-mood="' + m.score + '" class="onb-mood" title="' + m.label + '" style="font-size:32px;background:var(--marshmallow);border:2px solid transparent;border-radius:50%;width:56px;height:56px;cursor:pointer;transition:all 0.15s;line-height:1;padding:0;flex-shrink:0">' + m.emoji + '</button>';
+    }).join('');
+    content =
+      '<div style="font-size:40px;line-height:1;margin-bottom:8px">📊</div>' +
+      '<h2 style="font-family:var(--f-head);font-size:20px;color:var(--magenta);margin-bottom:8px">How are you today?</h2>' +
+      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:18px">Tap how you\'re feeling. We\'ll check in daily — over time you\'ll see your patterns and your streaks.</p>' +
+      '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' + moodButtons + '</div>' +
+      '<div id="onb-mood-feedback" style="margin-top:14px;font-size:12px;color:var(--stone);font-style:italic;min-height:18px"></div>';
+  }
+  else if (step === 4) {
+    var prog4 = (client.programs || []).find(function(p){ return p && p.workbook !== 'none' && p.workbook !== 'inquiry'; }) || {};
+    var pi4 = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog4.program]) || {};
+    var planCount = (prog4.plan || []).reduce(function(s, m){ return s + ((m.tasks || []).length); }, 0);
+    content =
+      '<div style="font-size:40px;line-height:1;margin-bottom:8px">🗺️</div>' +
+      '<h2 style="font-family:var(--f-head);font-size:20px;color:var(--magenta);margin-bottom:8px">Your plan</h2>' +
+      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">' + (pi4.label ? 'You\'re on the <strong>' + escapeHtml(pi4.label) + '</strong>. ' : '') + 'This is the work we\'re doing together.</p>' +
+      (planCount > 0
+        ? '<div style="background:var(--marshmallow);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--magenta);text-align:left">' +
+            '<div style="font-weight:700;margin-bottom:6px">📋 ' + planCount + ' steps mapped out</div>' +
+            '<div style="font-size:12px;color:var(--stone);line-height:1.5">Open the <strong>📚 Programs</strong> tab to see them, tick them off, and watch your progress build.</div>' +
+          '</div>'
+        : '<div style="background:var(--marshmallow);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--magenta);text-align:left;font-style:italic">Phoebe will build your plan with you in your first session.</div>');
+  }
+  else if (step === 5) {
+    content =
+      '<div style="font-size:40px;line-height:1;margin-bottom:8px">❓</div>' +
+      '<h2 style="font-family:var(--f-head);font-size:20px;color:var(--magenta);margin-bottom:8px">Stuck? Confused? Just ask.</h2>' +
+      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">See the <strong>?</strong> floating in the bottom-right of your screen? Tap it for:</p>' +
+      '<div style="text-align:left;font-size:13px;color:var(--magenta);line-height:1.8;background:var(--paper);border:1px solid var(--border-soft);border-radius:10px;padding:12px 16px">' +
+        '<div>📚 Phoebe\'s blog, podcast and resources</div>' +
+        '<div>📅 Book a chat with Phoebe</div>' +
+        '<div>📱 Call or text her</div>' +
+        '<div>💡 Phoebe\'s Knowledge Bank — ask any business question and the AI answers grounded in your profile</div>' +
+        '<div>🙋 "Ask Phoebe to look" button on the Summary tab — flag anything to her directly</div>' +
+      '</div>' +
+      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-top:14px;font-style:italic">She sees what you ask. You\'re not alone in this.</p>';
+  }
+
+  var canBack = step > 1;
+  var lastStep = step >= 5;
+  host.innerHTML =
+    '<div style="background:white;border-radius:20px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;padding:30px 28px;box-shadow:0 10px 40px rgba(0,0,0,0.18);font-family:var(--f-body);text-align:center;position:relative">' +
+      '<button onclick="skipOnboarding()" style="position:absolute;top:12px;right:14px;background:transparent;border:none;font-size:11px;color:var(--stone);cursor:pointer;font-family:var(--f-body);padding:4px 8px">× Skip</button>' +
+      '<div style="display:flex;gap:5px;justify-content:center;margin-bottom:18px">' +
+        [1,2,3,4,5].map(function(n) {
+          var active = n === step;
+          var done = n < step;
+          var bg = active ? 'var(--hot-pink)' : (done ? 'var(--magenta)' : 'var(--border)');
+          return '<div style="width:' + (active ? '24px' : '8px') + ';height:8px;border-radius:99px;background:' + bg + ';transition:all 0.2s"></div>';
+        }).join('') +
+      '</div>' +
+      content +
+      '<div style="display:flex;gap:8px;justify-content:center;margin-top:22px;flex-wrap:wrap">' +
+        (canBack ? '<button onclick="onbBack()" class="btn-sm" style="font-size:13px;padding:10px 18px">← Back</button>' : '') +
+        '<button onclick="onbNext()" id="onb-next-btn" class="btn-sm primary" style="font-size:13px;padding:10px 22px">' +
+          (lastStep ? "Let's go ✨" : (step === 1 ? 'Show me' : 'Next →')) +
+        '</button>' +
+      '</div>' +
+    '</div>';
+  host.style.display = 'flex';
+}
+
+async function onbNext() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var step = window._onboardingStep || 1;
+  // Save step-2 input before advancing
+  if (step === 2) {
+    var input = document.getElementById('onb-why-input');
+    var val = (input && input.value || '').trim();
+    if (val) {
+      client.why = val;
+      try { await persistClient(client); } catch(e) {}
+      if (typeof updateClientHeroWhy === 'function') updateClientHeroWhy(client);
+    }
+  }
+  if (step >= 5) {
+    // Done — persist + close
+    client.onboardingDone = true;
+    client.onboardingDoneAt = new Date().toISOString();
+    try { await persistClient(client); } catch(e) {}
+    var host = document.getElementById('onboarding-flow-host');
+    if (host) host.style.display = 'none';
+    if (typeof fireConfetti === 'function') fireConfetti(80);
+    if (typeof branded !== 'undefined' && branded.toast) branded.toast('🎉 Welcome to your hub!');
+    return;
+  }
+  window._onboardingStep = step + 1;
+  renderOnboardingStep(client);
+}
+
+function onbBack() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var step = window._onboardingStep || 1;
+  if (step <= 1) return;
+  window._onboardingStep = step - 1;
+  renderOnboardingStep(client);
+}
+
+async function skipOnboarding() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  client.onboardingDone = true;
+  client.onboardingDoneAt = new Date().toISOString();
+  client.onboardingSkipped = true;
+  try { await persistClient(client); } catch(e) {}
+  var host = document.getElementById('onboarding-flow-host');
+  if (host) host.style.display = 'none';
+}
+
+async function onbSuggestWhy() {
+  var btn = document.getElementById('onb-suggest-btn');
+  var status = document.getElementById('onb-suggest-status');
+  var input = document.getElementById('onb-why-input');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Drafting…';
+  await suggestClientWhy(currentClientId, { silent: true });
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (input && client && client.suggestedWhy) {
+    input.value = client.suggestedWhy;
+    if (status) status.textContent = '✓ Drafted — edit if you like, or tap Next';
+  } else {
+    if (status) status.textContent = 'Type one — Phoebe will refine it later';
+  }
+  if (btn) btn.disabled = false;
+}
+
+async function onbPickMood(score) {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  document.querySelectorAll('.onb-mood').forEach(function(b) {
+    var active = parseInt(b.dataset.mood, 10) === score;
+    b.style.borderColor = active ? 'var(--hot-pink)' : 'transparent';
+    b.style.background  = active ? '#FFEEF6' : 'var(--marshmallow)';
+    b.style.transform   = active ? 'scale(1.12)' : 'scale(1)';
+  });
+  var fb = document.getElementById('onb-mood-feedback');
+  var moodObj = CHECKIN_MOODS.find(function(m){ return m.score === score; });
+  if (fb && moodObj) fb.textContent = '✓ Noted — feeling ' + moodObj.label.toLowerCase() + '. Tap Next.';
+  // Save the check-in
+  var today = new Date().toISOString().split('T')[0];
+  client.checkIns = (client.checkIns || []).filter(function(c){ return c.date !== today; });
+  client.checkIns.unshift({ date: today, mood: score, note: '', createdAt: new Date().toISOString() });
+  try { await persistClient(client); } catch(e) {}
+  if (typeof updateClientHeroMood === 'function') updateClientHeroMood(client);
 }
 
 // v11210: hook the browser back button into the SPA. Reads history.state
@@ -6871,6 +7411,11 @@ function renderClientProgram(client, prog) {
   var area = document.getElementById('client-content-area');
   var n = prog.notes||{};
   var isLocked = prog.locked;
+  // v11300: program recommendation card — appears when ≤28 days remaining
+  // on the current program (or last 4 weeks of MDC). Sits at the top of
+  // the Programs content area. Uses the program-recommendation block
+  // computed below. Injected into all content paths via {{REC_CARD}}.
+  var recCard = (typeof renderProgramRecommendationCard === 'function') ? renderProgramRecommendationCard(client, prog) : '';
 
   // Progress bar — program-aware. 90-day, Audit, Builder-6M etc all use `lengthDays`,
   // MDC uses its 4×6-week sprint/week structure, Happy Hour shows nothing.
@@ -6940,7 +7485,7 @@ function renderClientProgram(client, prog) {
     var customSectionsHtml = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
     var reflectHtml = isLocked ? '' : '<div class="client-section"><h3>' + firstName + '\'s reflections</h3><textarea id="client-reflect-'+prog.id+'" onchange="saveClientReflection(\''+client.id+'\',\''+prog.id+'\')" style="width:100%;min-height:100px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6" placeholder="What did this session bring up for you? What are you noticing?">'+(prog.clientReflection||'')+'</textarea></div>';
     var clientWinsHtml = clientWinsSection(prog);
-    content = lockNotice + whyPin + clientWinsHtml + planHtml + notesHtml + clientNotesHtml + customSectionsHtml + reflectHtml + fullAchievementsAccordion;
+    content = lockNotice + recCard + whyPin + clientWinsHtml + planHtml + notesHtml + clientNotesHtml + customSectionsHtml + reflectHtml + fullAchievementsAccordion;
     area.innerHTML = content;
     renderPlanGrid(prog.plan||[], prog.taskDone||{}, 'client-plan-grid-'+prog.id, isLocked);
   } else if (prog.workbook==='mdc') {
@@ -7033,7 +7578,7 @@ function renderClientProgram(client, prog) {
       '</div>';
     var clientNotesMdc = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
     var customSectionsMdc = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
-    content = lockNotice + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + customSectionsMdc + fullAchievementsAccordion;
+    content = lockNotice + recCard + whyPin + clientWinsHtmlMdc + sprintFocusHtml + sprintNotesBlock + workbookHtml + checkinHtml + clientNotesMdc + customSectionsMdc + fullAchievementsAccordion;
     area.innerHTML = content;
     // Auto-scroll the active week pill into the centre of the strip so
     // clients always land on the right week without having to scroll.
@@ -7052,11 +7597,11 @@ function renderClientProgram(client, prog) {
       (!hh.assets&&!hh.discussed?'<p style="color:var(--stone);font-size:13px">Your session summary will appear here after your Happy Hour.</p>':'');
     var clientNotesHh = isLocked ? '' : renderClientPerProgramNotes(client, prog, firstName);
     var customSecHh = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
-    content = lockNotice + whyPin + '<div class="client-section"><h3>☀️ Your Happy Hour summary</h3>' + hhBody + '</div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + clientNotesHh + customSecHh + fullAchievementsAccordion;
+    content = lockNotice + recCard + whyPin + '<div class="client-section"><h3>☀️ Your Happy Hour summary</h3>' + hhBody + '</div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + clientNotesHh + customSecHh + fullAchievementsAccordion;
     area.innerHTML = content;
   } else {
     var customSecFallback = isLocked ? '' : renderCustomSectionsBlock(client, prog, 'client');
-    content = lockNotice + whyPin + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + customSecFallback + fullAchievementsAccordion;
+    content = lockNotice + recCard + whyPin + '<div class="client-section"><h3>'+pi.label+'</h3><p style="color:var(--stone);font-size:13px">Your session details will appear here.</p></div>' + (sharedNotesHtml ? '<div class="client-section"><h3>Notes from Phoebe</h3>'+sharedNotesHtml+'</div>' : '') + customSecFallback + fullAchievementsAccordion;
     area.innerHTML = content;
   }
 
@@ -9183,10 +9728,16 @@ function renderTodayOneThing(client) {
   var todayVal = commits[today] || '';
   var done = todayVal && todayVal.indexOf('✓') === 0;
   var displayVal = done ? todayVal.slice(1).trim() : todayVal;
+  // v11300: stats button to open the commits-history modal (matches mood
+   // history pattern). Computes a quick streak count for the badge label.
+  var oneThingStreak = computeOneThingStreak(client);
   return '<div class="today-one-thing' + (done ? ' done' : '') + '" style="margin-top:14px;padding:14px 16px;background:linear-gradient(135deg,#FFFCF6 0%,#FFF5E0 100%);border:2px solid ' + (done ? 'var(--teal)' : 'var(--hot-pink)') + ';border-radius:14px;position:relative;box-shadow:0 2px 8px rgba(236,44,138,0.10)">' +
     '<div style="position:absolute;top:-9px;left:14px;background:' + (done ? 'var(--teal)' : 'var(--hot-pink)') + ';color:white;font-size:9px;font-weight:800;padding:2px 10px;border-radius:99px;text-transform:uppercase;letter-spacing:0.08em">' +
       (done ? '✓ Done today' : '🐔 Today\'s one thing') +
     '</div>' +
+    '<button onclick="openOneThingHistory()" title="See my history" style="position:absolute;top:-2px;right:8px;background:transparent;border:none;font-size:11px;color:var(--magenta);cursor:pointer;font-family:var(--f-body);font-weight:700;padding:4px 10px;display:inline-flex;align-items:center;gap:4px">' +
+      '📊 ' + (oneThingStreak.current > 1 ? oneThingStreak.current + '-day streak' : 'My history') +
+    '</button>' +
     '<div style="display:flex;gap:6px;align-items:center;margin-top:6px">' +
       // v11210: tickbox lives on the LEFT — same interaction shape as the
       // to-dos tab. Tap once → done. Tap again → undo.
@@ -9200,6 +9751,84 @@ function renderTodayOneThing(client) {
     '</div>' +
     (done ? '<div style="font-size:11px;color:var(--teal);margin-top:6px;font-style:italic">Beautiful — that\'s today\'s one thing locked in.</div>' : '<div style="font-size:11px;color:var(--stone);margin-top:6px">Press Enter to save · tick the circle when done</div>') +
     '</div>';
+}
+
+// v11300: streak math for "Today's one thing" — counts consecutive days
+// (ending today or yesterday) that have a commit (regardless of done).
+function computeOneThingStreak(client) {
+  if (!client || !client.dailyCommits) return { current: 0, longest: 0 };
+  var dates = Object.keys(client.dailyCommits).filter(function(k){ return client.dailyCommits[k] && client.dailyCommits[k].trim(); }).sort().reverse();
+  if (!dates.length) return { current: 0, longest: 0 };
+  var today = new Date(); today.setHours(0,0,0,0);
+  var current = 0;
+  var lastDate = null;
+  for (var i = 0; i < dates.length; i++) {
+    var d = new Date(dates[i]); d.setHours(0,0,0,0);
+    if (i === 0) {
+      var diff = Math.floor((today - d) / 86400000);
+      if (diff > 1) return { current: 0, longest: client.oneThingLongest || 0 };
+      current = 1; lastDate = d;
+    } else {
+      var gap = Math.floor((lastDate - d) / 86400000);
+      if (gap === 1) { current++; lastDate = d; } else break;
+    }
+  }
+  return { current: current, longest: Math.max(current, client.oneThingLongest || 0) };
+}
+
+// Modal: shows last 30 days of "Today's one thing" commits as a vertical
+// list with done/pending state. Mirrors the mood history pattern.
+function openOneThingHistory() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var commits = client.dailyCommits || {};
+  var rows = [];
+  var today = new Date(); today.setHours(0,0,0,0);
+  for (var i = 0; i < 30; i++) {
+    var d = new Date(today); d.setDate(d.getDate() - i);
+    var iso = d.toISOString().split('T')[0];
+    var v = commits[iso] || '';
+    var done = v && v.indexOf('✓') === 0;
+    var label = d.toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'short' }) + (i === 0 ? ' · today' : i === 1 ? ' · yesterday' : '');
+    rows.push({ label: label, value: done ? v.slice(1).trim() : v, done: done, hasCommit: !!v });
+  }
+  var totalCommits = rows.filter(function(r){ return r.hasCommit; }).length;
+  var doneCount = rows.filter(function(r){ return r.done; }).length;
+  var streak = computeOneThingStreak(client);
+  var rowsHtml = rows.map(function(r) {
+    var bg = r.done ? '#F0F9F0' : (r.hasCommit ? '#FFFCF6' : '#FAFAF9');
+    var border = r.done ? 'rgba(95,163,168,0.3)' : (r.hasCommit ? 'rgba(232,160,32,0.25)' : 'var(--border-soft)');
+    var icon = r.done ? '✓' : (r.hasCommit ? '🐔' : '·');
+    var iconColor = r.done ? 'var(--teal)' : (r.hasCommit ? 'var(--hot-pink)' : 'var(--stone)');
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:' + bg + ';border:1px solid ' + border + ';border-radius:8px;margin-bottom:4px">' +
+      '<span style="width:18px;text-align:center;font-size:13px;font-weight:700;color:' + iconColor + '">' + icon + '</span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:11px;color:var(--stone);font-weight:600">' + r.label + '</div>' +
+        '<div style="font-size:13px;color:var(--magenta);' + (r.done ? 'text-decoration:line-through;opacity:0.7' : '') + '">' + (r.value ? escapeHtml(r.value) : '<em style="color:var(--stone)">—</em>') + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  var streakLine = streak.current > 0
+    ? '<div style="display:flex;align-items:center;gap:6px;background:#FFFBE8;border:1px solid rgba(232,160,32,0.4);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:700;color:#A07030"><span style="font-size:16px">🔥</span><span>' + streak.current + '-day streak</span>' + (streak.longest > streak.current ? '<span style="color:var(--stone);font-weight:500;margin-left:6px">· longest ' + streak.longest + '</span>' : '') + '</div>'
+    : '<div style="font-size:12px;color:var(--stone);font-style:italic">Set today\'s one thing to start a streak.</div>';
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '🐔';
+  document.getElementById('branded-modal-title').textContent = 'My one-thing history';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+      streakLine +
+      '<div style="font-size:12px;color:var(--stone)">· ' + totalCommits + ' set · ' + doneCount + ' done</div>' +
+    '</div>' +
+    '<div style="max-height:50vh;overflow-y:auto">' + rowsHtml + '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var close = document.createElement('button'); close.className = 'btn-sm primary'; close.textContent = 'Close';
+  close.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(close);
+  host.style.display = 'flex';
 }
 
 async function saveTodayOneThing(value) {
@@ -15284,6 +15913,10 @@ function gatherPulseSinceLastVisit(clientArr, lastSeenIso) {
   // First-ever visit → cap the lookback to 7 days so we don't dump
   // the entire history on Phoebe.
   var since = lastSeenIso ? new Date(lastSeenIso).getTime() : (Date.now() - 7 * 86400000);
+  // v11300: respect Phoebe's notification prefs. Each entry kind below
+  // gates on a specific pref. Defaults are inclusive — so existing
+  // behaviour is preserved if she hasn't visited Settings yet.
+  var prefs = (typeof getCoachNotifPrefs === 'function') ? getCoachNotifPrefs() : {};
   var entries = [];
   function age(ts) {
     if (!ts) return '';
@@ -15331,40 +15964,57 @@ function gatherPulseSinceLastVisit(clientArr, lastSeenIso) {
         }
       });
     });
-    // KBank questions asked
-    (c.kbankChat || []).forEach(function(m) {
-      if (m && m.role === 'user' && m.ts && new Date(m.ts).getTime() > since) {
-        entries.push({
-          client: c, clientId: c.id, ts: m.ts,
-          icon: '💡', label: 'Asked: "' + String(m.content || '').slice(0, 70) + (String(m.content||'').length > 70 ? '…' : '') + '"',
-          when: age(m.ts), kind: 'kbank'
-        });
-      }
-    });
-    // Review requests they flagged on session notes
-    // v11220: skip if reviewSeen is true (Mark-all-seen has been clicked)
-    (c.programs || []).forEach(function(p) {
-      (p.sessionNotes || []).forEach(function(n) {
-        if (n && n.reviewRequested && !n.reviewSeen && n.reviewRequestedAt && new Date(n.reviewRequestedAt).getTime() > since) {
+    // KBank questions asked — gated by askPhoebe pref
+    if (prefs.askPhoebe !== false) {
+      (c.kbankChat || []).forEach(function(m) {
+        if (m && m.role === 'user' && m.ts && new Date(m.ts).getTime() > since) {
           entries.push({
-            client: c, clientId: c.id, ts: n.reviewRequestedAt,
-            icon: '🙋', label: 'Asked you to review: "' + String(n.text || 'a session note').slice(0, 60) + '"',
-            when: age(n.reviewRequestedAt), kind: 'review-request'
+            client: c, clientId: c.id, ts: m.ts,
+            icon: '💡', label: 'Asked: "' + String(m.content || '').slice(0, 70) + (String(m.content||'').length > 70 ? '…' : '') + '"',
+            when: age(m.ts), kind: 'kbank'
           });
         }
       });
-    });
-    // Top-level review requests via the "Ask Phoebe to look" button on Summary
-    // v11220: skip if seen flag set
-    (c.reviewRequests || []).forEach(function(rr) {
-      if (rr && !rr.addressed && !rr.seen && rr.ts && new Date(rr.ts).getTime() > since) {
-        entries.push({
-          client: c, clientId: c.id, ts: rr.ts,
-          icon: '🙋', label: 'Asking for your eyes: "' + String(rr.text || '').slice(0, 80) + (String(rr.text||'').length > 80 ? '…' : '') + '"',
-          when: age(rr.ts), kind: 'review-request'
+    }
+    // Review requests — gated by clientNeedsHelp pref
+    if (prefs.clientNeedsHelp !== false) {
+      (c.programs || []).forEach(function(p) {
+        (p.sessionNotes || []).forEach(function(n) {
+          if (n && n.reviewRequested && !n.reviewSeen && n.reviewRequestedAt && new Date(n.reviewRequestedAt).getTime() > since) {
+            entries.push({
+              client: c, clientId: c.id, ts: n.reviewRequestedAt,
+              icon: '🙋', label: 'Asked you to review: "' + String(n.text || 'a session note').slice(0, 60) + '"',
+              when: age(n.reviewRequestedAt), kind: 'review-request'
+            });
+          }
         });
-      }
-    });
+      });
+      (c.reviewRequests || []).forEach(function(rr) {
+        if (rr && !rr.addressed && !rr.seen && rr.ts && new Date(rr.ts).getTime() > since) {
+          entries.push({
+            client: c, clientId: c.id, ts: rr.ts,
+            icon: '🙋', label: 'Asking for your eyes: "' + String(rr.text || '').slice(0, 80) + (String(rr.text||'').length > 80 ? '…' : '') + '"',
+            when: age(rr.ts), kind: 'review-request'
+          });
+        }
+      });
+    }
+    // Mood check-ins — gated by redMoodOnly. When ON, only red moods (1)
+    // surface. When OFF (i.e. user un-ticked it), no mood logs surface at
+    // all in pulse (they have the mood history per-client anyway).
+    if (prefs.redMoodOnly !== false) {
+      (c.checkIns || []).forEach(function(m) {
+        if (!m || !m.mood || m.mood > 1) return; // only mood=1 (Tough)
+        var ts = m.createdAt || m.date;
+        if (ts && new Date(ts).getTime() > since) {
+          entries.push({
+            client: c, clientId: c.id, ts: ts,
+            icon: '😞', label: 'Checked in feeling tough' + (m.note ? ': "' + String(m.note).slice(0, 60) + '"' : ''),
+            when: age(ts), kind: 'red-mood'
+          });
+        }
+      });
+    }
     // Between-session note (single per client) - we don't have a timestamp
     // for changes here, so skip; covered by the "Suggested check-ins" panel.
     // Today's-one-thing commits
@@ -15381,6 +16031,89 @@ function gatherPulseSinceLastVisit(clientArr, lastSeenIso) {
   // Newest first
   entries.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
   return entries;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// CLIENT HEALTH — auto-update with manual override (v11300)
+// Rules (Elodie's defaults):
+//   🟢 Active     — touched within 7 days
+//   🟡 Check-in   — 7-21 days no contact
+//   🔴 Attention  — 21+ days no contact OR last 3 client-visible tasks unticked
+// "Touched" counts: task ticked, mood log, win logged, session note dated,
+// client portal visit (lastClientVisitAt), or message sent.
+// Manual override: when Phoebe sets health via the dropdown, we stamp
+// healthSetByCoachAt=now. Auto-update only fires on clients whose last
+// manual override is >24h old (or never set), so Phoebe's deliberate
+// status calls don't get overwritten while she's on the page.
+// ═════════════════════════════════════════════════════════════════════
+
+// Manual override — Phoebe picks the dropdown
+async function setClientHealth(clientId, health) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  client.health = health;
+  client.healthSetByCoachAt = new Date().toISOString();
+  await persistClient(client);
+  if (typeof branded !== 'undefined' && branded.toast) {
+    var label = { green: '🟢 On track', amber: '🟡 Check in', red: '🔴 Needs attention' }[health] || health;
+    branded.toast('Health: ' + label);
+  }
+}
+
+// Compute the auto-suggested health for one client.
+function computeClientHealth(client) {
+  if (!client) return 'green';
+  // Find latest "touch" — anything that signals the client is alive
+  var latestTouch = 0;
+  function track(ts) {
+    if (!ts) return;
+    var t = new Date(ts).getTime();
+    if (t > latestTouch) latestTouch = t;
+  }
+  track(client.lastTouched);
+  track(client.lastClientVisitAt);
+  track(client.updatedAt);
+  (client.tasks || []).forEach(function(t) {
+    if (t && t.completedAt) track(t.completedAt);
+  });
+  (client.checkIns || []).forEach(function(c) { track(c.date); track(c.createdAt); });
+  (client.wins || []).forEach(function(w) { track(w.date); track(w.createdAt); });
+  (client.programs || []).forEach(function(p) {
+    track(p.lastTouched);
+    (p.sessionNotes || []).forEach(function(n) { track(n.date); track(n.createdAt); });
+    (p.wins || []).forEach(function(w) { track(w.date); track(w.createdAt); });
+  });
+  var daysSince = latestTouch ? Math.floor((Date.now() - latestTouch) / 86400000) : 999;
+  // Last 3 client-visible tasks unticked test
+  var visibleTasks = (client.tasks || []).filter(function(t){ return t && t.clientVisible && t.text; })
+    .sort(function(a,b){ return (b.dueDate || b.createdAt || '').localeCompare(a.dueDate || a.createdAt || ''); });
+  var lastThree = visibleTasks.slice(0, 3);
+  var lastThreeAllOpen = lastThree.length === 3 && lastThree.every(function(t){ return !t.done; });
+  if (daysSince >= 21 || lastThreeAllOpen) return 'red';
+  if (daysSince >= 7) return 'amber';
+  return 'green';
+}
+
+// Walk every client, compute auto-health, apply it to those whose manual
+// override is stale (>24h) or absent. Persists in batch via the save queue.
+// Idempotent — won't trigger writes if the auto value matches current.
+async function autoUpdateAllClientHealth() {
+  var saves = 0;
+  var nowMs = Date.now();
+  for (var i = 0; i < (clients || []).length; i++) {
+    var c = clients[i];
+    if (!c || c.archived) continue;
+    var manualMs = c.healthSetByCoachAt ? new Date(c.healthSetByCoachAt).getTime() : 0;
+    var manuallyRecent = manualMs && (nowMs - manualMs) < 24 * 60 * 60 * 1000;
+    if (manuallyRecent) continue; // respect Phoebe's recent manual call
+    var auto = computeClientHealth(c);
+    if (c.health !== auto) {
+      c.health = auto;
+      c.healthAutoUpdatedAt = new Date().toISOString();
+      try { await persistClient(c); saves++; } catch (e) { /* save queue picks up */ }
+    }
+  }
+  if (saves > 0) console.log('[health] auto-updated', saves, 'client(s)');
 }
 
 // "Mark all seen" — bumps the lastSeenAt timestamp so the pulse panel goes
@@ -15522,6 +16255,12 @@ function renderHome() {
   console.log('[Home] render called');
   var el = document.getElementById('home-content');
   if (!el) return;
+  // v11300: auto-update client health (cheap, idempotent — only saves if
+  // the computed value differs from current AND no manual override in
+  // the last 24h). Runs in background so home renders immediately.
+  if (typeof autoUpdateAllClientHealth === 'function') {
+    setTimeout(function(){ autoUpdateAllClientHealth().catch(function(){}); }, 200);
+  }
 
   // Archived clients are never surfaced on the home page — they're done for now
   var clientArr = (Array.isArray(clients) ? clients : []).filter(function(c){ return c && !c.archived; });
@@ -15745,6 +16484,63 @@ function renderHome() {
       html += '</div>';
     }
   } catch (e) { console.warn('[Home] review queue render', e); }
+
+  // v11300: "Today's commitments" strip — surfaces every active client's
+  // Today's One Thing for THIS day. Tap a row → opens that client. A
+  // morning at-a-glance: who committed to what, who's done, who hasn't
+  // set anything yet. Replaces the need for Phoebe to click into each
+  // client to see the daily commit.
+  try {
+    var todayIso = new Date().toISOString().split('T')[0];
+    var commits = [];
+    clientArr.forEach(function(c) {
+      if (!c) return;
+      var raw = c.dailyCommits && c.dailyCommits[todayIso];
+      var hasActiveProgram = (c.programs || []).some(function(p) { return p && !p.locked && p.status !== 'complete'; });
+      if (!hasActiveProgram) return;
+      if (raw) {
+        var done = raw.indexOf('✓') === 0;
+        commits.push({ client: c, text: done ? raw.slice(1).trim() : raw, done: done, has: true });
+      } else {
+        commits.push({ client: c, text: '', done: false, has: false });
+      }
+    });
+    // Sort: clients who SET a commit first (done last), then "not set" at the bottom
+    commits.sort(function(a, b) {
+      if (a.has !== b.has) return a.has ? -1 : 1;
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      return (a.client.name || '').localeCompare(b.client.name || '');
+    });
+    var withCommit = commits.filter(function(c){ return c.has; });
+    var doneN = withCommit.filter(function(c){ return c.done; }).length;
+    if (withCommit.length > 0) {
+      html += '<div style="background:linear-gradient(135deg,#FFFCF6 0%,#FFF5E0 100%);border:1.5px solid rgba(232,160,32,0.35);border-radius:14px;padding:14px 18px;margin-bottom:14px">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+      html += '<div style="display:flex;align-items:center;gap:8px">';
+      html += '<div style="font-size:18px">🐔</div>';
+      html += '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700">Today\'s commitments · ' + withCommit.length + ' set · ' + doneN + ' done</div>';
+      html += '</div>';
+      html += '</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:4px">';
+      commits.slice(0, 12).forEach(function(it) {
+        var initials = (it.client.name || '?').split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
+        var pillBg = it.done ? '#F0F9F0' : (it.has ? 'white' : 'transparent');
+        var pillBorder = it.done ? 'rgba(95,163,168,0.3)' : (it.has ? 'var(--border-soft)' : 'transparent');
+        html += '<div onclick="openClient(\'' + it.client.id + '\')" style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:' + pillBg + ';border:1px solid ' + pillBorder + ';border-radius:8px;cursor:pointer;transition:transform 0.1s,border-color 0.15s" onmouseover="this.style.borderColor=\'var(--hot-pink)\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.borderColor=\'' + pillBorder + '\';this.style.transform=\'\'">';
+        html += '<div style="width:26px;height:26px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--magenta);flex-shrink:0">' + initials + '</div>';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="font-size:12px;color:var(--magenta);font-weight:600">' + escapeHtml(it.client.name || 'Client') + '</div>';
+        html += '<div style="font-size:12px;color:var(--magenta);' + (it.done ? 'text-decoration:line-through;opacity:0.6' : (!it.has ? 'color:var(--stone);font-style:italic' : '')) + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (it.has ? escapeHtml(it.text) : 'Not set yet') + '</div>';
+        html += '</div>';
+        if (it.done) html += '<span style="font-size:11px;font-weight:700;color:var(--teal);background:var(--mist);padding:3px 9px;border-radius:99px;flex-shrink:0">✓ Done</span>';
+        else if (it.has) html += '<span style="font-size:11px;color:var(--stone);flex-shrink:0">In progress</span>';
+        html += '</div>';
+      });
+      if (commits.length > 12) html += '<div style="font-size:11px;color:var(--stone);margin-top:4px;text-align:center">+' + (commits.length - 12) + ' more</div>';
+      html += '</div>';
+      html += '</div>';
+    }
+  } catch (e) { console.warn('[Home] T1T strip', e); }
 
   // Quick actions FIRST so the most-used moves are right where the eye lands.
   // v11210: explicit font-family on every button — Elodie's review §5
