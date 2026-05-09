@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11300 — feature batch: client health auto-updates (green/amber/red rules) with manual override · coach notification prefs (categorical + channel) · Today's One Thing client history modal + streak · Today's One Thing strip on coach home · 5-step onboarding flow (welcome → why → mood → plan → ask) · AI program recommendation card (last 4 weeks) + recommendable products in coach Settings">
+<meta name="hmh-build" content="v11310 — coach client profile redesign: 2-column header card · status+health moved into header · 4 primary actions + 'More' dropdown · clickable stat cards · program tabs deduped · inner tabs wrap on desktop · brighter visibility badges">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -227,25 +227,32 @@
         </div>
       </div>
 
-      <!-- CLIENT DETAIL -->
+      <!-- CLIENT DETAIL — v11310: restructured client card -->
       <div class="page" id="page-client-detail">
         <div style="margin-bottom:16px">
           <button class="btn-sm" onclick="showPage('clients')" style="margin-bottom:16px">← Back to clients</button>
-          <div class="detail-header">
-            <div class="detail-avatar-lg" id="detail-avatar">PB</div>
-            <div class="detail-info">
-              <h2 id="detail-name">Client Name</h2>
-              <div class="d-biz" id="detail-biz"></div>
-              <div id="detail-contact" style="margin-top:4px;font-size:13px;color:var(--stone);display:flex;flex-wrap:wrap;gap:14px;align-items:center"></div>
-              <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap" id="detail-prog-label"></div>
+          <!-- v11310: client overview card. Left = identity (avatar/name/biz/contact/program).
+               Right = controls (status/health dropdowns + action buttons). -->
+          <div class="detail-header detail-header-v2">
+            <div class="detail-header-left">
+              <div class="detail-avatar-lg" id="detail-avatar">PB</div>
+              <div class="detail-info">
+                <h2 id="detail-name">Client Name</h2>
+                <div class="d-biz" id="detail-biz"></div>
+                <div id="detail-contact" style="margin-top:6px;font-size:13px;color:var(--stone);display:flex;flex-wrap:wrap;gap:14px;align-items:center"></div>
+                <!-- Program badge + lock toggle for the active program -->
+                <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap" id="detail-prog-label"></div>
+              </div>
             </div>
-            <div class="detail-actions">
-              <!-- Primary CTA — fastest path to "what does the client see right now?".
-                   Phoebe asked for this prominently. Opens in a new tab so her own
-                   coach session stays untouched. -->
-              <button class="btn-sm primary" onclick="openClientPortalAsClient(currentClientId)" title="Open this client's hub in a new tab to see exactly what they see right now">👁 Open as client</button>
-              <button class="btn-sm" onclick="switchTab('message')">📧 Message</button>
-              <button class="btn-sm" onclick="copyClientLink()" title="Copy a shareable link to this client's portal">🔗 Copy link</button>
+            <div class="detail-header-right">
+              <!-- Status + Health dropdowns (moved here from the action toolbar in v11310) -->
+              <div class="detail-card-meta" id="detail-status-health"></div>
+              <!-- Three primary client-overview actions -->
+              <div class="detail-card-actions">
+                <button class="btn-sm primary" onclick="openClientPortalAsClient(currentClientId)" title="Open this client's hub in a new tab to see exactly what they see right now">👁 Open as client</button>
+                <button class="btn-sm" onclick="switchTab('message')">📧 Message</button>
+                <button class="btn-sm" onclick="copyClientLink()" title="Copy a shareable link to this client's portal">🔗 Copy link</button>
+              </div>
             </div>
           </div>
           <div class="client-link-bar">
@@ -259,7 +266,7 @@
           <div style="margin-bottom:12px" id="social-panel"></div>
           <!-- Status strip — where we're at + what's outstanding for this client -->
           <div id="client-status-strip"></div>
-          <!-- Client quick actions -->
+          <!-- Client quick actions (4 primary + More dropdown) -->
           <div id="client-actions-panel"></div>
           <!-- Program tabs within this client -->
           <div class="prog-tabs-row" id="detail-prog-tabs"></div>
@@ -5331,21 +5338,50 @@ function openClient(id) {
 function buildClientProgramTabs(client) {
   var container = document.getElementById('detail-prog-tabs');
   var progs = (client.programs || []).filter(function(p) { return p.workbook !== 'none' && p.workbook !== 'inquiry'; });
-  container.innerHTML = progs.map(function(p, i) {
+  // v11310: dedupe by program-key + sessionDate. If a client has duplicate
+  // entries (e.g. two "90day" programs from a Calendly re-sync), only show
+  // the first one as a primary tab; tag a "(N)" indicator. Elodie's brief
+  // §5: "90-Day appearing twice — deduplicate". Genuinely-distinct programs
+  // (different sessionDate) still get their own tab with the date so they're
+  // clearly separate.
+  var groups = {};
+  progs.forEach(function(p) {
+    var key = p.program + '::' + (p.sessionDate || '');
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(p);
+  });
+  var displayProgs = [];
+  var hasDupes = false;
+  Object.keys(groups).forEach(function(k) {
+    var arr = groups[k];
+    if (arr.length > 1) hasDupes = true;
+    var primary = arr[0];
+    primary._dupeCount = arr.length;
+    primary._dupeIds = arr.map(function(p){ return p.id; });
+    displayProgs.push(primary);
+  });
+  container.innerHTML = displayProgs.map(function(p, i) {
     var pi = PROGRAMS[p.program] || {};
-    // Format: "MDC · Apr 2026" not "90-Day1 May 2026"
     var d = p.sessionDate ? new Date(p.sessionDate) : null;
     var dateStr = d ? d.toLocaleDateString('en-AU', {month:'short',year:'numeric'}) : '';
-    var tabLabel = (pi.short || p.program);
+    // Use the FULL label (not the short) so "Coaching" doesn't collide with
+    // "Coaching" pill below — Elodie's brief §5: "Coaching as both a tab
+    // and a pill — consolidate so each program appears once".
+    var tabLabel = (pi.short || pi.label || p.program);
     var cid = client.id.replace(/'/g, "\\'");
     var pid = p.id.replace(/'/g, "\\'");
+    var dupeBadge = (p._dupeCount > 1)
+      ? '<span class="prog-tab-dupe" title="' + p._dupeCount + ' copies of this program — open the ⋯ More menu → Merge with duplicate to clean up">⚠ ×' + p._dupeCount + '</span>'
+      : '';
     return '<div class="prog-tab-btn" id="ptab-' + p.id + '" onclick="openProgramById(\'' + cid + '\',\'' + pid + '\')">' +
       '<span class="prog-tab-icon">' + (pi.icon||'📌') + '</span>' +
-      '<span class="prog-tab-label">' + tabLabel + '</span>' +
+      '<span class="prog-tab-label">' + escapeHtml(tabLabel) + '</span>' +
       '<span class="prog-tab-date">' + (p.locked ? '🔒 ' : '') + dateStr + '</span>' +
+      dupeBadge +
       '</div>';
   }).join('') +
   '<div class="prog-tab-btn prog-tab-add" onclick="openAddProgram(\'' + client.id.replace(/\'/g, "\\\\'") + '\')" title="Add another program for this client">+ Add</div>';
+  if (hasDupes) console.log('[programTabs] duplicate programs detected for', client.name, '— see ⚠ badge on tabs');
 }
 
 // Safer lookup that avoids closures-in-strings issues
@@ -5366,9 +5402,19 @@ function openProgram(client, progId) {
   if (tab) tab.classList.add('active');
 
   var pi = PROGRAMS[prog.program] || {};
-  document.getElementById('detail-prog-label').innerHTML = '<span class="prog-badge ' + (pi.color||'prog-stone') + '">' + pi.label + ' ' + (prog.sessionDate ? '· ' + new Date(prog.sessionDate).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}) : '') + '</span>' +
-    (prog.locked ? '<button class="btn-sm" onclick="toggleLock(\'' + client.id + '\',\'' + progId + '\')" style="margin-left:8px">🔒 Locked</button>' :
-                   '<button class="btn-sm" onclick="toggleLock(\'' + client.id + '\',\'' + progId + '\')" style="margin-left:8px">Lock program</button>');
+  // v11310: program-active indicator in the header card (left side). Smaller
+  // pill, label-only with date, plus the lock toggle. Distinct from the
+  // tab row above (which is a switcher) so they don't read as duplicates.
+  // Elodie's brief §5: "consolidate so each program appears once, clearly
+  // labelled with its date/cohort".
+  document.getElementById('detail-prog-label').innerHTML =
+    '<span class="prog-badge ' + (pi.color||'prog-stone') + '" style="display:inline-flex;align-items:center;gap:6px">' +
+      '<span style="font-size:13px">' + (pi.icon || '📌') + '</span>' +
+      '<span>' + escapeHtml(pi.label || prog.program) + (prog.sessionDate ? ' · ' + new Date(prog.sessionDate).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}) : '') + '</span>' +
+    '</span>' +
+    (prog.locked
+      ? '<button class="btn-sm" onclick="toggleLock(\'' + client.id + '\',\'' + progId + '\')" style="font-size:11px;padding:4px 10px">🔒 Locked</button>'
+      : '<button class="btn-sm" onclick="toggleLock(\'' + client.id + '\',\'' + progId + '\')" style="font-size:11px;padding:4px 10px">Lock</button>');
 
   // Build tabs based on workbook type
   buildProgramTabs(client, prog);
@@ -12892,44 +12938,98 @@ function renderSocialPanel(client) {
 // ============================================================
 // CLIENT ACTIONS PANEL — quick action buttons
 // ============================================================
+// v11310: Status + Health dropdowns — moved into the client-overview card
+// (top right). Renders into #detail-status-health.
+function renderDetailStatusHealth(client) {
+  var host = document.getElementById('detail-status-health');
+  if (!host || !client) return;
+  var cid = client.id;
+  host.innerHTML =
+    '<select aria-label="Status" onchange="setClientStatus(\''+cid+'\',this.value)" class="meta-select" title="Active = currently coaching · Nurture = checked-in occasionally · Complete = program finished">' +
+      ['active','nurture','complete'].map(function(s) {
+        var lbl = { active:'💛 Active', nurture:'🌱 Nurture', complete:'✓ Complete' }[s];
+        return '<option value="'+s+'"'+((client.status||'active')===s?' selected':'')+'>'+lbl+'</option>';
+      }).join('') +
+    '</select>' +
+    '<select aria-label="Health" onchange="setClientHealth(\''+cid+'\',this.value)" class="meta-select" title="Auto-updates from activity. Manual choice sticks for 24h.">' +
+      ['green','amber','red'].map(function(h) {
+        return '<option value="'+h+'"'+(client.health===h?' selected':'')+'>'+{green:'🟢 On track',amber:'🟡 Check in',red:'🔴 Needs attention'}[h]+'</option>';
+      }).join('') +
+    '</select>';
+}
+
+// v11310: slim 4-button primary action bar + "More" dropdown. Per Elodie's
+// brief: 4 most-used actions visible (Session note · Tasks · Zoom · Message);
+// everything else lives in the More menu, grouped.
 function renderClientActions(client, prog) {
   var el = document.getElementById('client-actions-panel');
   if (!el || !client || !prog) return;
+  // Render status/health in the new header location (idempotent — re-runs
+  // are fine, just rewrites the dropdowns)
+  if (typeof renderDetailStatusHealth === 'function') renderDetailStatusHealth(client);
   var cid = client.id;
   var pid = prog.id;
-  el.innerHTML =
-    '<div style="display:flex;flex-wrap:wrap;gap:8px;padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:12px">' +
-    '<button class="btn-sm primary" onclick="switchTab(\'tools\')">🛠 Tools</button>' +
-    '<button class="btn-sm" onclick="switchTab(\'session-notes\')">📝 Session note</button>' +
+  // Primary 4 (always visible)
+  var primaryHtml =
+    '<button class="btn-sm primary" onclick="switchTab(\'session-notes\')">📝 Session note</button>' +
     '<button class="btn-sm" onclick="switchTab(\'tasks\')">✅ Tasks</button>' +
-    '<button class="btn-sm" onclick="switchTab(\'wins\')">🏆 Log win</button>' +
-    '<button class="btn-sm" onclick="openShareWinModal(\''+cid+'\')" title="Quick celebration post — visible on the client\'s wins feed">🎉 Share win</button>' +
-    '<button class="btn-sm" onclick="openAwardBadgeModal(\''+cid+'\')" title="Award a manual or custom badge to celebrate a moment">🎖 Award badge</button>' +
-    '<button class="btn-sm" onclick="switchTab(\'message\')">📧 Message</button>' +
-    '<button class="btn-sm" onclick="openClientPortalAsClient(\''+cid+'\')" title="Open the client\'s hub in a new tab — see what they see">👁 View as client</button>' +
-    '<button class="btn-sm" onclick="resendWelcomeEmail(\''+cid+'\')" title="Send the welcome email — useful if it was skipped or they say they didn\'t get it">💌 Send welcome</button>' +
-    '<button class="btn-sm" onclick="sendCredentialsEmail(\''+cid+'\')" title="Re-send their portal link + access code — for when they\'ve forgotten">🔑 Send code</button>' +
-    '<button class="btn-sm" onclick="openMergeClientModal(\''+cid+'\')" title="Merge this client with a duplicate record">🔀 Merge</button>' +
-    '<button class="btn-sm" onclick="switchTab(\'intake\')">📋 Intake</button>' +
-    // v11210: Zoom button — when none exists, opens the create modal which
-    // now offers an auto-invite step (Elodie's review §10: "Rename Zoom to
-    // Create Zoom. Should generate a Zoom meeting link and send it
-    // automatically to the client via email or in-platform message").
     (prog.zoomJoin
-      ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm primary" title="Join the Zoom meeting">🎬 Join Zoom</a>'
-      : '<button class="btn-sm" onclick="openCreateClientZoom(\''+cid+'\',\''+pid+'\')" title="Create a Zoom meeting from a Phoebe-branded template — auto-invites the client">🎬 + Create Zoom</button>') +
-    '<div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-    '<span style="font-size:11px;color:var(--stone)">Status:</span>' +
-    '<select onchange="setClientStatus(\''+cid+'\',this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:4px 10px;font-family:var(--f-body);font-size:12px;cursor:pointer;background:var(--paper)">' +
-    ['active','nurture','complete'].map(function(s) {
-      var lbl = { active:'💛 Active', nurture:'🌱 Nurture', complete:'✓ Complete' }[s];
-      return '<option value="'+s+'"'+((client.status||'active')===s?' selected':'')+'>'+lbl+'</option>';
-    }).join('') + '</select>' +
-    '<span style="font-size:11px;color:var(--stone)">Health:</span>' +
-    '<select onchange="setClientHealth(\''+cid+'\',this.value)" style="border:1.5px solid var(--border);border-radius:99px;padding:4px 10px;font-family:var(--f-body);font-size:12px;cursor:pointer;background:var(--paper)">' +
-    ['green','amber','red'].map(function(h) {
-      return '<option value="'+h+'"'+(client.health===h?' selected':'')+'>'+{green:'🟢 On track',amber:'🟡 Check in',red:'🔴 Needs attention'}[h]+'</option>';
-    }).join('') + '</select></div></div>';
+      ? '<a href="'+prog.zoomJoin+'" target="_blank" class="btn-sm" title="Join the Zoom meeting">🎬 Join Zoom</a>'
+      : '<button class="btn-sm" onclick="openCreateClientZoom(\''+cid+'\',\''+pid+'\')" title="Create a Zoom meeting from a Phoebe-branded template — auto-invites the client">🎬 Create Zoom</button>') +
+    '<button class="btn-sm" onclick="switchTab(\'message\')">📧 Message</button>';
+
+  // More dropdown — grouped: Client actions, Admin
+  var moreHtml =
+    '<div class="more-actions-dropdown">' +
+      '<button class="btn-sm more-actions-trigger" onclick="toggleMoreActions(event)">⋯ More actions</button>' +
+      '<div class="more-actions-menu" id="more-actions-menu" style="display:none">' +
+        '<div class="more-actions-group-label">Client actions</div>' +
+        '<button class="more-actions-item" onclick="switchTab(\'wins\');closeMoreActions()">🏆 Log a win</button>' +
+        '<button class="more-actions-item" onclick="openShareWinModal(\''+cid+'\');closeMoreActions()">🎉 Share a win</button>' +
+        '<button class="more-actions-item" onclick="openAwardBadgeModal(\''+cid+'\');closeMoreActions()">🎖 Award badge</button>' +
+        '<button class="more-actions-item" onclick="switchTab(\'tools\');closeMoreActions()">🛠 Tools panel</button>' +
+        '<div class="more-actions-divider"></div>' +
+        '<div class="more-actions-group-label">Admin</div>' +
+        '<button class="more-actions-item" onclick="switchTab(\'intake\');closeMoreActions()">📋 Intake</button>' +
+        '<button class="more-actions-item" onclick="resendWelcomeEmail(\''+cid+'\');closeMoreActions()">💌 Send welcome email</button>' +
+        '<button class="more-actions-item" onclick="sendCredentialsEmail(\''+cid+'\');closeMoreActions()">🔑 Send access code</button>' +
+        '<button class="more-actions-item" onclick="openMergeClientModal(\''+cid+'\');closeMoreActions()">🔀 Merge with duplicate</button>' +
+        '<button class="more-actions-item" onclick="openEditClient(\''+cid+'\');closeMoreActions()">✏️ Edit client details</button>' +
+      '</div>' +
+    '</div>';
+
+  el.innerHTML =
+    '<div class="client-primary-actions" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:12px">' +
+      primaryHtml +
+      '<div style="margin-left:auto">' + moreHtml + '</div>' +
+    '</div>';
+}
+
+// More dropdown helpers. Click outside to close.
+function toggleMoreActions(ev) {
+  if (ev) ev.stopPropagation();
+  var menu = document.getElementById('more-actions-menu');
+  if (!menu) return;
+  var open = menu.style.display === 'block';
+  menu.style.display = open ? 'none' : 'block';
+  if (!open) {
+    setTimeout(function() {
+      document.addEventListener('click', _moreActionsOutsideClick, { once: true });
+    }, 50);
+  }
+}
+function closeMoreActions() {
+  var menu = document.getElementById('more-actions-menu');
+  if (menu) menu.style.display = 'none';
+}
+function _moreActionsOutsideClick(e) {
+  var menu = document.getElementById('more-actions-menu');
+  if (!menu) return;
+  if (menu.contains(e.target)) {
+    document.addEventListener('click', _moreActionsOutsideClick, { once: true });
+    return;
+  }
+  menu.style.display = 'none';
 }
 
 async function setClientStatus(clientId, status) {
@@ -16224,17 +16324,23 @@ function renderClientStatusStrip(client) {
     if (d >= 7) daysQuiet = d + ' days quiet';
   }
 
-  function pill(label, value, color) {
-    return '<div style="background:white;border:1px solid var(--border);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:2px">' +
-      '<div style="font-size:18px;font-weight:700;color:' + (color || 'var(--magenta)') + ';line-height:1">' + value + '</div>' +
-      '<div style="font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:600">' + label + '</div>' +
+  // v11310: clickable stat cards — each navigates to the relevant tab.
+  // Bigger numbers, clearer labels, hover lift, focus ring for keyboard.
+  function pill(label, value, color, onclickAttr) {
+    var oc = onclickAttr ? ' onclick="' + onclickAttr + '"' : '';
+    var cursor = onclickAttr ? 'cursor:pointer;' : '';
+    return '<div role="button" tabindex="0"' + oc + ' onmouseover="this.style.borderColor=\'var(--hot-pink)\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\'" style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:10px 16px;display:flex;flex-direction:column;gap:2px;min-width:88px;transition:all 0.15s;' + cursor + '">' +
+      '<div style="font-family:var(--f-head);font-size:24px;font-weight:800;color:' + (color || 'var(--magenta)') + ';line-height:1">' + value + '</div>' +
+      '<div style="font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:700">' + label + '</div>' +
       '</div>';
   }
+  var openTasksLen = (client.tasks || []).filter(function(t){ return t && t.text && !t.done; }).length;
   var leftPills = [
-    weeksWith ? pill('Coaching', weeksWith) : '',
-    pill('Sessions', sessionsCount, 'var(--teal)'),
-    pill('Plan done', planPct + '%', planPct >= 50 ? 'var(--teal)' : '#E8A020'),
-    pill('Wins', winsCount, 'var(--hot-pink)'),
+    weeksWith ? pill('Coaching', weeksWith, 'var(--magenta)', "switchTab('intake')") : '',
+    pill('Sessions', sessionsCount, 'var(--teal)', "switchTab('session-notes')"),
+    pill('Plan done', planPct + '%', planPct >= 50 ? 'var(--teal)' : '#E8A020', "switchTab('plan')"),
+    pill('Wins', winsCount, 'var(--hot-pink)', "switchTab('wins')"),
+    pill('Open tasks', openTasksLen, openTasksLen > 0 ? '#E8A020' : 'var(--stone)', "switchTab('tasks')"),
   ].filter(Boolean).join('');
 
   var rightItems = [];

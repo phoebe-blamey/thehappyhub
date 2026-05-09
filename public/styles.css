@@ -332,13 +332,121 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .prog-hmj    { background: #F5F0FF; color: #6040A0; }
 
 /* ========== CLIENT DETAIL ========== */
+/* v11310: client overview card — left side (identity) + right side (controls).
+   Replaces the old single-row flex layout. */
 .detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.detail-header-v2 {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  margin-bottom: 16px;
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 2px 8px rgba(229,4,139,0.04);
+  flex-wrap: wrap;
+}
+.detail-header-v2 .detail-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 280px;
+}
+.detail-header-v2 .detail-header-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  flex-shrink: 0;
+  min-width: 200px;
+}
+.detail-card-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.detail-card-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+@media (max-width: 720px) {
+  .detail-header-v2 { padding: 14px 16px; gap: 12px; }
+  .detail-header-v2 .detail-header-right { align-items: stretch; min-width: 0; width: 100%; }
+  .detail-card-meta, .detail-card-actions { justify-content: flex-start; }
+}
 .detail-avatar-lg { width: 56px; height: 56px; border-radius: 99px; background: var(--bubblegum);
   display: flex; align-items: center; justify-content: center; font-family: var(--f-head);
   font-size: 20px; font-weight: 700; color: var(--magenta); flex-shrink: 0; }
 .detail-info h2 { font-family: var(--f-head); font-size: 22px; color: var(--magenta); }
 .detail-info .d-biz { font-size: 13px; color: var(--stone); }
 .detail-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* v11310: status + health dropdowns in the new header card */
+.meta-select {
+  border: 1.5px solid var(--border);
+  border-radius: 99px;
+  padding: 5px 12px;
+  font-family: var(--f-body);
+  font-size: 12px;
+  color: var(--magenta);
+  background: var(--paper);
+  cursor: pointer;
+  font-weight: 600;
+  transition: border-color 0.15s;
+}
+.meta-select:hover { border-color: var(--hot-pink); }
+
+/* v11310: "More actions" dropdown — anchors to the trigger button. */
+.more-actions-dropdown { position: relative; }
+.more-actions-trigger { font-weight: 600; }
+.more-actions-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 240px;
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(229,4,139,0.15);
+  padding: 6px;
+  z-index: 50;
+}
+.more-actions-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--stone);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 10px 4px;
+}
+.more-actions-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: var(--f-body);
+  font-size: 13px;
+  color: var(--magenta);
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.12s;
+}
+.more-actions-item:hover { background: var(--marshmallow); }
+.more-actions-divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 6px 4px;
+}
 .btn-sm { padding: 7px 16px; border-radius: 99px; font-family: var(--f-body); font-size: 12px;
   font-weight: 500; border: 1.5px solid var(--border); cursor: pointer; background: white;
   color: var(--magenta); transition: all 0.15s; }
@@ -350,8 +458,23 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .client-link-url { flex: 1; font-family: monospace; color: var(--teal); font-size: 11px; word-break: break-all; }
 
 /* ========== TABS ========== */
-.tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 24px; overflow-x: auto; }
-.tab-btn { padding: 10px 18px; font-family: var(--f-body); font-size: 13px; font-weight: 500;
+/* v11310: tabs now wrap to a second row on desktop instead of horizontally
+   scrolling. Phoebe shouldn't have to swipe sideways on a 1920px screen
+   to see the Settings tab (Elodie's brief §6: "Inner tabs cut off and
+   require horizontal scroll on desktop"). Mobile keeps overflow-x:auto
+   so the row remains compact + swipeable on phones. */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+@media (max-width: 720px) {
+  /* Phones: keep the horizontal scroll behaviour */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; }
+}
+.tab-btn { padding: 10px 14px; font-family: var(--f-body); font-size: 13px; font-weight: 500;
   border: none; background: none; cursor: pointer; color: var(--stone); border-bottom: 2px solid transparent;
   margin-bottom: -2px; white-space: nowrap; transition: color 0.15s; display: flex; align-items: center; gap: 6px; }
 .tab-btn:hover { color: var(--magenta); }
@@ -365,11 +488,28 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .vis-bar span { font-weight: 600; }
 .vis-co { background: var(--marshmallow); color: var(--magenta); border: 1px solid rgba(201,38,107,0.2); }
 .vis-cf { background: var(--mist); color: var(--teal); border: 1px solid rgba(95,163,168,0.25); }
-.tab-tag { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  padding: 2px 7px; border-radius: 10px; }
-.tag-co { background: var(--marshmallow); color: var(--magenta); }
-.tag-cf { background: var(--mist); color: var(--teal); }
-.tag-sh { background: var(--mist); color: var(--teal); }
+/* v11310: tab visibility badges — bumped from 9px → 10px, brighter colours,
+   stronger borders so Phoebe always sees what's coach-only vs shareable
+   vs client-facing (Elodie's brief §7). */
+.tab-tag { font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 99px; line-height: 1; border: 1px solid; }
+.tag-co { background: rgba(229,4,139,0.10); color: var(--magenta); border-color: rgba(229,4,139,0.35); }
+.tag-cf { background: rgba(95,163,168,0.14); color: var(--teal); border-color: rgba(95,163,168,0.4); }
+.tag-sh { background: rgba(232,160,32,0.14); color: #A07030; border-color: rgba(232,160,32,0.45); }
+
+/* v11310: program-tab dupe warning indicator */
+.prog-tab-dupe {
+  background: rgba(229,4,139,0.12);
+  color: var(--magenta);
+  border: 1px solid rgba(229,4,139,0.4);
+  border-radius: 99px;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin-left: 4px;
+  text-transform: uppercase;
+}
 
 /* Badge unlock toast animation */
 @keyframes badgeSlideIn {
