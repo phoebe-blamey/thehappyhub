@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11560 — session-completeness audit: PIN guards added to the three previously-unauthenticated admin endpoints (merge-clients, sync-calendly-all, sync-zoom-all). Anonymous POSTs to these now return 401 instead of executing destructive operations against live data. Frontend Run Full Sync flow updated to send the PIN in all three calls. Override path via COACH_ADMIN_PIN env var stays consistent with seed-clients / delete-client / calendly-setup-webhook. v11410 → v11550 audit clean: brace + paren + bracket balance perfect (4588/17275/1666), all 18 recent functions defined and called correctly, no orphan references, no TODO/FIXME left behind, Settings + Community tabs structurally sound.">
+<meta name="hmh-build" content="v11570 — phone fixes from Phoebe's review: (1) topbar action cluster stays HORIZONTAL on mobile (was vertical stack pushing hero into a 120px wall). Topbar height locked at 50px on phone, smaller buttons, tighter padding, date hidden on smallest screens. (2) AI-refusal detector — Sonnet's meta-talk ('I want to stop you here', 'this brief has a structural problem', etc.) no longer gets saved as a research brief or 'why' suggestion. Render-time defensive filter on suggestedWhy means existing bad data on test clients self-cleans. (3) Removed the 'My answers moved' transition banner from client Settings — only relevant for ~weeks after v11210, just clutter now. (4) Removed Switch Theme from client More menu (will rebuild after light/dark surfaces are properly tested). (5) Fixed 'In -1 days' next-session pill — timezone bug in computeNextSession was using UTC date while session dates are local; AEST clients saw past sessions as 'next'. Plus defensive same-day filter in updateClientNextSessionPill. (6) More-sheet 'My achievements' + 'Help &amp; resources' actions rewired through dedicated handlers (goToClientAchievements / goToClientHelp) — previous broad-selector approach often missed the right element.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -1222,15 +1222,21 @@
           <div style="font-family:var(--f-head);font-size:16px;color:var(--magenta);font-weight:700">More</div>
           <button onclick="closeClientMoreSheet()" style="background:none;border:none;font-size:22px;color:var(--stone);cursor:pointer;padding:0 4px;line-height:1">×</button>
         </div>
-        <a href="javascript:void(0)" onclick="closeClientMoreSheet();var d=document.querySelector('details.client-section');if(d){d.open=true;d.scrollIntoView({behavior:'smooth'});}" class="more-sheet-row">
+        <!-- v11570: switched to a dedicated handler that:
+              1) closes the More sheet
+              2) routes to Summary (where achievements live)
+              3) finds the achievements accordion by its summary text + opens it
+              4) scrolls to it after a short paint delay -->
+        <a href="javascript:void(0)" onclick="goToClientAchievements()" class="more-sheet-row">
           <span class="more-sheet-icon">🏆</span><span>My achievements</span>
         </a>
-        <a href="javascript:void(0)" onclick="closeClientMoreSheet();toggleHelpPanel()" class="more-sheet-row">
+        <a href="javascript:void(0)" onclick="goToClientHelp()" class="more-sheet-row">
           <span class="more-sheet-icon">❓</span><span>Help &amp; resources</span>
         </a>
-        <a href="javascript:void(0)" onclick="closeClientMoreSheet();toggleTheme()" class="more-sheet-row">
-          <span class="more-sheet-icon">🌙</span><span>Switch theme</span>
-        </a>
+        <!-- v11570: theme toggle removed from this menu — light/dark mode
+             needs a fresh build before going to clients (broken for some
+             surfaces). Toggle stays available for Phoebe via the topbar
+             🌙/☀️ button on the coach view. -->
         <a href="javascript:void(0)" onclick="closeClientMoreSheet();logout()" class="more-sheet-row" style="color:#C0392B">
           <span class="more-sheet-icon">↪</span><span>Sign out</span>
         </a>
@@ -4238,6 +4244,30 @@ function phoebeVoice(prompt) {
   return PHOEBE_VOICE + '\n\n────────────\n\n' + (prompt || '');
 }
 
+// v11570: AI-refusal detector. When Sonnet bails out (test-client flag,
+// insufficient data, ethical hesitation) it returns prose like "I want
+// to stop you here" or "I can't write this authentically as Phoebe" or
+// "this would be fabricating". Those refusals must NOT be saved as
+// content — the calling site should show a friendly empty state instead.
+// Returns true iff the text looks like a refusal/meta-commentary.
+function _looksLikeAIRefusal(text) {
+  if (!text || typeof text !== 'string') return false;
+  // Refusals are typically short (<800 chars) AND start with first-person
+  // meta-talk. Real briefs are 2000+ chars and start with a markdown
+  // heading. So if the text has ANY markdown heading, it's a real brief.
+  if (/^|\n\s*##\s/m.test(text) && text.length > 1500) return false;
+  var first = text.slice(0, 600).toLowerCase();
+  var refusalSignals = [
+    /^i want to stop you/, /^i can'?t (write|generate|draft|fabricate)/,
+    /^i'?m not (able|going)/, /^i won'?t (write|generate|draft)/,
+    /this brief has a structural problem/, /writing.*would be fabricating/,
+    /\bcan'?t write (this|it) authentically/, /\bas an ai\b/,
+    /\bthis (request|setup|scenario) is (problematic|concerning)/,
+    /^the issue:/, /^let me explain why/,
+  ];
+  return refusalSignals.some(function(rx) { return rx.test(first); });
+}
+
 var BADGE_TIER_COLORS = {
   bronze:   { bg:'#FFE8D8', border:'#C99A6B', text:'#A06438' },
   silver:   { bg:'#E8E8F0', border:'#9CA3AF', text:'#4B5563' },
@@ -4790,6 +4820,44 @@ function renderEarnedBadgeRibbon(client) {
 // HELP PANEL — floating "?" button bottom-right opens a drawer
 // with Resources / Email Phoebe / Book a chat / Quick help FAQ
 // ============================================================
+// v11570: dedicated handlers for the client More sheet entries — the
+// previous inline onclick used `document.querySelector('details.client-section')`
+// which matched the FIRST collapsible section it found, not always the
+// achievements one. Now both routes give a guaranteed result.
+function goToClientAchievements() {
+  if (typeof closeClientMoreSheet === 'function') closeClientMoreSheet();
+  // Make sure Summary is the active tab, since that's where achievements live
+  if (typeof switchClientTab === 'function') switchClientTab('summary');
+  // Wait for the summary render to paint, then find + open the achievements accordion
+  setTimeout(function() {
+    var details = document.querySelectorAll('details.client-section');
+    var target = null;
+    for (var i = 0; i < details.length; i++) {
+      var sum = details[i].querySelector('summary');
+      if (sum && /achievements|milestones/i.test(sum.textContent || '')) {
+        target = details[i];
+        break;
+      }
+    }
+    if (target) {
+      target.open = true;
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (typeof branded !== 'undefined' && branded.toast) {
+      branded.toast('No achievements yet — they appear as you complete program milestones');
+    }
+  }, 250);
+}
+
+function goToClientHelp() {
+  if (typeof closeClientMoreSheet === 'function') closeClientMoreSheet();
+  // Tiny delay so the More sheet's slide-out finishes before the help
+  // panel slides in (otherwise both are mid-animation and the help panel
+  // looks like it didn't open).
+  setTimeout(function() {
+    if (typeof toggleHelpPanel === 'function') toggleHelpPanel();
+  }, 220);
+}
+
 function toggleHelpPanel() {
   var p = document.getElementById('help-panel');
   if (!p) return;
@@ -8481,7 +8549,15 @@ function renderClientSummary(client) {
   // already generated a suggestion, surface that softly so the card is
   // never blank.
   var suggestionHint = '';
-  if (!whatWeWant && client.suggestedWhy) {
+  // v11570: filter stale AI refusals out of the suggestion render. Older
+  // versions could save the AI's refusal-text as suggestedWhy; we now
+  // detect those at render-time so the existing bad data self-cleans
+  // without requiring a manual edit (and the suggest function stops
+  // saving them going forward — see suggestClientWhy).
+  var suggestionLooksClean = client.suggestedWhy
+    && (typeof _looksLikeAIRefusal !== 'function' || !_looksLikeAIRefusal(client.suggestedWhy))
+    && client.suggestedWhy.split(/\s+/).length <= 30;
+  if (!whatWeWant && suggestionLooksClean) {
     suggestionHint = '<div class="story-card-body" style="font-size:12px;color:var(--stone);margin-top:6px;line-height:1.5">' +
       '<em>Suggested: "' + escapeHtml(client.suggestedWhy) + '"</em><br>' +
       '<button class="story-card-edit" onclick="useSuggestedWhy()" style="margin-top:6px">Use this →</button>' +
@@ -8829,7 +8905,13 @@ function renderInlineWisdom() {
 // surfaced as "next session today" with no real booking behind it).
 function computeNextSession(client) {
   var today = new Date(); today.setHours(0,0,0,0);
-  var todayStr = today.toISOString().split('T')[0];
+  // v11570: bug fix — toISOString() converts to UTC, which in Australian
+  // time zones (UTC+10/+11) pushes "today" back a day. Result: a session
+  // dated yesterday-local would still pass the `< todayStr` filter and
+  // render as "In -1 days". Use local date components instead.
+  var todayStr = today.getFullYear() + '-' +
+    String(today.getMonth() + 1).padStart(2, '0') + '-' +
+    String(today.getDate()).padStart(2, '0');
   function isConfirmed(p) {
     if (p.sessionDateConfirmed === true) return true;
     if (p.sessionDateConfirmed === false) return false;
@@ -8895,6 +8977,14 @@ function updateClientNextSessionPill(client) {
   if (!pill || !text) return;
   var next = computeNextSession(client);
   if (!next) { pill.style.display = 'none'; return; }
+  // v11570: belt-and-braces — if computeNextSession ever returns a past
+  // date (timezone glitch, stale data), hide the pill. Past sessions
+  // shouldn't trigger a "next session" countdown.
+  var nowLocalStr = (function() {
+    var n = new Date();
+    return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0');
+  })();
+  if (next.date && next.date < nowLocalStr) { pill.style.display = 'none'; return; }
   text.textContent = next.label + ' · ' + next.dateStr;
   // v11210: tooltip now reflects the ACTUAL date+time of the session, so
   // hovering over the pill confirms "yes, this is the right session".
@@ -10052,6 +10142,17 @@ async function suggestClientWhy(targetClientId, opts) {
       if (!silent) branded.alert('Couldn\'t draft one — try writing it yourself and Phoebe will help refine it.');
       return;
     }
+    // v11570: don't save AI refusals / meta-commentary as a "why" suggestion
+    if (typeof _looksLikeAIRefusal === 'function' && _looksLikeAIRefusal(text)) {
+      if (!silent) branded.alert('AI couldn\'t draft a clean suggestion this time. Try writing it yourself, or run again after the first session when there\'s more context.');
+      return;
+    }
+    // A real "why" should be ≤ ~25 words. If the AI returned a paragraph,
+    // it's almost certainly meta-commentary too.
+    if (text.split(/\s+/).length > 30) {
+      if (!silent) branded.alert('AI returned more than a one-sentence why — usually a sign there isn\'t enough context yet. Nothing was saved.');
+      return;
+    }
     client.suggestedWhy = text;
     await persistClient(client);
     // Re-render so the suggestion appears in the hero AND on Summary
@@ -10874,13 +10975,11 @@ function renderClientSettings(client) {
       clientSettingsField('Instagram', 'instagram', s.instagram, 'text', 'instagram.com/yourhandle') +
       clientSettingsField('Facebook', 'facebook', s.facebook, 'text', 'facebook.com/yourpage') +
       clientSettingsField('TikTok', 'tiktok', s.tiktok, 'text', 'tiktok.com/@yourhandle') +
-    '</div>' +
-    // v11210: small pointer to where "My answers" now lives (was here pre-v11210).
-    '<div style="background:var(--marshmallow);border:1px dashed var(--border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--stone);margin-top:8px;display:flex;align-items:center;gap:10px">' +
-      '<span style="font-size:16px">📋</span>' +
-      '<span><strong>"My answers" moved.</strong> It now lives on your Summary tab — easier to find and update.</span>' +
-      '<button onclick="switchClientTab(\'summary\')" class="btn-sm primary" style="font-size:11px;padding:5px 12px;margin-left:auto">Open Summary →</button>' +
     '</div>';
+  // v11570: removed the "My answers moved" announcement banner — it was
+  // only useful for the few-week transition period after v11210 when
+  // the answers shifted location. Anyone joining now has only ever seen
+  // them on Summary, so the message is just clutter.
 }
 
 // Read-write client view of the universal intake. Question text is
@@ -11099,7 +11198,15 @@ function updateClientHeroWhy(client) {
   // Empty state — surface AI suggestion if we have one, otherwise prompt
   // the client (and seed a suggestion silently in the background so by
   // their next visit it'll be there).
+  // v11570: same defensive filter as renderClientSummary — refusals or
+  // multi-paragraph AI output never make it to the hero.
   var suggested = (client.suggestedWhy || '').trim();
+  if (suggested && (
+    (typeof _looksLikeAIRefusal === 'function' && _looksLikeAIRefusal(suggested)) ||
+    suggested.split(/\s+/).length > 30
+  )) {
+    suggested = '';
+  }
   if (suggested) {
     textEl.innerHTML =
       '<span style="opacity:0.85">"' + escapeHtml(suggested) + '"</span> ' +
@@ -15380,6 +15487,20 @@ async function runDeepDive(clientId) {
     if (!text) text = 'Error generating deep dive.';
     // Hide the shimmer once we have a result
     if (typeof showDeepDiveSkeleton === 'function') showDeepDiveSkeleton(false);
+
+    // v11570: detect AI refusals / meta-commentary before saving. When the
+    // AI bails (test-client flagged, insufficient data, ethical concern,
+    // etc.) it returns prose like "I want to stop you here" or "I can't
+    // write this authentically" — that's not a brief, it shouldn't be
+    // saved as one. Leave the existing brief intact and bail with a
+    // friendly explanation.
+    if (_looksLikeAIRefusal(text)) {
+      branded.alert(
+        'The AI couldn\'t draft a brief this run — usually because there\'s not enough public info to work with yet, or the client is flagged as a test record.\n\nNothing was saved. Try again after adding their website, LinkedIn, or some first-session notes.',
+        { title: 'Couldn\'t draft a brief', okLabel: 'OK' }
+      );
+      return;
+    }
 
     // ── Extract structured profile data from the trailing JSON block ───
     // The prompt asks the AI to append `​```json … ​```` at the end with any

@@ -195,18 +195,44 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 .topbar-tap { transition: transform 0.1s ease, opacity 0.15s ease; }
 .topbar-tap:active { transform: scale(0.92); opacity: 0.85; }
 @media (max-width: 600px) {
+  /* v11570: keep the action cluster horizontal on phone (was vertical
+     stack which made the topbar enormous and pushed everything down).
+     Right-aligned + smaller buttons. Sign Out becomes a compact pill. */
   .topbar-actions {
-    flex-direction: column;
+    flex-direction: row;
     gap: 6px;
-    align-items: stretch;
-    padding: 6px 0;
+    align-items: center;
+    margin-left: auto;
   }
   .topbar-actions .btn-logout {
     width: auto;
     padding: 4px 10px;
     font-size: 10px;
   }
-  .topbar { min-height: 54px; height: auto !important; padding: 6px 12px !important; flex-wrap: wrap; gap: 8px; }
+  .topbar-action-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
+  }
+  /* Topbar height stays compact — was wrapping into ~120px on phone */
+  .topbar {
+    min-height: 50px;
+    height: 50px !important;
+    padding: 6px 10px !important;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow: hidden;
+  }
+  /* The "Saturday 9 May" date text + MY HUB pill compete for room — hide
+     the date on the smallest phones, the next-session pill carries it */
+  .topbar-date {
+    display: none !important;
+  }
+  /* MY HUB pill stays but slimmer */
+  .topbar-badge {
+    font-size: 10px !important;
+    padding: 3px 9px !important;
+  }
 }
 
 /* v11210: lock horizontal scroll. Page-wide guard against any errant
