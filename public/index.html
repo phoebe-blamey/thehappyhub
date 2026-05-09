@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11700 — major batch from Phoebe's overnight notes. (1) Zoom-orphan placeholders (March Round / Unknown contact / Personal Meeting Room / etc) NO LONGER appear as people on the All Clients grid — they show as a single banner pointing to the Settings → Unmatched Zoom Recordings review queue. (2) Today's-date timezone bug — was using UTC date string, which pushes 'today' back a day in AEST so yesterday's tasks looked like today's. Fixed via _localTodayStr() helper used in renderHome / renderTaskSheet / renderClientTodosTab / renderTodayOneThing. (3) Light-grey text darkened from #ACA495 to #7A7368 for readability on cream paper background. (4) Most-recent enrolled program is now the default tab (active first, then completed; newest within each group). (5) MDC shoutout composer simplified — pick a member from a numbered menu first, then type the shoutout — no awkward {name} placeholder. Picked member id is stored on the feed entry. (6) Plan Builder renamed to Program Builder + import scaffolds for Coaching / 90-Day / MDC / Audit / Happy Hour so Phoebe can tailor existing program shapes rather than starting from scratch. (7) Help drawer 'Tell Phoebe' section — Request a feature / Report an issue / Suggest something — posts to activity log. (8) Universal intake auto-collapses when all questions are answered (shows summary pill); auto-fill bug repaired (was missing re-render after drafts saved, so Phoebe saw 'Drafting…' toast then nothing changed — now re-renders the intake content). (9) Notifications bell back on the topbar with unread badge + new openNotificationsCenter panel that groups repetitive entries by client+kind so you don't see 'James · note shared' 17 times. (10) Community tab now shows WhatsApp group link + next session date + 🎬 Zoom join button at the top — no hunting for links. Plus all v11620 regressions confirmed clean.">
+<meta name="hmh-build" content="v11710 — second wave of Phoebe's overnight notes (the remaining 11). (1) Home page reorder: Today's commitments now sit between Recent Wins (above) and Recent Activity (below) — was at the very top, not where her eye lands. (2) Check-ins parity: every auto-suggested check-in row now has ✓ Done / 📦 Snooze 14d / × Dismiss-forever buttons matching regular tasks. (3) Ask Claude promoted from buried Tools tab to a top-level pink action button next to Message client — Claude has the full client profile so she can ask anything. (4) Client portal task archive + delete with notify-Phoebe — clients can hide a task they've outgrown OR delete it, and either action posts to Phoebe's activity log so she's looped in. (5) Achievements accordion remembers open/closed state across program switches via localStorage — was reverting on every render. (6) Revenue dashboard: clients-to-flag panel between business stats and the rest — surfaces red health, 30+ days no win, 21+ days silent. (7) Message tab quick-link toolbar: one-click Open Zoom + Paste Zoom + Open portal + Paste portal link, with cohort Zoom fallback for MDC clients. (8) Coach socials pre-fill confirmed working in openEditClient (website, LinkedIn, Instagram, Facebook, TikTok, WhatsApp). (9) AI brief is now an iterative conversation: each Phoebe reply is logged on the program record and threaded into the next regeneration prompt so Claude has the full back-and-forth, not just the latest reply. Reply textarea clears after each round. 'Conversation so far' history visible in the panel. (10) Program Builder full save flow: after AI generates the plan, three new actions — 💾 Save as program template (parses headings into customSections and saves to coach settings, applicable to any client), 📋 Copy, ✎ Edit in textarea. (11) Notifications centre: groups of 3+ updates get an ✦ Digest button that calls Haiku to summarise the thread in Phoebe's voice (one short sentence).">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -263,10 +263,13 @@
             <div class="detail-header-right">
               <!-- Status + Health dropdowns (moved here from the action toolbar in v11310) -->
               <div class="detail-card-meta" id="detail-status-health"></div>
-              <!-- Three primary client-overview actions -->
+              <!-- Primary client-overview actions. v11710: Ask Claude
+                   promoted from the Tools tab to a top-level action so
+                   Phoebe can ask about a client without two extra clicks. -->
               <div class="detail-card-actions">
                 <button class="btn-sm primary" onclick="openClientPortalAsClient(currentClientId)" title="Open this client's hub in a new tab to see exactly what they see right now">👁 Open as client</button>
-                <button class="btn-sm" onclick="switchTab('message')">📧 Message</button>
+                <button class="btn-sm" onclick="switchTab('message')" title="Send an email or SMS">📧 Message</button>
+                <button class="btn-sm" onclick="openAskClaudeModal(currentClientId)" title="Ask Claude anything about this client — Claude has their full profile" style="background:linear-gradient(135deg,#FFE0EE,#FDEFF5);border-color:rgba(229,4,139,0.4);color:var(--hot-pink);font-weight:700">✦ Ask Claude</button>
                 <button class="btn-sm" onclick="copyClientLink()" title="Copy a shareable link to this client's portal">🔗 Copy link</button>
               </div>
             </div>
@@ -500,6 +503,10 @@
         <!-- MESSAGE CLIENT TAB -->
         <div class="tab-pane" id="tab-message">
           <div class="vis-bar vis-cf"><span>📤 Sends directly to client</span> — email or SMS</div>
+          <!-- v11710: quick-link toolbar — one-click access to the client's
+               next Zoom + portal link, plus quick-paste of either into the
+               message body. Saves 2-3 clicks every time Phoebe writes. -->
+          <div id="msg-quick-links" style="margin-bottom:14px;padding:10px 12px;background:var(--marshmallow);border:1px dashed var(--border);border-radius:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11px"></div>
           <div style="max-width:560px">
             <div class="form-group" style="margin-bottom:12px">
               <label>Send via</label>
@@ -4199,6 +4206,9 @@ async function openNotificationsCenter() {
     if (!grouped[key]) grouped[key] = { items: [], kind: n.kind, clientId: n.ref && n.ref.clientId };
     grouped[key].items.push(n);
   });
+  // v11710: stash the grouped map so the AI-digest button can retrieve a
+  // group's items by key without parsing them out of the DOM.
+  window._notifGroupedCache = grouped;
   var html = '';
   if (!all.length) {
     html = '<div style="font-size:13px;color:var(--stone);font-style:italic;text-align:center;padding:20px">No notifications. Quiet for now ✨</div>';
@@ -4210,6 +4220,16 @@ async function openNotificationsCenter() {
       var unreadInGroup = g.items.filter(function(n){ return window._notifSeen.indexOf(n.id) < 0; }).length;
       var when = '';
       try { when = new Date(newest.ts).toLocaleString('en-AU', { weekday:'short', hour:'numeric', minute:'2-digit', hour12:true }); } catch (e) {}
+      // v11710: AI digest button only shows when the group has 3+ items.
+      // Below that the original "+N more" line is enough — Haiku call would
+      // be wasteful. Use a stable per-group digest id so the button can
+      // populate that slot in place.
+      var digestSlotId = 'notif-digest-' + key.replace(/[^a-z0-9]/gi, '-');
+      var digestBtnHtml = '';
+      if (g.items.length >= 3) {
+        var keyEsc = key.replace(/'/g, "\\'");
+        digestBtnHtml = '<button class="btn-sm" onclick="event.stopPropagation();aiDigestNotifGroup(\'' + keyEsc + '\',\'' + digestSlotId + '\')" style="font-size:10px;padding:3px 8px;margin-top:4px" title="AI summarise this thread">✦ Digest ' + g.items.length + ' updates</button>';
+      }
       html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-soft);background:' + (unreadInGroup ? 'rgba(229,4,139,0.04)' : 'white') + ';cursor:' + (newest.ref && newest.ref.clientId ? 'pointer' : 'default') + '"' +
         (newest.ref && newest.ref.clientId ? ' onclick="openClient(\'' + newest.ref.clientId + '\');closeNotificationsCenter();markNotifSeen(\'' + newest.id + '\')"' : '') + '>' +
         '<div style="font-size:18px">' + (g.kind === 'booking' ? '📅' : g.kind === 'feedback' ? '💬' : '🔔') + '</div>' +
@@ -4218,6 +4238,8 @@ async function openNotificationsCenter() {
           (newest.body ? '<div style="font-size:11px;color:var(--stone);margin-top:1px">' + escapeHtml(newest.body) + '</div>' : '') +
           (older > 0 ? '<div style="font-size:10px;color:var(--hot-pink);margin-top:2px;font-weight:600">+ ' + older + ' more update' + (older === 1 ? '' : 's') + ' for this thread</div>' : '') +
           '<div style="font-size:10px;color:var(--stone);margin-top:2px">' + when + '</div>' +
+          digestBtnHtml +
+          '<div id="' + digestSlotId + '"></div>' +
         '</div>' +
       '</div>';
     });
@@ -4265,6 +4287,68 @@ function markNotifSeen(notifId) {
   if (window._notifSeen.indexOf(notifId) < 0) window._notifSeen.push(notifId);
   _persistNotifSeen();
   refreshNotifBadge();
+}
+
+// v11710: AI-summarise a notification group. Called from the "✦ Digest"
+// button on any group with 3+ entries. Sends the group's titles + bodies
+// to Haiku and asks for a 1-2 sentence "what's actually happening" line
+// in Phoebe's voice. Drops the result into the slot and persists it on
+// the group so re-opening the panel keeps the digest visible.
+async function aiDigestNotifGroup(groupKey, slotId) {
+  var slot = document.getElementById(slotId);
+  if (!slot) return;
+  var grouped = window._notifGroupedCache || {};
+  var g = grouped[groupKey];
+  if (!g || !g.items || !g.items.length) return;
+  // Use cached digest if we already produced one this session
+  if (g._aiDigest) {
+    slot.innerHTML = '<div style="margin-top:6px;padding:6px 8px;background:linear-gradient(135deg,#FFE0EE,#FDEFF5);border-radius:6px;font-size:11px;color:#5A2D08;line-height:1.45;border:1px solid rgba(229,4,139,0.2)"><span style="font-weight:700;color:var(--hot-pink)">✦ Digest:</span> ' + escapeHtml(g._aiDigest) + '</div>';
+    return;
+  }
+  slot.innerHTML = '<div style="margin-top:6px;font-size:11px;color:var(--stone);font-style:italic">Summarising…</div>';
+  var lines = g.items.map(function(n) {
+    var when = '';
+    try { when = new Date(n.ts).toLocaleString('en-AU', { day:'numeric', month:'short', hour:'numeric', minute:'2-digit' }); } catch (e) {}
+    return '- [' + when + '] ' + (n.title || '') + (n.body ? ' — ' + n.body : '');
+  }).join('\n');
+  var clientId = g.clientId || '';
+  var clientLabel = '';
+  if (clientId && typeof clients !== 'undefined') {
+    var c = clients.find(function(x){ return x.id === clientId; });
+    if (c) clientLabel = c.name || '';
+  }
+  var promptBody =
+    'These are ' + g.items.length + ' notifications for Phoebe' + (clientLabel ? ' about ' + clientLabel : '') + ', kind: ' + g.kind + '.\n\n' +
+    lines + '\n\n' +
+    'Write ONE short sentence (max 25 words) summarising what\'s actually happening for Phoebe — pattern, frequency, or single biggest signal. No preamble, no "Here\'s a summary…", just the sentence in your voice.';
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 120,
+        messages: [{ role: 'user', content: phoebeVoice(promptBody) }],
+      }),
+    });
+    if (!resp.ok) throw new Error('AI returned ' + resp.status);
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) {
+      data.content.forEach(function(b) { if (b && b.type === 'text' && b.text) text += b.text; });
+    }
+    text = (text || '').trim().replace(/^["']|["']$/g, '');
+    if (typeof _looksLikeAIRefusal === 'function' && _looksLikeAIRefusal(text)) {
+      slot.innerHTML = '<div style="margin-top:6px;font-size:11px;color:var(--stone);font-style:italic">Couldn\'t summarise — the thread is too thin to digest.</div>';
+      return;
+    }
+    if (!text) throw new Error('Empty response');
+    g._aiDigest = text;
+    slot.innerHTML = '<div style="margin-top:6px;padding:6px 8px;background:linear-gradient(135deg,#FFE0EE,#FDEFF5);border-radius:6px;font-size:11px;color:#5A2D08;line-height:1.45;border:1px solid rgba(229,4,139,0.2)"><span style="font-weight:700;color:var(--hot-pink)">✦ Digest:</span> ' + escapeHtml(text) + '</div>';
+  } catch (err) {
+    console.warn('[aiDigestNotifGroup]', err);
+    slot.innerHTML = '<div style="margin-top:6px;font-size:11px;color:#A05010;font-style:italic">Couldn\'t summarise just now (' + (err && err.message || 'unknown') + ').</div>';
+  }
 }
 
 // Fetches a single client from the server and inserts it into the in-memory
@@ -5592,7 +5676,11 @@ function switchTab(id) {
     bcTab.textContent = labels[id] || id;
   }
   // v11410: refresh template picker when message tab opens
-  if (id === 'message' && typeof refreshMessageTemplatePicker === 'function') refreshMessageTemplatePicker();
+  if (id === 'message') {
+    if (typeof refreshMessageTemplatePicker === 'function') refreshMessageTemplatePicker();
+    // v11710: quick-link toolbar — Zoom + portal one-click + paste
+    if (typeof renderMessageQuickLinks === 'function') renderMessageQuickLinks();
+  }
   // Lazy-render the per-client settings panel only when its tab is opened
   if (id === 'client-settings' && typeof renderPerClientSettingsTab === 'function') {
     var c = clients.find(function(c){ return c.id === currentClientId; });
@@ -7350,8 +7438,132 @@ async function runPlanBuilder() {
     while(true){var r=await reader.read();if(r.done)break;buffer+=decoder.decode(r.value,{stream:true});var lines=buffer.split('\n');buffer=lines.pop();
     for(var l of lines){if(l.startsWith('data: ')){try{var p=JSON.parse(l.slice(6));if(p.type==='content_block_delta'&&p.delta?.text)output.textContent+=p.delta.text;}catch(e){}}}}
     output.classList.remove('streaming');
+    // v11710: post-build action bar — save the AI plan as a reusable
+    // program template, OR copy/edit it. Was missing before; the output
+    // was ephemeral and Phoebe had to retype to apply elsewhere.
+    if (output.textContent && output.textContent.trim()) {
+      var actionsId = 'plan-actions';
+      var existingActions = document.getElementById(actionsId);
+      if (existingActions) existingActions.remove();
+      var actions = document.createElement('div');
+      actions.id = actionsId;
+      actions.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)';
+      actions.innerHTML =
+        '<button class="btn-sm primary" onclick="savePlanAsProgramTemplate()" title="Save this plan as a reusable program type — applies to any client like Coaching/MDC/Audit do">💾 Save as program template</button>' +
+        '<button class="btn-sm" onclick="copyPlanToClipboard()" title="Copy the AI plan as plain text">📋 Copy</button>' +
+        '<button class="btn-sm" onclick="editPlanInTextarea()" title="Drop the AI plan back into the textarea so you can tailor it further">✎ Edit in textarea</button>';
+      output.parentElement.insertBefore(actions, output.nextSibling);
+    }
   } catch(e){output.textContent='Error: '+e.message;output.classList.remove('streaming');}
-  btn.disabled=false;btn.innerHTML='<span>✦</span> Build 90-day plan';
+  btn.disabled=false;btn.innerHTML='<span>✦</span> Build program';
+}
+
+// v11710: save the Program Builder's AI output as a reusable program
+// template (a customProgramType in coach settings). Each MONTH/SECTION
+// becomes a default custom-section so when the type is later applied
+// to a client, the program tab opens with that scaffold pre-populated.
+async function savePlanAsProgramTemplate() {
+  var output = document.getElementById('plan-output');
+  var planText = output ? (output.textContent || '').trim() : '';
+  if (!planText) { branded.alert('No plan to save — build one first.'); return; }
+  var nameSeed = (document.getElementById('p-name') || {}).value || '';
+  var label = await branded.prompt(
+    'What\'s this template called? (e.g. "1:1 Mentoring · 90-day", "Group VIP Day")',
+    nameSeed.trim() || '',
+    'Program label',
+    { title: 'Save as program template', okLabel: 'Next' }
+  );
+  if (!label || !label.trim()) return;
+  var icon = await branded.prompt(
+    'Pick a single emoji for this template — shown on every tab and badge.',
+    '🌱',
+    'Single emoji',
+    { title: 'Icon', okLabel: 'Next' }
+  );
+  var lengthRaw = await branded.prompt(
+    'How long is this program in days? Blank = ongoing.',
+    '90',
+    'e.g. 30, 60, 90',
+    { title: 'Length', okLabel: 'Save template' }
+  );
+  var lengthDays = (lengthRaw && Number(lengthRaw)) ? Number(lengthRaw) : null;
+  // Parse the plan into sections — heading lines (## or ALL CAPS or
+  // "MONTH N —", "WEEK N —") become section titles, everything until
+  // the next heading is the section body. Falls back to a single
+  // "Plan" section if no headings detected.
+  var lines = planText.split(/\r?\n/);
+  var sections = [];
+  var current = null;
+  function isHeading(line) {
+    var t = line.trim();
+    if (!t) return false;
+    if (/^#{1,6}\s/.test(t)) return true;
+    if (/^(MONTH|WEEK|SPRINT|PHASE|DAY)\s+[\dIVX-]+/i.test(t)) return true;
+    if (/^(KEY FOCUS|QUICK WIN|COACHING NOTE|FOCUS AREAS|NEXT STEPS)/i.test(t)) return true;
+    return false;
+  }
+  function cleanHeading(line) {
+    return line.trim().replace(/^#{1,6}\s*/, '').replace(/[—–-]+\s*$/, '').trim();
+  }
+  lines.forEach(function(line) {
+    if (isHeading(line)) {
+      if (current) sections.push(current);
+      current = { id: 'sec-' + Date.now() + '-' + sections.length + '-' + Math.random().toString(36).slice(2,6), title: cleanHeading(line), body: '' };
+    } else if (current) {
+      current.body += (current.body ? '\n' : '') + line;
+    } else {
+      current = { id: 'sec-' + Date.now() + '-0-' + Math.random().toString(36).slice(2,6), title: 'Plan', body: line };
+    }
+  });
+  if (current) sections.push(current);
+  sections.forEach(function(s) { s.body = (s.body || '').trim(); });
+  sections = sections.filter(function(s) { return s.title || s.body; });
+
+  var newType = {
+    id: 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    label: label.trim(),
+    short: label.trim().split(' ').slice(0, 2).join(' ').slice(0, 16),
+    icon: (icon || '📌').trim(),
+    color: 'prog-stone',
+    lengthDays: lengthDays,
+    defaultSections: sections,
+    builtFromPlanBuilder: true,
+    originalPlanText: planText,
+    createdAt: new Date().toISOString(),
+  };
+  window._coachSettings = window._coachSettings || {};
+  window._coachSettings.customProgramTypes = window._coachSettings.customProgramTypes || [];
+  window._coachSettings.customProgramTypes.push(newType);
+  if (typeof flushCoachSettings === 'function') {
+    try { await flushCoachSettings(); } catch(e) {}
+  }
+  if (typeof applyCustomProgramTypes === 'function') applyCustomProgramTypes();
+  if (typeof renderCustomProgramTypesList === 'function') renderCustomProgramTypesList();
+  branded.success('Saved "' + newType.label + '" as a program template — apply it to any client via Add Program.');
+}
+
+function copyPlanToClipboard() {
+  var output = document.getElementById('plan-output');
+  var text = output ? (output.textContent || '').trim() : '';
+  if (!text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      if (typeof branded !== 'undefined' && branded.toast) branded.toast('Copied');
+    }, function() {
+      if (typeof branded !== 'undefined' && branded.toast) branded.toast('Copy failed', 'warn');
+    });
+  }
+}
+
+function editPlanInTextarea() {
+  var output = document.getElementById('plan-output');
+  var text = output ? (output.textContent || '').trim() : '';
+  if (!text) return;
+  var ta = document.getElementById('p-notes');
+  if (!ta) return;
+  ta.value = text;
+  ta.focus();
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('Plan dropped into the textarea — tailor + rebuild');
 }
 
 // ========== WEBHOOK SIMULATOR ==========
@@ -8455,9 +8667,15 @@ function renderClientProgram(client, prog) {
 
   // Full achievements grid (with locked badges) — bottom of page in a collapsed
   // accordion so the screen feels lighter on first load.
+  // v11710: persist accordion open state across program switches. The
+  // accordion is part of every program's render path, so each switch
+  // was rebuilding it from scratch — making it feel like badges
+  // "reload" / collapse. Now restores from localStorage on render.
   var fullAchievementsRaw = (typeof renderBadgesSection === 'function') ? renderBadgesSection(client) : '';
+  var achOpen = '';
+  try { if (localStorage.getItem('hmh_achievements_open') === '1') achOpen = ' open'; } catch (e) {}
   var fullAchievementsAccordion = fullAchievementsRaw
-    ? '<details class="client-section" style="background:linear-gradient(135deg,#FFFDFA,#FDEFF5);border-color:#F5D5E3"><summary style="cursor:pointer;list-style:none;font-family:var(--f-head);font-size:16px;color:var(--magenta);font-weight:700">🏆 All my achievements & milestones</summary>' +
+    ? '<details class="client-section" style="background:linear-gradient(135deg,#FFFDFA,#FDEFF5);border-color:#F5D5E3"' + achOpen + ' ontoggle="try{localStorage.setItem(\'hmh_achievements_open\',this.open?\'1\':\'0\')}catch(e){}"><summary style="cursor:pointer;list-style:none;font-family:var(--f-head);font-size:16px;color:var(--magenta);font-weight:700">🏆 All my achievements & milestones</summary>' +
         fullAchievementsRaw.replace('<div style="margin-top:24px">','<div style="margin-top:14px">') +
       '</details>'
     : '';
@@ -11099,7 +11317,58 @@ function clientTaskRow(t, clientId, urgency) {
       (dateLabel ? '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + dateLabel + '</div>' : '') +
     '</div>' +
     (!t.done ? '<button onclick="event.stopPropagation();openAskPhoebeOnTask(\''+clientId+'\',\''+t.id+'\')" title="Get help on this task — AI suggestion or message Phoebe directly" style="background:white;color:var(--hot-pink);border:1px solid var(--hot-pink);font-size:10px;font-weight:700;padding:4px 9px;border-radius:99px;cursor:pointer;flex-shrink:0;align-self:center">🙋 Help</button>' : '') +
+    // v11710: client can archive (📦, soft) or delete (×, hard, with
+    // confirm) their own tasks. Both actions notify Phoebe via the
+    // activity log so she's not surprised.
+    '<button onclick="event.stopPropagation();clientArchiveTask(\''+clientId+'\',\''+t.id+'\')" title="Archive — hide from your list (Phoebe will be told)" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--stone);padding:0 4px;flex-shrink:0;align-self:center">📦</button>' +
+    '<button onclick="event.stopPropagation();clientDeleteTask(\''+clientId+'\',\''+t.id+'\')" title="Delete — gone for good (Phoebe will be told)" style="background:none;border:none;cursor:pointer;font-size:14px;color:#C0392B;padding:0 4px;flex-shrink:0;align-self:center">×</button>' +
   '</div>';
+}
+
+// v11710: client-side archive + delete with notify-Phoebe.
+async function clientArchiveTask(clientId, taskId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var t = (client.tasks || []).find(function(x){ return x.id === taskId; });
+  if (!t) return;
+  t.archived = true;
+  t.archivedAt = new Date().toISOString();
+  t.archivedBy = 'client';
+  await persistClient(client);
+  // Notify Phoebe via activity log — she'll see it in her Pulse panel
+  if (typeof logActivity === 'function') {
+    logActivity('client', '📦 Client archived a task', {
+      clientId: client.id,
+      clientName: client.name,
+      detail: '"' + (t.text || '').slice(0, 100) + '"',
+    });
+  }
+  if (typeof renderClientTodosTab === 'function') renderClientTodosTab(client);
+  branded.toast('Archived · Phoebe\'s been told');
+}
+
+async function clientDeleteTask(clientId, taskId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var t = (client.tasks || []).find(function(x){ return x.id === taskId; });
+  if (!t) return;
+  var ok = await branded.confirm(
+    'Delete this task forever? It can\'t come back. Phoebe will be told you removed it.\n\n(Use 📦 Archive if you just want to hide it from your list.)',
+    { title: 'Delete forever?', okLabel: 'Delete', danger: true, cancelLabel: 'Cancel' }
+  );
+  if (!ok) return;
+  var taskText = t.text || '';
+  client.tasks = (client.tasks || []).filter(function(x){ return x.id !== taskId; });
+  await persistClient(client);
+  if (typeof logActivity === 'function') {
+    logActivity('client', '🗑 Client deleted a task', {
+      clientId: client.id,
+      clientName: client.name,
+      detail: '"' + taskText.slice(0, 100) + '"',
+    });
+  }
+  if (typeof renderClientTodosTab === 'function') renderClientTodosTab(client);
+  branded.toast('Deleted · Phoebe\'s been told');
 }
 
 // Ask Phoebe on a task — opens a branded modal with two options:
@@ -12397,6 +12666,67 @@ function renderCoachNotes(client) {
 function getMessageTemplates() {
   return (window._coachSettings && Array.isArray(window._coachSettings.messageTemplates))
     ? window._coachSettings.messageTemplates : [];
+}
+
+// v11710: render the quick-link toolbar at the top of the Message tab
+// with one-click access to (a) the client's next Zoom join URL, (b) the
+// shareable portal link, plus paste-into-body affordances. Cuts 2-3
+// clicks every time Phoebe composes.
+function renderMessageQuickLinks() {
+  var slot = document.getElementById('msg-quick-links');
+  if (!slot) return;
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) { slot.style.display = 'none'; return; }
+  // Find the soonest Zoom URL across this client's programs
+  var zoomUrl = '';
+  var zoomLabel = '';
+  (client.programs || []).forEach(function(p) {
+    if (p.zoomJoin && !zoomUrl) { zoomUrl = p.zoomJoin; zoomLabel = (p.label || p.program || '') + ' Zoom'; }
+  });
+  // Cohort Zoom fallback for MDC clients
+  if (!zoomUrl && (client.programs || []).some(function(p){ return p.cohort; })) {
+    var cohorts = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS)) ? MDC_COHORTS : [];
+    (client.programs || []).forEach(function(p) {
+      if (zoomUrl || !p.cohort) return;
+      var co = cohorts.find(function(c){ return c.id === p.cohort; });
+      if (co && co.zoomLink) { zoomUrl = co.zoomLink; zoomLabel = (co.name || 'Cohort') + ' Zoom'; }
+    });
+  }
+  // Portal URL
+  var portalUrl = (typeof location !== 'undefined' ? location.origin : 'https://hub.phoebeblamey.com.au') + '/?client=' + (client.clientAccess || '');
+  var hasAccess = !!client.clientAccess;
+
+  var pieces = [];
+  pieces.push('<span style="font-weight:700;color:var(--magenta);text-transform:uppercase;letter-spacing:0.06em;margin-right:4px">Quick links</span>');
+  if (zoomUrl) {
+    pieces.push('<a href="' + escapeHtml(zoomUrl) + '" target="_blank" rel="noopener" class="btn-sm" style="font-size:11px;text-decoration:none" title="Open ' + escapeHtml(zoomLabel) + '">🎬 Open Zoom</a>');
+    pieces.push('<button class="btn-sm" type="button" onclick="msgPasteLink(\'' + escapeHtml(zoomUrl).replace(/\'/g,"\\\'") + '\',\'' + escapeHtml(zoomLabel).replace(/\'/g,"\\\'") + '\')" style="font-size:11px" title="Paste the Zoom link into the message body">📋 Paste Zoom</button>');
+  } else {
+    pieces.push('<span style="color:var(--stone);font-style:italic">No Zoom link on this client yet</span>');
+  }
+  if (hasAccess) {
+    pieces.push('<a href="' + escapeHtml(portalUrl) + '" target="_blank" rel="noopener" class="btn-sm" style="font-size:11px;text-decoration:none" title="Open this client\'s portal in a new tab">👁 Open portal</a>');
+    pieces.push('<button class="btn-sm" type="button" onclick="msgPasteLink(\'' + escapeHtml(portalUrl).replace(/\'/g,"\\\'") + '\',\'your hub\')" style="font-size:11px" title="Paste the client\'s portal link into the message body">🔗 Paste portal link</button>');
+    pieces.push('<button class="btn-sm" type="button" onclick="copyClientLink()" style="font-size:11px" title="Copy the portal link to clipboard">📋 Copy link</button>');
+  }
+  slot.innerHTML = pieces.join(' ');
+  slot.style.display = 'flex';
+}
+
+// Pastes a labelled URL into the open message body at the cursor position
+// (or appends if no cursor focus).
+function msgPasteLink(url, label) {
+  var ta = document.getElementById('msg-body');
+  if (!ta) return;
+  var insert = '\n→ ' + (label ? label + ': ' : '') + url + '\n';
+  var start = ta.selectionStart || ta.value.length;
+  var end = ta.selectionEnd || ta.value.length;
+  ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
+  // Reposition cursor after the inserted block
+  var newPos = start + insert.length;
+  ta.setSelectionRange(newPos, newPos);
+  ta.focus();
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('Pasted into message');
 }
 
 function refreshMessageTemplatePicker() {
@@ -16074,6 +16404,38 @@ function renderResearchAttentionPanel(briefText) {
     var replyPlaceholder = hasQuestions
       ? 'Answer Claude\'s questions or add context — then tap Regenerate so the brief uses what you know.'
       : 'Add anything Claude got wrong, missing context, or your read on the situation — then Regenerate to update the brief.';
+
+    // v11710: pull prior replies (the iterative-conversation thread) so
+    // Phoebe can see what she's already told Claude. Each entry has
+    // {at, reply}. Most recent first, capped at 6 to keep the panel calm.
+    var priorRepliesHtml = '';
+    try {
+      var c0 = (typeof clients !== 'undefined') ? clients.find(function(x){ return x.id === currentClientId; }) : null;
+      var p0 = c0 ? (c0.programs||[]).find(function(p){return p.id===currentProgramId;}) : null;
+      var thread = (p0 && p0.notes && p0.notes.researchPhoebeReplies) ? p0.notes.researchPhoebeReplies.slice() : [];
+      if (thread.length) {
+        thread.reverse();
+        var shown = thread.slice(0, 6);
+        priorRepliesHtml =
+          '<details style="margin-top:10px"' + (thread.length === 1 ? ' open' : '') + '>' +
+            '<summary style="cursor:pointer;font-family:var(--f-head);font-size:11px;color:#A05010;font-weight:700">' +
+              '🧵 Conversation so far (' + thread.length + ')' +
+            '</summary>' +
+            '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">' +
+              shown.map(function(t) {
+                var when = '';
+                try { when = new Date(t.at).toLocaleString('en-AU', {day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}); } catch(e) {}
+                return '<div style="background:white;border:1px solid #F0D8B8;border-radius:8px;padding:8px 10px;font-size:12px;color:#5A2D08;line-height:1.45">' +
+                  '<div style="font-size:10px;color:#A05010;margin-bottom:3px;font-weight:600">' + escapeHtml(when) + '</div>' +
+                  escapeHtml((t.reply||'').slice(0, 600)) +
+                '</div>';
+              }).join('') +
+              (thread.length > 6 ? '<div style="font-size:10px;color:#A05010;font-style:italic">+ ' + (thread.length - 6) + ' earlier</div>' : '') +
+            '</div>' +
+          '</details>';
+      }
+    } catch (e) {}
+
     panel.innerHTML =
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
         '<div style="font-size:22px">⚠️</div>' +
@@ -16081,18 +16443,19 @@ function renderResearchAttentionPanel(briefText) {
         '<span style="font-size:11px;color:#A05010;background:rgba(224,128,32,0.18);padding:2px 8px;border-radius:99px;font-weight:600;margin-left:auto">Read before the call</span>' +
       '</div>' +
       '<div style="font-size:13px;color:#5A2D08;line-height:1.55">' + bodyHtml + '</div>' +
-      // v11410: reply + regenerate. Phoebe responds to Claude's questions /
-      // clarifies anything off-base, then taps Regenerate to feed her input
-      // back into the brief.
+      // v11410/v11710: reply + regenerate (now iterative). Phoebe responds
+      // to Claude's questions / clarifies anything off-base, then taps
+      // Regenerate. Each round is logged so the conversation builds up.
       '<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(224,128,32,0.4)">' +
         '<label style="display:block;font-family:var(--f-head);font-size:12px;color:#A05010;font-weight:700;margin-bottom:6px">' +
-          (hasQuestions ? '💬 Reply to Claude\'s questions' : '💬 Clarify or correct') +
+          (hasQuestions ? '💬 Reply to Claude\'s questions' : '💬 Clarify, correct, or keep the chat going') +
         '</label>' +
         '<textarea id="phoebe-attention-reply" placeholder="' + escapeHtml(replyPlaceholder) + '" style="width:100%;min-height:64px;border:1.5px solid #E8B080;border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:12px;color:#5A2D08;background:white;outline:none;resize:vertical;line-height:1.5"></textarea>' +
         '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">' +
           '<button onclick="regenerateBriefWithPhoebeReply()" id="phoebe-attention-regen" class="btn-sm primary" style="font-size:12px;padding:7px 14px">↻ Regenerate brief with my reply</button>' +
           '<span id="phoebe-attention-status" style="font-size:11px;color:#A05010;font-style:italic"></span>' +
         '</div>' +
+        priorRepliesHtml +
       '</div>';
   }
   // Insert above the textarea
@@ -16127,13 +16490,27 @@ async function regenerateBriefWithPhoebeReply() {
   if (btn) { btn.disabled = true; btn.textContent = '↻ Regenerating…'; }
   if (status) status.textContent = 'Updating brief with your reply…';
 
+  // v11710: pull prior turns so Claude has the full conversation context,
+  // not just the latest reply. This makes the iterative loop genuinely
+  // iterative — Phoebe can build on what she said two rounds ago.
+  var priorThread = (prog && prog.notes && prog.notes.researchPhoebeReplies) ? prog.notes.researchPhoebeReplies : [];
+  var priorThreadText = priorThread.length
+    ? '──── EARLIER REPLIES FROM PHOEBE (oldest first) ────\n' +
+      priorThread.map(function(t, i) {
+        var when = '';
+        try { when = new Date(t.at).toLocaleString('en-AU', {day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}); } catch(e) {}
+        return '[' + (i+1) + '] ' + when + ': ' + (t.reply||'');
+      }).join('\n\n') + '\n──── END EARLIER REPLIES ────\n\n'
+    : '';
+
   var prompt = phoebeVoice(
     'You previously generated this research brief for Phoebe (an experienced Australian business coach):\n\n' +
     '──── EXISTING BRIEF ────\n' +
     existingBrief + '\n' +
     '──── END BRIEF ────\n\n' +
-    'Phoebe has now replied with clarifications, corrections, or answers to questions you raised in the "FOR PHOEBE\'S ATTENTION" section:\n\n' +
-    '──── PHOEBE\'S REPLY ────\n' +
+    priorThreadText +
+    'Phoebe has now replied AGAIN with clarifications, corrections, or answers to questions you raised in the "FOR PHOEBE\'S ATTENTION" section:\n\n' +
+    '──── PHOEBE\'S NEW REPLY ────\n' +
     reply + '\n' +
     '──── END REPLY ────\n\n' +
     'Regenerate the FULL brief, keeping the same structure and headings, but:\n' +
@@ -16176,8 +16553,17 @@ async function regenerateBriefWithPhoebeReply() {
       try { await persistClient(client); } catch(e) {}
     }
     if (typeof renderResearchPreview === 'function') renderResearchPreview();
+    // v11710: panel re-render now picks up the just-saved reply in the
+    // "Conversation so far" thread, and clears the textarea ready for
+    // her next round. Button label gets a subtle nudge so she knows it's
+    // a continuing conversation, not a one-shot.
     if (typeof renderResearchAttentionPanel === 'function') renderResearchAttentionPanel(noteResearch.value);
-    if (status) status.textContent = '';
+    var freshReply = document.getElementById('phoebe-attention-reply');
+    if (freshReply) freshReply.value = '';
+    var freshBtn = document.getElementById('phoebe-attention-regen');
+    if (freshBtn) freshBtn.textContent = '↻ Continue the conversation';
+    var freshStatus = document.getElementById('phoebe-attention-status');
+    if (freshStatus) freshStatus.textContent = 'Brief updated. Add another reply to keep going.';
     if (typeof branded !== 'undefined' && branded.success) branded.success('Brief updated with your reply ✨');
   } catch (err) {
     console.warn('[regenerateBriefWithPhoebeReply]', err);
@@ -17325,7 +17711,69 @@ function renderRevenueDashboard() {
       '<div style="font-size:11px;color:var(--stone)">'+x.r.label+'</div></div></div>';
   }).join('');
 
+  // v11710: Clients-to-flag panel — between business overview and client
+  // ranking. Surfaces clients who need a closer look right now: red
+  // health, missed sessions, no win in 30+ days, low engagement.
+  var clientsToFlag = clients.filter(function(c) {
+    if (!c || c.archived || c.status === 'complete') return false;
+    if (c.id && c.id.indexOf('client-zoom-') === 0) return false;
+    var hasActive = (c.programs || []).some(function(p) { return p && !p.locked && p.status !== 'complete'; });
+    if (!hasActive) return false;
+    var reasons = [];
+    if (c.health === 'red') reasons.push('🔴 red health');
+    // Days since last win
+    var allWins = (c.wins || []).slice();
+    (c.programs || []).forEach(function(p) { (p.wins || []).forEach(function(w) { allWins.push(w); }); });
+    if (allWins.length) {
+      var latestWin = allWins.reduce(function(latest, w) {
+        var t = new Date(w.date || 0).getTime();
+        return t > latest ? t : latest;
+      }, 0);
+      var daysSinceWin = Math.floor((Date.now() - latestWin) / 86400000);
+      if (daysSinceWin > 30) reasons.push(daysSinceWin + 'd no win');
+    } else {
+      reasons.push('no wins yet');
+    }
+    // Days since last session note (engagement signal)
+    var latestNote = 0;
+    (c.programs || []).forEach(function(p) {
+      (p.sessionNotes || []).forEach(function(n) {
+        var t = new Date(n.date || 0).getTime();
+        if (t > latestNote) latestNote = t;
+      });
+    });
+    if (latestNote) {
+      var daysSinceNote = Math.floor((Date.now() - latestNote) / 86400000);
+      if (daysSinceNote > 21) reasons.push(daysSinceNote + 'd silent');
+    }
+    if (!reasons.length) return false;
+    c._flagReasons = reasons;
+    return true;
+  });
+  var flagPanelHtml = '';
+  if (clientsToFlag.length) {
+    flagPanelHtml = '<div style="background:linear-gradient(135deg,#FFF8FB,#FFEFE0);border:1.5px solid rgba(232,160,32,0.4);border-radius:14px;padding:16px 18px;margin-bottom:24px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
+        '<div style="font-size:18px">🚩</div>' +
+        '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700">Clients to flag · ' + clientsToFlag.length + '</div>' +
+        '<span style="font-size:11px;color:var(--stone);margin-left:auto">Red health · 30+ days no win · 21+ days silent</span>' +
+      '</div>' +
+      clientsToFlag.slice(0, 8).map(function(c) {
+        var initials = (c.name || '').split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
+        return '<div onclick="openClient(\'' + c.id + '\')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:white;border:1px solid rgba(229,4,139,0.12);border-radius:8px;margin-bottom:4px;cursor:pointer">' +
+          '<div style="width:28px;height:28px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--magenta);flex-shrink:0">' + initials + '</div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--magenta)">' + escapeHtml(c.name || 'Client') + '</div>' +
+            '<div style="font-size:11px;color:#A07030">' + (c._flagReasons || []).join(' · ') + '</div>' +
+          '</div>' +
+          '<button class="btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();openLogCommModal(\'' + c.id + '\')">📞 Log touch</button>' +
+        '</div>';
+      }).join('') +
+      (clientsToFlag.length > 8 ? '<div style="font-size:11px;color:var(--stone);margin-top:6px;text-align:center">+ ' + (clientsToFlag.length - 8) + ' more</div>' : '') +
+    '</div>';
+  }
+
   el.innerHTML = statsHtml +
+    flagPanelHtml +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">' +
     '<div><div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);margin-bottom:14px">Revenue by program</div>' +
     (progRows||'<div style="color:var(--stone);font-size:13px">No revenue data yet</div>') + '</div>' +
@@ -17812,6 +18260,12 @@ function renderTaskSheet() {
       var lastNote = (p.sessionNotes||[]).slice(-1)[0];
       var lastDate = (lastNote && lastNote.date) || p.sessionDate;
       if (!lastDate) return;
+      // v11710: respect Phoebe's dismiss/snooze on check-in suggestions
+      if (p.checkInDismissed) return; // dismissed forever for this program
+      if (p.checkInSnoozeUntil) {
+        var todayStr = _localTodayStr();
+        if (todayStr < p.checkInSnoozeUntil) return; // still snoozed
+      }
       try {
         var days = Math.floor((Date.now()-new Date(lastDate))/86400000);
         if (days >= 7) {
@@ -17901,7 +18355,19 @@ function renderTaskSheet() {
         if (x.dueDate) { try { dueStr = new Date(x.dueDate).toLocaleDateString('en-AU',{day:'numeric',month:'short'}); } catch(e) { dueStr = x.dueDate; } }
 
         if (x.isCheckin) {
-          html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:'+(isOverdue?'#FFF0F0':'#FFFBE8')+';border-radius:8px;margin-bottom:6px;cursor:pointer" onclick="openClient(\''+clientId+'\')"><div style="font-size:14px">📞</div><div style="flex:1"><div style="font-size:13px;color:#C9266B;font-weight:500">Check in — '+((x.prog && (x.prog.label||x.prog.program))||'program')+'</div><div style="font-size:11px;color:#ACA495">'+x.days+' days since last session'+(dueStr?' · suggested by '+dueStr:'')+'</div></div><span style="font-size:9px;font-weight:700;background:'+(isOverdue?'#EC2C8A':'#E8A020')+';color:white;padding:2px 8px;border-radius:99px;text-transform:uppercase">'+(isOverdue?'Overdue':'Soon')+'</span></div>';
+          // v11710: check-ins now have parity with regular tasks —
+          // ✓ Done, 📦 Archive (dismiss for 14 days), × Delete (dismiss
+          // forever). Same UX as task rows so Phoebe doesn't have to
+          // remember a separate interaction model.
+          var pid = (x.prog && x.prog.id) || '';
+          html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:'+(isOverdue?'#FFF0F0':'#FFFBE8')+';border-radius:8px;margin-bottom:6px">' +
+            '<div onclick="openClient(\''+clientId+'\')" style="font-size:14px;cursor:pointer">📞</div>' +
+            '<div onclick="openClient(\''+clientId+'\')" style="flex:1;cursor:pointer"><div style="font-size:13px;color:#C9266B;font-weight:500">Check in — '+((x.prog && (x.prog.label||x.prog.program))||'program')+'</div><div style="font-size:11px;color:#ACA495">'+x.days+' days since last session'+(dueStr?' · suggested by '+dueStr:'')+'</div></div>' +
+            '<span style="font-size:9px;font-weight:700;background:'+(isOverdue?'#EC2C8A':'#E8A020')+';color:white;padding:2px 8px;border-radius:99px;text-transform:uppercase">'+(isOverdue?'Overdue':'Soon')+'</span>' +
+            '<button onclick="event.stopPropagation();markCheckInDone(\''+clientId+'\',\''+pid+'\')" title="Already touched base — mark done" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--teal);padding:0 4px;flex-shrink:0">✓</button>' +
+            '<button onclick="event.stopPropagation();dismissCheckIn(\''+clientId+'\',\''+pid+'\',\'archive\')" title="Snooze 14 days" style="background:none;border:none;cursor:pointer;font-size:13px;color:#ACA495;padding:0 4px;flex-shrink:0">📦</button>' +
+            '<button onclick="event.stopPropagation();dismissCheckIn(\''+clientId+'\',\''+pid+'\',\'delete\')" title="Dismiss this suggestion forever" style="background:none;border:none;cursor:pointer;font-size:14px;color:#C0392B;padding:0 4px;flex-shrink:0">×</button>' +
+          '</div>';
           return;
         }
 
@@ -21326,12 +21792,12 @@ function renderHome() {
   } catch (e) { console.warn('[Home] review queue render', e); }
 
   // v11300: "Today's commitments" strip — surfaces every active client's
-  // Today's One Thing for THIS day. Tap a row → opens that client. A
-  // morning at-a-glance: who committed to what, who's done, who hasn't
-  // set anything yet. Replaces the need for Phoebe to click into each
-  // client to see the daily commit.
+  // Today's One Thing for THIS day. Tap a row → opens that client.
+  // v11710: BUILD into a variable, INSERT later between Recent Wins and
+  // Recent Activity (per Phoebe's reorder request — was at very top).
+  var commitsHtml = '';
   try {
-    var todayIso = new Date().toISOString().split('T')[0];
+    var todayIso = _localTodayStr(); // v11700 TZ fix
     var commits = [];
     clientArr.forEach(function(c) {
       if (!c) return;
@@ -21345,7 +21811,6 @@ function renderHome() {
         commits.push({ client: c, text: '', done: false, has: false });
       }
     });
-    // Sort: clients who SET a commit first (done last), then "not set" at the bottom
     commits.sort(function(a, b) {
       if (a.has !== b.has) return a.has ? -1 : 1;
       if (a.done !== b.done) return a.done ? 1 : -1;
@@ -21354,31 +21819,31 @@ function renderHome() {
     var withCommit = commits.filter(function(c){ return c.has; });
     var doneN = withCommit.filter(function(c){ return c.done; }).length;
     if (withCommit.length > 0) {
-      html += '<div style="background:linear-gradient(135deg,#FFFCF6 0%,#FFF5E0 100%);border:1.5px solid rgba(232,160,32,0.35);border-radius:14px;padding:14px 18px;margin-bottom:14px">';
-      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
-      html += '<div style="display:flex;align-items:center;gap:8px">';
-      html += '<div style="font-size:18px">🐔</div>';
-      html += '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700">Today\'s commitments · ' + withCommit.length + ' set · ' + doneN + ' done</div>';
-      html += '</div>';
-      html += '</div>';
-      html += '<div style="display:flex;flex-direction:column;gap:4px">';
+      commitsHtml += '<div style="background:linear-gradient(135deg,#FFFCF6 0%,#FFF5E0 100%);border:1.5px solid rgba(232,160,32,0.35);border-radius:14px;padding:14px 18px;margin-bottom:14px">';
+      commitsHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+      commitsHtml += '<div style="display:flex;align-items:center;gap:8px">';
+      commitsHtml += '<div style="font-size:18px">🐔</div>';
+      commitsHtml += '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700">Today\'s commitments · ' + withCommit.length + ' set · ' + doneN + ' done</div>';
+      commitsHtml += '</div>';
+      commitsHtml += '</div>';
+      commitsHtml += '<div style="display:flex;flex-direction:column;gap:4px">';
       commits.slice(0, 12).forEach(function(it) {
         var initials = (it.client.name || '?').split(' ').map(function(n){return n[0]||'';}).join('').slice(0,2).toUpperCase();
         var pillBg = it.done ? '#F0F9F0' : (it.has ? 'white' : 'transparent');
         var pillBorder = it.done ? 'rgba(95,163,168,0.3)' : (it.has ? 'var(--border-soft)' : 'transparent');
-        html += '<div onclick="openClient(\'' + it.client.id + '\')" style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:' + pillBg + ';border:1px solid ' + pillBorder + ';border-radius:8px;cursor:pointer;transition:transform 0.1s,border-color 0.15s" onmouseover="this.style.borderColor=\'var(--hot-pink)\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.borderColor=\'' + pillBorder + '\';this.style.transform=\'\'">';
-        html += '<div style="width:26px;height:26px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--magenta);flex-shrink:0">' + initials + '</div>';
-        html += '<div style="flex:1;min-width:0">';
-        html += '<div style="font-size:12px;color:var(--magenta);font-weight:600">' + escapeHtml(it.client.name || 'Client') + '</div>';
-        html += '<div style="font-size:12px;color:var(--magenta);' + (it.done ? 'text-decoration:line-through;opacity:0.6' : (!it.has ? 'color:var(--stone);font-style:italic' : '')) + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (it.has ? escapeHtml(it.text) : 'Not set yet') + '</div>';
-        html += '</div>';
-        if (it.done) html += '<span style="font-size:11px;font-weight:700;color:var(--teal);background:var(--mist);padding:3px 9px;border-radius:99px;flex-shrink:0">✓ Done</span>';
-        else if (it.has) html += '<span style="font-size:11px;color:var(--stone);flex-shrink:0">In progress</span>';
-        html += '</div>';
+        commitsHtml += '<div onclick="openClient(\'' + it.client.id + '\')" style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:' + pillBg + ';border:1px solid ' + pillBorder + ';border-radius:8px;cursor:pointer;transition:transform 0.1s,border-color 0.15s" onmouseover="this.style.borderColor=\'var(--hot-pink)\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.borderColor=\'' + pillBorder + '\';this.style.transform=\'\'">';
+        commitsHtml += '<div style="width:26px;height:26px;border-radius:99px;background:#F0A3C7;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--magenta);flex-shrink:0">' + initials + '</div>';
+        commitsHtml += '<div style="flex:1;min-width:0">';
+        commitsHtml += '<div style="font-size:12px;color:var(--magenta);font-weight:600">' + escapeHtml(it.client.name || 'Client') + '</div>';
+        commitsHtml += '<div style="font-size:12px;color:var(--magenta);' + (it.done ? 'text-decoration:line-through;opacity:0.6' : (!it.has ? 'color:var(--stone);font-style:italic' : '')) + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (it.has ? escapeHtml(it.text) : 'Not set yet') + '</div>';
+        commitsHtml += '</div>';
+        if (it.done) commitsHtml += '<span style="font-size:11px;font-weight:700;color:var(--teal);background:var(--mist);padding:3px 9px;border-radius:99px;flex-shrink:0">✓ Done</span>';
+        else if (it.has) commitsHtml += '<span style="font-size:11px;color:var(--stone);flex-shrink:0">In progress</span>';
+        commitsHtml += '</div>';
       });
-      if (commits.length > 12) html += '<div style="font-size:11px;color:var(--stone);margin-top:4px;text-align:center">+' + (commits.length - 12) + ' more</div>';
-      html += '</div>';
-      html += '</div>';
+      if (commits.length > 12) commitsHtml += '<div style="font-size:11px;color:var(--stone);margin-top:4px;text-align:center">+' + (commits.length - 12) + ' more</div>';
+      commitsHtml += '</div>';
+      commitsHtml += '</div>';
     }
   } catch (e) { console.warn('[Home] T1T strip', e); }
 
@@ -21433,8 +21898,11 @@ function renderHome() {
           '<div style="font-size:13px;color:#C9266B;font-weight:600">' + ci.client.name + '</div>' +
           '<div style="font-size:11px;color:#ACA495">' + ci.days + ' days since last touch · ' + (ci.prog.label||ci.prog.program) + '</div>' +
         '</div>' +
-        '<button onclick="event.stopPropagation();markCheckInDone(\''+cid+'\',\''+pid+'\')" class="btn-sm" style="padding:4px 10px;font-size:11px" title="Already touched base — dismiss this suggestion">✓ Done</button>' +
+        // v11710: same archive/delete affordances as task rows
+        '<button onclick="event.stopPropagation();markCheckInDone(\''+cid+'\',\''+pid+'\')" class="btn-sm" style="padding:4px 10px;font-size:11px" title="Already touched base — mark done">✓ Done</button>' +
         '<button onclick="event.stopPropagation();openLogCommModal(\''+cid+'\')" class="btn-sm primary" style="padding:4px 10px;font-size:11px" title="Log a call, email, text or meeting">📞 Log</button>' +
+        '<button onclick="event.stopPropagation();dismissCheckIn(\''+cid+'\',\''+pid+'\',\'archive\')" title="Snooze 14 days" style="background:none;border:none;cursor:pointer;font-size:13px;color:#ACA495;padding:0 4px">📦</button>' +
+        '<button onclick="event.stopPropagation();dismissCheckIn(\''+cid+'\',\''+pid+'\',\'delete\')" title="Dismiss this suggestion forever" style="background:none;border:none;cursor:pointer;font-size:14px;color:#C0392B;padding:0 4px">×</button>' +
         '</div>';
     });
     html += '</div>';
@@ -21482,6 +21950,10 @@ function renderHome() {
   if (allTasks.length === 0 && checkInsNeeded.length === 0 && upcomingSessions.length === 0 && recentWins.length === 0) {
     html += '<div style="background:white;border:2px dashed #F5D5E3;border-radius:14px;padding:48px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">✨</div><div style="font-size:16px;color:#C9266B;margin-bottom:6px;font-weight:700">All caught up</div><div style="font-size:13px;color:#ACA495">No open tasks, check-ins, or upcoming sessions. Ready when you are.</div></div>';
   }
+
+  // v11710: Today's commitments — moved here, between Recent Wins (above)
+  // and Recent Activity (below). Per Phoebe's reorder request.
+  html += commitsHtml;
 
   // Recent activity feed — automatic actions (Calendly, transcript, AI brief, etc.)
   html += '<div style="background:white;border:1.5px solid #F5D5E3;border-radius:14px;padding:18px;margin-bottom:14px">' +
@@ -21574,8 +22046,35 @@ async function markCheckInDone(clientId, progId) {
   if (!client) return;
   var prog = (client.programs || []).find(function(p) { return p.id === progId; });
   if (!prog) return;
-  prog.lastTouched = new Date().toISOString().split('T')[0];
+  prog.lastTouched = _localTodayStr();
   await persistClient(client);
+  // v11710: also refresh task sheet if it's the visible page
+  if (typeof renderTaskSheet === 'function' && document.getElementById('task-sheet-content')) renderTaskSheet();
+  if (typeof renderHome === 'function') renderHome();
+}
+
+// v11710: archive (snooze 14 days) or hard-delete a check-in suggestion.
+// The check-in is computed dynamically (>=7 days since last session note),
+// so "delete" actually sets a flag that suppresses the suggestion forever
+// for THIS program and "archive" sets a 14-day snooze. Both are stored on
+// the program record so they persist across reloads.
+async function dismissCheckIn(clientId, progId, mode) {
+  var client = clients.find(function(c) { return c.id === clientId; });
+  if (!client) return;
+  var prog = (client.programs || []).find(function(p) { return p.id === progId; });
+  if (!prog) return;
+  if (mode === 'delete') {
+    var ok = await branded.confirm('Dismiss this check-in suggestion forever for this program? It won\'t come back. (Use 📦 if you just want to snooze it for 14 days.)', { title: 'Dismiss forever?', okLabel: 'Dismiss', danger: true });
+    if (!ok) return;
+    prog.checkInDismissed = true;
+  } else {
+    // Archive — snooze for 14 days from now
+    var snoozeUntil = new Date(); snoozeUntil.setDate(snoozeUntil.getDate() + 14);
+    prog.checkInSnoozeUntil = snoozeUntil.toISOString().split('T')[0];
+    branded.toast('Snoozed 14 days');
+  }
+  await persistClient(client);
+  if (typeof renderTaskSheet === 'function' && document.getElementById('task-sheet-content')) renderTaskSheet();
   if (typeof renderHome === 'function') renderHome();
 }
 
