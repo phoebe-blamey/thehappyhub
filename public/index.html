@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11430 — per-program intake overlays (extra Qs auto-attach when a client has MDC / 90-day / Audit / Accelerator / Broker / Happy Hour) + Settings editor for the universal + per-program default question library + Sync to existing clients button. Section templates: 💾 Template button on any coach-side custom section saves it to coachSettings.sectionTemplates; 📋 From template… picker on every program adds a section from saved templates.">
+<meta name="hmh-build" content="v11440 — finishing pass: archive/delete buttons surface on the per-client tasks panel (renderSingleTask now shows 📦 + ×, plus ↺ Restore when an archived task is shown), archived rows render dimmed with a teal pill, archived tasks tagged. Plus docs/TESTING.md — full Phoebe-friendly end-to-end test checklist covering 13 areas (setup → coach login → universal intake + overlays → AI brief + Phoebe-attention reply → tasks + bulk actions → message templates → custom sections + section templates → onboarding → Calendly→Zoom→AI loop → mobile → Things you should never see).">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -13252,7 +13252,8 @@ function renderSingleTask(t, clientId, today) {
   var isOverdue = t.dueDate && t.dueDate < today && !t.done;
   var dueStr = t.dueDate ? new Date(t.dueDate).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) : '';
   var visLabel = t.clientVisible ? '<span style="font-size:10px;background:var(--mist);color:var(--teal);padding:2px 6px;border-radius:99px">Client visible</span>' : '<span style="font-size:10px;background:var(--marshmallow);color:var(--stone);padding:2px 6px;border-radius:99px">Coach only</span>';
-  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-soft)">' +
+  var isArchived = !!t.archived;
+  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-soft);' + (isArchived ? 'opacity:0.55' : '') + '">' +
     '<div onclick="toggleTaskDone(\''+clientId+'\',\''+t.id+'\')" title="Tick to mark done" style="width:18px;height:18px;border-radius:99px;border:2px solid var(--border);flex-shrink:0;cursor:pointer;margin-top:2px;'+(t.done?'background:var(--hot-pink);border-color:var(--hot-pink)':'')+'" ></div>' +
     '<div style="flex:1;cursor:pointer" onclick="openEditTaskModal(\''+clientId+'\',\''+t.id+'\')" title="Click to edit">' +
     '<div style="font-size:13px;color:var(--magenta);'+(t.done?'text-decoration:line-through;opacity:0.5':'')+'">' + t.text + '</div>' +
@@ -13261,9 +13262,16 @@ function renderSingleTask(t, clientId, today) {
     (t.isAuto ? '<span style="font-size:10px;background:#FFF5E8;color:#A07030;padding:2px 6px;border-radius:99px">⚡ Auto</span>' : '') +
     (isOverdue ? '<span style="font-size:10px;background:var(--marshmallow);color:var(--hot-pink);padding:2px 6px;border-radius:99px;font-weight:700">OVERDUE</span>' : '') +
     (dueStr ? '<span style="font-size:11px;color:var(--stone)">Due '+dueStr+'</span>' : '') +
+    (isArchived ? '<span style="font-size:10px;background:rgba(95,163,168,0.18);color:#3F7A7E;padding:2px 6px;border-radius:99px">📦 Archived</span>' : '') +
     (t.completedBy === 'coach' && t.done ? '<span style="font-size:10px;background:#FDEFF5;color:var(--hot-pink);padding:2px 6px;border-radius:99px">ticked by you</span>' : '') +
     '</div></div>' +
-    '<button onclick="event.stopPropagation();openEditTaskModal(\''+clientId+'\',\''+t.id+'\')" title="Edit" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--stone);padding:0;flex-shrink:0">✏️</button>' +
+    '<button onclick="event.stopPropagation();openEditTaskModal(\''+clientId+'\',\''+t.id+'\')" title="Edit" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--stone);padding:0 4px;flex-shrink:0">✏️</button>' +
+    // v11410: archive (📦, restorable) + delete (×, with confirm). When the
+    // task is already archived, the 📦 button toggles back to active instead.
+    (isArchived
+      ? '<button onclick="event.stopPropagation();unarchiveTask(\''+clientId+'\',\''+t.id+'\')" title="Restore from archive" style="background:none;border:none;cursor:pointer;font-size:13px;color:#3F7A7E;padding:0 4px;flex-shrink:0">↺</button>'
+      : '<button onclick="event.stopPropagation();archiveTask(\''+clientId+'\',\''+t.id+'\')" title="Archive · removes from view, can be restored" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--stone);padding:0 4px;flex-shrink:0">📦</button>') +
+    '<button onclick="event.stopPropagation();deleteTask(\''+clientId+'\',\''+t.id+'\')" title="Delete forever" style="background:none;border:none;cursor:pointer;font-size:14px;color:#C0392B;padding:0 4px;flex-shrink:0">×</button>' +
     '</div>';
 }
 
