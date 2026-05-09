@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11420 — Task Sheet bulk actions surfaced (☐ Bulk select toggle, per-row checkboxes, Mark done / Bulk due-date / Visibility / 📦 Archive / Delete in the floating bar). Archived tasks excluded from Task Sheet. Per-program 'Intake' tab renamed to 'Summary' with a sub-section jump-nav (Intake answers · Snapshot · AI brief · Past briefs · Coaching notes · Profitability). Calendar: explicit 'why no direct Google Calendar API' card on Settings — Calendly + .ics covers the use case, full API is a deferred-by-design add-on.">
+<meta name="hmh-build" content="v11430 — per-program intake overlays (extra Qs auto-attach when a client has MDC / 90-day / Audit / Accelerator / Broker / Happy Hour) + Settings editor for the universal + per-program default question library + Sync to existing clients button. Section templates: 💾 Template button on any coach-side custom section saves it to coachSettings.sectionTemplates; 📋 From template… picker on every program adds a section from saved templates.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -1007,6 +1007,21 @@
                 <li>If you ever need direct API writes (e.g. auto-creating an availability hold), it's a small add-on — env vars: <code>GOOGLE_CALENDAR_ID</code> + reusing the existing Gmail OAuth refresh token with calendar scope appended.</li>
               </ol>
             </details>
+          </div>
+        </div>
+
+        <!-- v11430: default intake questions editor — universal + per-program
+             overlays. New clients seed from the universal list; program-overlay
+             questions auto-attach when a client has that program type. Phoebe
+             can edit wording, delete, or add. Saved to coachSettings.intakeDefaults. -->
+        <div class="settings-card" id="intake-defaults-card">
+          <h4>🎯 Default intake questions</h4>
+          <p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:10px">These are the questions every new client starts with — plus extra questions added when they sign up for a specific program. Edit the wording, delete what you don't want, or add new questions. Existing clients keep what they already have; the next sync adds anything new.</p>
+          <div id="intake-defaults-editor"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+            <button class="btn-sm primary" onclick="renderIntakeDefaultsEditor()">↻ Refresh editor</button>
+            <button class="btn-sm" onclick="syncIntakeDefaultsToAllClients()" title="Add any new default questions to existing clients (won't touch their existing answers)">📤 Sync to existing clients</button>
+            <button class="btn-sm" onclick="resetIntakeDefaultsToBuiltins()" title="Restore the original default question set">↺ Reset to built-ins</button>
           </div>
         </div>
 
@@ -4988,6 +5003,7 @@ function showPage(id) {
         if (typeof renderCustomProgramTypesList==='function') renderCustomProgramTypesList();
         if (typeof renderRecommendableProductsList==='function') renderRecommendableProductsList();
         if (typeof refreshIntegrationStatusPills==='function') refreshIntegrationStatusPills();
+        if (typeof renderIntakeDefaultsEditor==='function') renderIntakeDefaultsEditor();
       }
       else if (id === 'tasks')      { if (typeof renderAllTasks==='function') renderAllTasks(); }
       else if (id === 'settings')   { if (typeof initNotificationsToggle==='function') initNotificationsToggle(); }
@@ -10955,7 +10971,11 @@ function renderCustomSectionsBlock(client, prog, viewer) {
     '</h3>' +
     '<p style="font-size:12px;color:var(--stone);margin-bottom:14px">' + subhead + '</p>' +
     '<div id="custom-sections-list-' + prog.id + '">' + sectionCards + '</div>' +
-    '<button class="custom-section-add-btn" onclick="addCustomSection(\'' + client.id + '\',\'' + prog.id + '\',\'' + viewer + '\')">+ Add a section</button>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+      '<button class="custom-section-add-btn" onclick="addCustomSection(\'' + client.id + '\',\'' + prog.id + '\',\'' + viewer + '\')">+ Add a section</button>' +
+      // v11430: From-template picker — only shown to Phoebe (coach view)
+      (viewer === 'phoebe' ? '<button class="custom-section-add-btn" onclick="openSectionTemplatePicker(\'' + client.id + '\',\'' + prog.id + '\')" style="background:rgba(95,163,168,0.12);color:#3F7A7E;border:1px dashed rgba(95,163,168,0.5)">📋 From template…</button>' : '') +
+    '</div>' +
   '</div>';
 }
 
@@ -10982,6 +11002,10 @@ function renderCustomSectionCard(client, prog, section, viewer) {
   var deleteBtn = canDelete
     ? '<button class="custom-sec-delete" onclick="deleteCustomSection(\'' + client.id + '\',\'' + prog.id + '\',\'' + section.id + '\',\'' + viewer + '\')" title="Delete this section">×</button>'
     : '';
+  // v11430: Save-as-template button — coach view only, shown if there's actually content
+  var saveAsTemplateBtn = (viewer === 'phoebe' && (section.title || section.body))
+    ? '<button class="custom-sec-tpl" onclick="saveSectionAsTemplate(\'' + client.id + '\',\'' + prog.id + '\',\'' + section.id + '\')" title="Save this section as a reusable template" style="background:none;border:none;cursor:pointer;font-size:11px;color:#3F7A7E;padding:2px 8px">💾 Template</button>'
+    : '';
   var titleInput = canEdit
     ? '<input type="text" class="custom-sec-title" value="' + escapeHtml(section.title || '') + '" placeholder="Section title" onchange="updateCustomSection(\'' + client.id + '\',\'' + prog.id + '\',\'' + section.id + '\',\'title\',this.value)">'
     : '<div class="custom-sec-title custom-sec-title-readonly">' + escapeHtml(section.title || 'Untitled section') + '</div>';
@@ -10997,11 +11021,125 @@ function renderCustomSectionCard(client, prog, section, viewer) {
       authorBadge +
       shareControl +
       (when ? '<span class="custom-sec-when">' + when + '</span>' : '') +
+      saveAsTemplateBtn +
       deleteBtn +
     '</div>' +
     titleInput +
     bodyInput +
   '</div>';
+}
+
+// v11430: Save the current section's title + body as a reusable template.
+// Stored on coachSettings.sectionTemplates so it travels across devices.
+async function saveSectionAsTemplate(clientId, progId, sectionId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  var sec = prog ? (prog.customSections || []).find(function(s){ return s.id === sectionId; }) : null;
+  if (!sec) return;
+  if (!sec.title && !sec.body) { branded.alert('Nothing to save — fill in a title or body first.'); return; }
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.sectionTemplates = window._coachSettings.sectionTemplates || [];
+  // Default the template name to the section title; let Phoebe override.
+  var defaultName = sec.title || 'Untitled template';
+  var name = await branded.prompt('Save this section as a template called:', defaultName, 'e.g. "Sprint kickoff"', { title: '💾 Save section template', okLabel: 'Save' });
+  if (name == null) return;
+  name = (name || '').trim() || defaultName;
+  // Dedupe by name — overwriting is the friendlier flow
+  var existing = window._coachSettings.sectionTemplates.findIndex(function(t){ return (t.name || '').toLowerCase() === name.toLowerCase(); });
+  if (existing >= 0) {
+    var ow = await branded.confirm('A template called "' + name + '" already exists. Overwrite?', { title:'Overwrite?', okLabel:'Overwrite' });
+    if (!ow) return;
+    window._coachSettings.sectionTemplates[existing] = {
+      id: window._coachSettings.sectionTemplates[existing].id,
+      name: name, title: sec.title || '', body: sec.body || '', updatedAt: new Date().toISOString(),
+    };
+  } else {
+    window._coachSettings.sectionTemplates.push({
+      id: 'sectpl-' + Date.now() + '-' + Math.random().toString(36).slice(2,5),
+      name: name, title: sec.title || '', body: sec.body || '', createdAt: new Date().toISOString(),
+    });
+  }
+  flushCoachSettings();
+  branded.success('Saved as a template — apply it from "📋 From template…" on any client.');
+}
+
+// v11430: picker UI for the section-template library. Lists every template
+// with a preview; clicking one applies it as a new custom section on the
+// current program. Phoebe can also delete templates from here.
+async function openSectionTemplatePicker(clientId, progId) {
+  var templates = (window._coachSettings && window._coachSettings.sectionTemplates) || [];
+  if (!templates.length) {
+    branded.alert('No section templates yet. Save one first by writing a section, then tapping 💾 Template on it.');
+    return;
+  }
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '📋';
+  document.getElementById('branded-modal-title').textContent = 'Pick a section template';
+  document.getElementById('branded-modal-body').textContent = '';
+  var input = document.getElementById('branded-modal-input');
+  input.style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  // Custom body — list of templates as clickable cards
+  var listHtml = '<div style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:14px">' +
+    templates.map(function(t) {
+      var preview = (t.body || '').replace(/\s+/g,' ').slice(0, 100);
+      return '<div style="border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;align-items:flex-start;gap:8px" onclick="applySectionTemplate(\'' + clientId + '\',\'' + progId + '\',\'' + t.id + '\')" onmouseover="this.style.background=\'var(--paper)\'" onmouseout="this.style.background=\'\'">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-weight:700;color:var(--magenta);font-size:13px">' + escapeHtml(t.name || 'Untitled') + '</div>' +
+          (t.title ? '<div style="font-size:11px;color:var(--stone);margin-top:2px">Title: ' + escapeHtml(t.title) + '</div>' : '') +
+          (preview ? '<div style="font-size:11px;color:var(--stone);margin-top:2px;font-style:italic">' + escapeHtml(preview) + (t.body && t.body.length > 100 ? '…' : '') + '</div>' : '') +
+        '</div>' +
+        '<button onclick="event.stopPropagation();deleteSectionTemplate(\'' + t.id + '\',\'' + clientId + '\',\'' + progId + '\')" title="Delete this template" style="background:none;border:none;cursor:pointer;color:#C0392B;font-size:14px;padding:0 4px">×</button>' +
+      '</div>';
+    }).join('') +
+    '</div>';
+  document.getElementById('branded-modal-body').innerHTML = listHtml;
+  actions.innerHTML = '';
+  var cancel = document.createElement('button');
+  cancel.className = 'btn-sm';
+  cancel.textContent = 'Cancel';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(cancel);
+  host.style.display = 'flex';
+  // Wire the universal close-X to "just hide" for this custom modal
+  host._cancel = function() { host.style.display = 'none'; };
+}
+
+async function applySectionTemplate(clientId, progId, templateId) {
+  var templates = (window._coachSettings && window._coachSettings.sectionTemplates) || [];
+  var tpl = templates.find(function(t){ return t.id === templateId; });
+  if (!tpl) return;
+  var client = clients.find(function(c){ return c.id === clientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === progId; }) : null;
+  if (!prog) return;
+  prog.customSections = prog.customSections || [];
+  prog.customSections.push({
+    id: 'sec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    title: tpl.title || tpl.name || '',
+    body: tpl.body || '',
+    author: 'phoebe',
+    shared: true,
+    fromTemplateId: templateId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  await persistClient(client);
+  document.getElementById('branded-modal-host').style.display = 'none';
+  if (typeof renderCustomSectionsForCoach === 'function') renderCustomSectionsForCoach(client, prog);
+  branded.toast('Section added from "' + (tpl.name || 'template') + '"');
+}
+
+async function deleteSectionTemplate(templateId, clientId, progId) {
+  var ok = await branded.confirm('Delete this template? Sections already added from it stay.', { title: 'Delete template?', okLabel: 'Delete', danger: true });
+  if (!ok) return;
+  if (!window._coachSettings || !Array.isArray(window._coachSettings.sectionTemplates)) return;
+  window._coachSettings.sectionTemplates = window._coachSettings.sectionTemplates.filter(function(t){ return t.id !== templateId; });
+  flushCoachSettings();
+  // Re-open the picker (closes if list now empty)
+  document.getElementById('branded-modal-host').style.display = 'none';
+  if (window._coachSettings.sectionTemplates.length) openSectionTemplatePicker(clientId, progId);
+  else branded.toast('Template deleted');
 }
 
 async function addCustomSection(clientId, progId, viewer) {
@@ -13744,17 +13882,205 @@ var UNIVERSAL_INTAKE_DEFAULTS = [
   { id: 'preferred-support',  question: 'How you like being coached — direct? gentle? structured? deadlines? (anything)' },
 ];
 
+// v11430: per-program intake overlays — extra questions only added when the
+// client signs up for that program type. Defaults Phoebe can override in
+// Settings. Stored on coachSettings.intakeDefaults.byProgram[<program>].
+var PROGRAM_INTAKE_OVERLAY_DEFAULTS = {
+  'mdc': [
+    { id: 'mdc-million-meaning',    question: 'MDC: what does "a million-dollar business" mean for YOU specifically?' },
+    { id: 'mdc-team-now',           question: 'MDC: who\'s in your team right now (incl. contractors)? What\'s missing?' },
+    { id: 'mdc-bottleneck',         question: 'MDC: where in the business does everything currently fall on you?' },
+  ],
+  '90day': [
+    { id: '90d-revenue-baseline',   question: '90-day: roughly what are your monthly revenue + expenses today?' },
+    { id: '90d-90day-target',       question: '90-day: by 90 days from now, what\'s changed for it to feel like a win?' },
+  ],
+  'accelerator': [
+    { id: 'accel-current-mrr',      question: 'Accelerator: what\'s your current monthly recurring revenue (or closest equivalent)?' },
+    { id: 'accel-growth-block',     question: 'Accelerator: what\'s the ONE constraint stopping growth right now?' },
+  ],
+  'audit': [
+    { id: 'audit-burning-q',        question: 'Audit: the burning question you want me to answer in our session?' },
+    { id: 'audit-decisions-pending', question: 'Audit: any decisions you\'re sitting on that this audit should help you make?' },
+  ],
+  'broker': [
+    { id: 'broker-volume',          question: 'Broker: rough loan volume settled in the last 12 months?' },
+    { id: 'broker-niche',           question: 'Broker: who\'s your niche client (or are you still general)?' },
+  ],
+  'happyhour': [
+    { id: 'hh-topic',               question: 'Happy Hour: the one topic / decision / problem you want focused time on?' },
+  ],
+};
+
+// Returns Phoebe's customised intake defaults from coach-settings, falling
+// back to the built-ins. The schema:
+//   coachSettings.intakeDefaults = {
+//     universal: [{id, question}, ...],
+//     byProgram: { mdc: [...], '90day': [...], ... }
+//   }
+function getIntakeDefaultsConfig() {
+  var s = (window._coachSettings && window._coachSettings.intakeDefaults) || {};
+  return {
+    universal: Array.isArray(s.universal) && s.universal.length ? s.universal : UNIVERSAL_INTAKE_DEFAULTS,
+    byProgram: (s.byProgram && typeof s.byProgram === 'object') ? s.byProgram : PROGRAM_INTAKE_OVERLAY_DEFAULTS,
+  };
+}
+
 // Hydrate the client's intake from defaults if it's empty. Doesn't write
 // to disk yet — just returns the live array. Migration of legacy
 // prog.intake happens via offerIntakeMigration() below.
 function _ensureClientIntakeFields(client) {
   client.intake = client.intake || {};
+  var cfg = getIntakeDefaultsConfig();
   if (!Array.isArray(client.intake.fields) || !client.intake.fields.length) {
-    client.intake.fields = UNIVERSAL_INTAKE_DEFAULTS.map(function(q) {
+    client.intake.fields = cfg.universal.map(function(q) {
       return { id: q.id, question: q.question, answer: '', builtIn: true };
     });
   }
+  // v11430: lazily append per-program overlay questions when the client has a
+  // program of that type. Only adds — never deletes Phoebe's edits/answers.
+  var fieldIds = {};
+  client.intake.fields.forEach(function(f) { if (f && f.id) fieldIds[f.id] = true; });
+  var progTypes = {};
+  (client.programs || []).forEach(function(p) { if (p && p.program) progTypes[p.program] = true; });
+  Object.keys(progTypes).forEach(function(pt) {
+    var overlay = cfg.byProgram[pt];
+    if (!Array.isArray(overlay)) return;
+    overlay.forEach(function(q) {
+      if (!q || !q.id || fieldIds[q.id]) return;
+      client.intake.fields.push({ id: q.id, question: q.question, answer: '', builtIn: true, programType: pt });
+      fieldIds[q.id] = true;
+    });
+  });
   return client.intake.fields;
+}
+
+// v11430: Settings editor for the default intake question library —
+// universal questions + per-program overlays. Stored on
+// coachSettings.intakeDefaults and rendered into #intake-defaults-editor.
+function renderIntakeDefaultsEditor() {
+  var host = document.getElementById('intake-defaults-editor');
+  if (!host) return;
+  if (!window._coachSettings) window._coachSettings = {};
+  if (!window._coachSettings.intakeDefaults) {
+    window._coachSettings.intakeDefaults = {
+      universal: UNIVERSAL_INTAKE_DEFAULTS.slice(),
+      byProgram: JSON.parse(JSON.stringify(PROGRAM_INTAKE_OVERLAY_DEFAULTS)),
+    };
+  }
+  var cfg = window._coachSettings.intakeDefaults;
+  if (!Array.isArray(cfg.universal)) cfg.universal = UNIVERSAL_INTAKE_DEFAULTS.slice();
+  if (!cfg.byProgram || typeof cfg.byProgram !== 'object') cfg.byProgram = JSON.parse(JSON.stringify(PROGRAM_INTAKE_OVERLAY_DEFAULTS));
+
+  function rowHtml(scope, q, idx) {
+    return '<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px">' +
+      '<input type="text" value="' + escapeHtml(q.question || '') + '" placeholder="Question…" oninput="updateIntakeDefault(\'' + scope + '\',' + idx + ',this.value)" style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-family:var(--f-body);font-size:12.5px;color:var(--magenta);background:var(--paper);outline:none">' +
+      '<button class="btn-sm" title="Remove" onclick="removeIntakeDefault(\'' + scope + '\',' + idx + ')" style="font-size:13px;padding:6px 10px;color:#C0392B">×</button>' +
+    '</div>';
+  }
+
+  var html = '';
+  // Universal block
+  html += '<div style="background:rgba(229,4,139,0.06);border:1px solid rgba(229,4,139,0.2);border-radius:10px;padding:12px 14px;margin-bottom:12px">' +
+    '<div style="font-family:var(--f-head);font-size:13px;color:var(--magenta);font-weight:700;margin-bottom:8px">📋 Universal — every client gets these</div>' +
+    cfg.universal.map(function(q, i) { return rowHtml('universal', q, i); }).join('') +
+    '<button class="btn-sm primary" onclick="addIntakeDefault(\'universal\')" style="font-size:11px">+ Add a universal question</button>' +
+  '</div>';
+
+  // Per-program overlays
+  var progKeys = Object.keys(cfg.byProgram);
+  if (typeof PROGRAMS === 'object') {
+    Object.keys(PROGRAMS).forEach(function(pk) {
+      if (progKeys.indexOf(pk) < 0) progKeys.push(pk);
+    });
+  }
+  progKeys.forEach(function(pk) {
+    if (!Array.isArray(cfg.byProgram[pk])) cfg.byProgram[pk] = [];
+    var pi = (typeof PROGRAMS === 'object' && PROGRAMS[pk]) ? PROGRAMS[pk] : { label: pk };
+    html += '<details style="background:rgba(95,163,168,0.06);border:1px solid rgba(95,163,168,0.2);border-radius:10px;padding:10px 14px;margin-bottom:8px"' + (cfg.byProgram[pk].length ? ' open' : '') + '>' +
+      '<summary style="cursor:pointer;font-family:var(--f-head);font-size:13px;color:#3F7A7E;font-weight:700;list-style:none">' + (pi.icon || '·') + ' ' + escapeHtml(pi.label || pk) + ' overlay <span style="font-size:11px;color:var(--stone);font-weight:500">· ' + cfg.byProgram[pk].length + ' question' + (cfg.byProgram[pk].length === 1 ? '' : 's') + '</span></summary>' +
+      '<div style="margin-top:10px">' +
+        cfg.byProgram[pk].map(function(q, i) { return rowHtml('program:' + pk, q, i); }).join('') +
+        '<button class="btn-sm" onclick="addIntakeDefault(\'program:' + pk + '\')" style="font-size:11px">+ Add ' + escapeHtml(pi.short || pk) + ' question</button>' +
+      '</div>' +
+    '</details>';
+  });
+
+  host.innerHTML = html;
+}
+
+function addIntakeDefault(scope) {
+  if (!window._coachSettings || !window._coachSettings.intakeDefaults) renderIntakeDefaultsEditor();
+  var cfg = window._coachSettings.intakeDefaults;
+  var newQ = { id: 'q-' + Date.now() + '-' + Math.random().toString(36).slice(2,5), question: '' };
+  if (scope === 'universal') {
+    cfg.universal.push(newQ);
+  } else if (scope.indexOf('program:') === 0) {
+    var pk = scope.slice(8);
+    cfg.byProgram[pk] = cfg.byProgram[pk] || [];
+    cfg.byProgram[pk].push(newQ);
+  }
+  flushCoachSettings();
+  renderIntakeDefaultsEditor();
+}
+
+function updateIntakeDefault(scope, idx, value) {
+  var cfg = window._coachSettings && window._coachSettings.intakeDefaults;
+  if (!cfg) return;
+  if (scope === 'universal') {
+    if (cfg.universal[idx]) cfg.universal[idx].question = value;
+  } else if (scope.indexOf('program:') === 0) {
+    var pk = scope.slice(8);
+    if (cfg.byProgram[pk] && cfg.byProgram[pk][idx]) cfg.byProgram[pk][idx].question = value;
+  }
+  flushCoachSettings();
+}
+
+async function removeIntakeDefault(scope, idx) {
+  var cfg = window._coachSettings && window._coachSettings.intakeDefaults;
+  if (!cfg) return;
+  var ok = await branded.confirm('Remove this default question? Existing clients keep their copy — only new clients (and the next sync) skip it.', { title: 'Remove default question?', okLabel: 'Remove', danger: true });
+  if (!ok) return;
+  if (scope === 'universal') {
+    cfg.universal.splice(idx, 1);
+  } else if (scope.indexOf('program:') === 0) {
+    var pk = scope.slice(8);
+    if (cfg.byProgram[pk]) cfg.byProgram[pk].splice(idx, 1);
+  }
+  flushCoachSettings();
+  renderIntakeDefaultsEditor();
+}
+
+async function resetIntakeDefaultsToBuiltins() {
+  var ok = await branded.confirm('Restore the original default question set? Your customisations to the defaults will be lost (existing client answers stay).', { title: 'Reset defaults?', okLabel: 'Reset', danger: true });
+  if (!ok) return;
+  if (!window._coachSettings) window._coachSettings = {};
+  window._coachSettings.intakeDefaults = {
+    universal: UNIVERSAL_INTAKE_DEFAULTS.slice(),
+    byProgram: JSON.parse(JSON.stringify(PROGRAM_INTAKE_OVERLAY_DEFAULTS)),
+  };
+  flushCoachSettings();
+  renderIntakeDefaultsEditor();
+  branded.toast('Defaults reset');
+}
+
+async function syncIntakeDefaultsToAllClients() {
+  var arr = Array.isArray(clients) ? clients : [];
+  if (!arr.length) { branded.alert('No clients loaded.'); return; }
+  var ok = await branded.confirm('Add any new default questions to all ' + arr.length + ' clients? Existing answers stay untouched — only missing questions get appended.', { title: 'Sync defaults?', okLabel: 'Sync' });
+  if (!ok) return;
+  var added = 0;
+  for (var i = 0; i < arr.length; i++) {
+    var c = arr[i];
+    var before = (c.intake && c.intake.fields ? c.intake.fields.length : 0);
+    _ensureClientIntakeFields(c);
+    var after = c.intake.fields.length;
+    if (after !== before) {
+      added += (after - before);
+      try { await persistClient(c); } catch (e) {}
+    }
+  }
+  branded.success('Synced — ' + added + ' question' + (added === 1 ? '' : 's') + ' added across ' + arr.length + ' clients.');
 }
 
 function renderUniversalIntake(client, prog) {
@@ -13782,12 +14108,18 @@ function renderUniversalIntake(client, prog) {
     var aiPill = f.aiDrafted
       ? '<span style="font-size:9px;font-weight:800;background:rgba(229,4,139,0.12);color:var(--hot-pink);border:1px solid rgba(229,4,139,0.4);padding:2px 7px;border-radius:99px;letter-spacing:0.04em;text-transform:uppercase" title="AI drafted this from existing data — review + edit. Save to confirm.">✦ AI-drafted</span>'
       : '';
-    return '<div class="intake-q-card" data-field-id="' + f.id + '"' + (f.aiDrafted ? ' style="border-left:3px solid var(--hot-pink)"' : '') + '>' +
+    // v11430: per-program overlay pill — surfaces which program type this
+    // question came from so Phoebe knows it's an MDC / 90-day / Audit extra.
+    var overlayPill = f.programType
+      ? '<span class="intake-q-overlay" title="Per-program overlay question — only added because this client has a ' + escapeHtml(f.programType) + ' program" style="font-size:9px;font-weight:800;background:rgba(95,163,168,0.18);color:#3F7A7E;border:1px solid rgba(95,163,168,0.4);padding:2px 7px;border-radius:99px;letter-spacing:0.04em;text-transform:uppercase">' + escapeHtml(f.programType) + '</span>'
+      : '';
+    return '<div class="intake-q-card" data-field-id="' + f.id + '"' + (f.aiDrafted ? ' style="border-left:3px solid var(--hot-pink)"' : (f.programType ? ' style="border-left:3px solid #5FA3A8"' : '')) + '>' +
       '<div class="intake-q-meta">' +
         '<input class="intake-q-question" type="text" value="' + escapeHtml(f.question || '') + '" placeholder="Question…" onchange="updateIntakeField(\'' + client.id + '\',\'' + f.id + '\',\'question\',this.value)">' +
         (f.builtIn
           ? '<span class="intake-q-builtin" title="Built-in question — you can edit the wording or delete it">core</span>'
           : '<span class="intake-q-custom" title="Custom question Phoebe added">custom</span>') +
+        overlayPill +
         aiPill +
         '<button class="intake-q-delete" onclick="deleteIntakeField(\'' + client.id + '\',\'' + f.id + '\')" title="Remove this question">×</button>' +
       '</div>' +
