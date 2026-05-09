@@ -13,6 +13,7 @@ export default async () => {
     zoom:  env("ZOOM_ACCOUNT_ID") && env("ZOOM_CLIENT_ID") && env("ZOOM_CLIENT_SECRET"),
     zoomWebhook: env("ZOOM_VERIFICATION_TOKEN"),
     calendly: env("CALENDLY_API_TOKEN"),
+    calendlyWebhookSigning: env("CALENDLY_WEBHOOK_SIGNING_KEY"),
     anthropic: env("ANTHROPIC_API_KEY"),
     twilio: env("TWILIO_ACCOUNT_SID") && env("TWILIO_AUTH_TOKEN") && env("TWILIO_FROM_NUMBER"),
     stripe: env("STRIPE_SECRET_KEY") && env("STRIPE_PUBLISHABLE_KEY"),

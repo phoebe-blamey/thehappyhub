@@ -21,7 +21,10 @@ export default async (req: Request) => {
     return new Response(JSON.stringify({ error: "clientId and (sessionDate or meetingId) required" }), { status: 400 });
   }
 
-  const zoomToken = Netlify.env.get("ZOOM_ACCESS_TOKEN");
+  // v11440 cleanup: removed read of deprecated ZOOM_ACCESS_TOKEN env var —
+  // the OAuth flow below generates a fresh access token from the
+  // ACCOUNT_ID + CLIENT_ID + CLIENT_SECRET trio every call, so a static
+  // pre-issued token isn't needed (and was never populated).
   const zoomAccountId = Netlify.env.get("ZOOM_ACCOUNT_ID");
   const zoomClientId = Netlify.env.get("ZOOM_CLIENT_ID");
   const zoomClientSecret = Netlify.env.get("ZOOM_CLIENT_SECRET");

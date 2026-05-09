@@ -1,5 +1,43 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+// v11500: Calendly webhook signature verification.
+// Calendly signs every webhook with HMAC-SHA256:
+//   header `Calendly-Webhook-Signature: t=<unix-secs>,v1=<hex>`
+//   message = `${t}.${rawBody}`
+//   v1 = HMAC-SHA256(CALENDLY_WEBHOOK_SIGNING_KEY, message)
+// 3-minute freshness window per Calendly's spec.
+//
+// Soft mode: when CALENDLY_WEBHOOK_SIGNING_KEY env var is NOT set, requests
+// are still accepted (backwards-compat, dev-mode). Once the key is set in
+// Netlify, every event MUST verify or it gets a 401.
+function verifyCalendlySignature(rawBody: string, sigHeader: string, signingKey: string): { ok: true } | { ok: false; reason: string } {
+  if (!sigHeader) return { ok: false, reason: "Missing Calendly-Webhook-Signature header" };
+  // Parse header — looks like "t=1234567890,v1=abc123def..."
+  const parts: Record<string, string> = {};
+  for (const seg of sigHeader.split(",")) {
+    const [k, v] = seg.trim().split("=");
+    if (k && v) parts[k] = v;
+  }
+  const ts = parts["t"];
+  const sig = parts["v1"];
+  if (!ts || !sig) return { ok: false, reason: "Malformed signature header" };
+  // Replay defence — 3-minute window matches Calendly's recommendation
+  const tsNum = parseInt(ts, 10) * 1000;
+  if (!Number.isFinite(tsNum) || Math.abs(Date.now() - tsNum) > 3 * 60 * 1000) {
+    return { ok: false, reason: "Stale or invalid timestamp" };
+  }
+  const message = `${ts}.${rawBody}`;
+  const expected = createHmac("sha256", signingKey).update(message).digest("hex");
+  let matches = false;
+  try {
+    const a = Buffer.from(sig, "hex");
+    const b = Buffer.from(expected, "hex");
+    matches = a.length === b.length && timingSafeEqual(a, b);
+  } catch {}
+  return matches ? { ok: true } : { ok: false, reason: "Signature mismatch" };
+}
 
 // ── Event type → Program mapping (all Phoebe's Calendly events) ──────────────
 const EVENT_PROGRAM_MAP: Record<string, {
@@ -57,8 +95,26 @@ function generateCode(name: string): string {
 export default async (req: Request) => {
   if (req.method !== "POST") return new Response("OK", { status: 200 });
 
+  // v11500: read raw body first (signature verification needs the exact bytes)
+  const rawBody = await req.text();
+
+  // v11500: verify signature when CALENDLY_WEBHOOK_SIGNING_KEY is configured.
+  // Soft-fails if the env var is not set (so the existing webhook keeps
+  // working until Phoebe sets up signing via Settings → Calendly).
+  const signingKey = Netlify.env.get("CALENDLY_WEBHOOK_SIGNING_KEY") || "";
+  if (signingKey) {
+    const sigHeader = req.headers.get("calendly-webhook-signature") || "";
+    const v = verifyCalendlySignature(rawBody, sigHeader, signingKey);
+    if (!v.ok) {
+      console.warn("[calendly-webhook] rejected — " + v.reason);
+      return new Response(JSON.stringify({ error: v.reason }), { status: 401 });
+    }
+  } else {
+    console.warn("[calendly-webhook] CALENDLY_WEBHOOK_SIGNING_KEY not set — accepting unsigned event (set up signing in Settings → Calendly)");
+  }
+
   let payload: any;
-  try { payload = await req.json(); } catch { return new Response("Bad JSON", { status: 400 }); }
+  try { payload = JSON.parse(rawBody); } catch { return new Response("Bad JSON", { status: 400 }); }
 
   const event = payload.event;
   if (event !== "invitee.created") return new Response("Ignored", { status: 200 });
@@ -207,6 +263,10 @@ export default async (req: Request) => {
         websiteUrl:   isLinkedIn ? "" : link,
         linkedIn:     isLinkedIn ? link : "",
         businessName: fields.businessName || "",
+        // v11440 fix: pass program type + their stated change so the AI
+        // brief tailors itself to the actual session (was hardcoded broker)
+        programLabel: programInfo.label,
+        wantToChange: fields.wantToChange || "",
       }),
     }).catch(err => console.error("Failed to trigger social discovery:", err));
   }

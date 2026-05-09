@@ -10,9 +10,16 @@ import { getStore } from "@netlify/blobs";
 //
 // Returns: { stats, matched, unmatched, sample }
 //
-// "createUnmatched" creates a stub client record from the Zoom topic + date.
-// The stub gets a generic "session" program, a generated access code, and
-// is flagged source: "zoom-sync" so Phoebe can recognise / clean up later.
+// v11500: createUnmatched now DEFAULTS TO FALSE. The previous default of
+// `true` polluted the clients namespace with 30+ topic-only orphan
+// placeholder records ("March round", "Unknown contact", "My Meeting") on
+// the very first sync run. The home-page "Unmatched Zoom Recordings"
+// review queue reads /api/zoom-list-recordings directly — it does NOT
+// need stub client records to display unmatched recordings. Phoebe should
+// match each unmatched recording against an existing client there, not
+// auto-create stubs.
+//
+// Pass createUnmatched:true explicitly only if you really want stubs.
 
 function parseClientNameFromTopic(topic: string): string {
   // "Phoebe <> Sarah Chen" / "Phoebe & Sarah Chen" / "Phoebe and Sarah" /
@@ -48,7 +55,8 @@ export default async (req: Request) => {
   let body: any = {};
   try { body = await req.json(); } catch {}
   const days: number = Math.min(Math.max(body.days || 365, 30), 730);
-  const createUnmatched: boolean = body.createUnmatched !== false; // default true
+  // v11500: default flipped to false — stub creation is opt-in now
+  const createUnmatched: boolean = body.createUnmatched === true;
   const dryRun: boolean = !!body.dryRun;
 
   // ── 1. Get a Zoom access token via Server-to-Server OAuth ──

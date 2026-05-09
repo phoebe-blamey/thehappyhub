@@ -5,7 +5,11 @@ export default async (req: Request, context: Context) => {
   let body: any;
   try { body = await req.json(); } catch { return; }
 
-  const { clientId, name, websiteUrl, linkedIn, businessName } = body;
+  // v11440 fix: programLabel + wantToChange now flow through from the
+  // calendly-webhook caller so the brief actually knows what session this
+  // is for. Previously hardcoded "Broker Business Breakthrough" → wrong
+  // context for every non-broker client.
+  const { clientId, name, websiteUrl, linkedIn, businessName, programLabel, wantToChange } = body;
   if (!clientId) return;
 
   const apiKey = Netlify.env.get("ANTHROPIC_API_KEY");
@@ -15,13 +19,16 @@ export default async (req: Request, context: Context) => {
   const hasLinkedIn = !!linkedIn;
   if (!hasWebsite && !hasLinkedIn) return;
 
-  const prompt = `A new coaching client named "${name}" has booked a Broker Business Breakthrough session with Phoebe Blamey (business coach, consultant, financial expert).
+  // Fall back to a neutral phrase if the caller didn't pass a program.
+  const session = programLabel ? `${programLabel} session` : "session";
+
+  const prompt = `A new coaching client named "${name}" has booked a ${session} with Phoebe Blamey (business coach, consultant, financial expert).
 
 Known details:
 - Business name: ${businessName || "not provided"}
 - Website: ${websiteUrl || "not provided"}
 - LinkedIn: ${linkedIn || "not provided"}
-
+${wantToChange ? `- They said they want to change: ${wantToChange}\n` : ""}
 Based on these details, provide a quick pre-session intelligence brief:
 
 ## ⚠️ FOR PHOEBE'S ATTENTION

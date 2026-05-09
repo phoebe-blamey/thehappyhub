@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11440 — finishing pass: archive/delete buttons surface on the per-client tasks panel (renderSingleTask now shows 📦 + ×, plus ↺ Restore when an archived task is shown), archived rows render dimmed with a teal pill, archived tasks tagged. Plus docs/TESTING.md — full Phoebe-friendly end-to-end test checklist covering 13 areas (setup → coach login → universal intake + overlays → AI brief + Phoebe-attention reply → tasks + bulk actions → message templates → custom sections + section templates → onboarding → Calendly→Zoom→AI loop → mobile → Things you should never see).">
+<meta name="hmh-build" content="v11500 — pre-UAT hardening · Calendly webhook signature verification (HMAC-SHA256 + 3-min replay window, soft-warn until CALENDLY_WEBHOOK_SIGNING_KEY env is set), one-click signed-webhook setup in Settings (deletes old + creates new with a fresh signing key, shown once). Settings → 🧹 Data hygiene panel — finds + bulk-deletes demo personas / test bookings / Zoom orphan placeholders, surfaces likely duplicates by email-root + name, suggests merge target where a Zoom orphan name matches a canonical client. Stop-the-bleeding: demo data only loads with ?demo=1, simulate-booking now tags records isTest:true with a 🧪 TEST pill on the card, sync-zoom-all stub-creation default flipped from on to off (was the source of 30 topic-only orphan records). Plus the v11440 review fixes — discover-socials AI brief now uses actual program label not hardcoded broker, dead renderTask + ZOOM_ACCESS_TOKEN reads removed, 8 noisy per-render console.logs cleaned up.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -787,8 +787,9 @@
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
             <button class="btn-sm" id="full-sync-dry-btn" onclick="runFullSync(true)">👀 Dry run (preview)</button>
             <button class="btn-sm primary" id="full-sync-btn" onclick="runFullSync(false)">🔄 Run full sync</button>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--stone);cursor:pointer">
-              <input type="checkbox" id="full-sync-create-unmatched" checked> Create stub clients for unmatched Zooms
+            <!-- v11500: default OFF — stub creation is opt-in now (used to leak topic-only orphan records into the dashboard) -->
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--stone);cursor:pointer" title="Off by default — keeps the dashboard clean. Unmatched recordings still show in the Home page review queue, you just match each one manually instead of having stubs auto-created.">
+              <input type="checkbox" id="full-sync-create-unmatched"> Create stub clients for unmatched Zooms <em style="color:var(--stone);font-style:italic;font-size:11px">(advanced — usually leave off)</em>
             </label>
           </div>
           <div id="full-sync-progress" style="font-size:12px;color:var(--teal);font-weight:500;margin-bottom:8px;min-height:18px"></div>
@@ -929,6 +930,20 @@
             </div>
             <p>When a Calendly booking lands, the webhook auto-creates the client + their first program + runs a background AI research brief.</p>
             <p style="margin-top:6px;font-size:12px;color:var(--stone)">Env var: CALENDLY_API_TOKEN.</p>
+
+            <!-- v11500: webhook signature setup (one-tap signed-webhook recreation) -->
+            <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+                <span style="font-family:var(--f-head);font-size:13px;color:var(--magenta);font-weight:700">🔐 Webhook signing</span>
+                <span id="calendly-signing-pill" class="integration-status integration-status-loading">Checking…</span>
+              </div>
+              <p style="font-size:12px;color:var(--stone);line-height:1.6">When signing is on, every Calendly event is HMAC-verified before the hub processes it — no one can fake a booking. <strong>Booking on Calendly stays exactly the same for clients</strong> — this is server-side only.</p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+                <button class="btn-sm primary" onclick="setupCalendlyWebhookSigning()" id="calendly-signing-btn" style="font-size:12px">🔐 Set up signed webhook</button>
+                <span id="calendly-signing-status" style="font-size:11px;color:var(--stone)"></span>
+              </div>
+              <div id="calendly-signing-key-output" style="display:none;margin-top:10px;background:#FFFBE8;border:1.5px solid rgba(232,160,32,0.55);border-radius:10px;padding:12px"></div>
+            </div>
           </div>
 
           <div class="settings-card" id="integration-stripe">
@@ -1008,6 +1023,21 @@
               </ol>
             </details>
           </div>
+        </div>
+
+        <!-- v11500: data hygiene — find and clean up junk records that
+             accumulated during build/test (demo personas, simulate-booking
+             test entries, duplicates by email variant, Zoom-sync orphan
+             placeholders). Lists everything first, deletes only on
+             explicit Phoebe-confirm. -->
+        <div class="settings-card" id="data-hygiene-card">
+          <h4>🧹 Data hygiene — find and clean up junk records</h4>
+          <p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:10px">Walks every client record looking for: demo personas left over from the build, test bookings from "Simulate booking", duplicate clients by email variant, and Zoom-sync orphan placeholders. Nothing gets deleted without a confirm.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+            <button class="btn-sm primary" onclick="renderDataHygienePanel()" id="data-hygiene-scan-btn">🔍 Scan for junk records</button>
+            <span id="data-hygiene-status" style="font-size:11px;color:var(--stone);align-self:center"></span>
+          </div>
+          <div id="data-hygiene-output"></div>
         </div>
 
         <!-- v11430: default intake questions editor — universal + per-program
@@ -2149,8 +2179,9 @@ async function runFullSync(dryRun) {
   var otherBtn = document.getElementById(dryRun ? 'full-sync-btn' : 'full-sync-dry-btn');
   var progress = document.getElementById('full-sync-progress');
   var output   = document.getElementById('full-sync-output');
+  // v11500: default OFF — stub creation only on explicit opt-in
   var createUnmatched = document.getElementById('full-sync-create-unmatched');
-  var createUnmatchedVal = createUnmatched ? createUnmatched.checked : true;
+  var createUnmatchedVal = createUnmatched ? createUnmatched.checked : false;
 
   if (!dryRun) {
     var ok = await branded.confirm(
@@ -2709,12 +2740,24 @@ async function refreshIntegrationStatusPills() {
     var st = (data && data.status) || {};
     document.querySelectorAll('.integration-status').forEach(function(el) {
       var key = el.dataset.int;
+      if (!key) return; // v11500: signing pill is updated separately below
       var on = !!st[key];
       el.classList.remove('integration-status-loading', 'integration-status-on', 'integration-status-off');
       el.classList.add(on ? 'integration-status-on' : 'integration-status-off');
       el.textContent = on ? '✓ Live' : '○ Not configured';
       el.title = on ? 'Env vars detected on this Netlify deploy' : 'Add the required env vars on Netlify and redeploy to flip this on';
     });
+    // v11500: Calendly webhook signing pill — separate flag from the API token
+    var sigEl = document.getElementById('calendly-signing-pill');
+    if (sigEl) {
+      var signingOn = !!st.calendlyWebhookSigning;
+      sigEl.classList.remove('integration-status-loading', 'integration-status-on', 'integration-status-off');
+      sigEl.classList.add(signingOn ? 'integration-status-on' : 'integration-status-off');
+      sigEl.textContent = signingOn ? '🔒 Signed' : '○ Not signed';
+      sigEl.title = signingOn
+        ? 'CALENDLY_WEBHOOK_SIGNING_KEY env var is set — every event is HMAC-verified before processing'
+        : 'Set up signing below — webhook currently accepts unsigned events';
+    }
   } catch (e) {
     document.querySelectorAll('.integration-status').forEach(function(el) {
       el.classList.remove('integration-status-loading');
@@ -2722,6 +2765,80 @@ async function refreshIntegrationStatusPills() {
       el.textContent = '? Unknown';
       el.title = 'Could not reach the integrations-status endpoint';
     });
+  }
+}
+
+// v11500: one-click Calendly webhook signing setup. Generates a signing
+// key server-side, recreates the Calendly webhook subscription with that
+// key, then shows it ONCE so Phoebe can paste it into Netlify env vars.
+async function setupCalendlyWebhookSigning() {
+  var btn = document.getElementById('calendly-signing-btn');
+  var status = document.getElementById('calendly-signing-status');
+  var output = document.getElementById('calendly-signing-key-output');
+  var ok = await branded.confirm(
+    'This will:\n\n' +
+    '1. Delete your existing Calendly webhook(s) for this site\n' +
+    '2. Create a new one with a signing key\n' +
+    '3. Show you the signing key ONCE to paste into Netlify\n\n' +
+    'Booking on Calendly stays exactly the same for clients — this is server-side only. Brief outage of 1-2 seconds during recreate. Continue?',
+    { title: '🔐 Set up signed Calendly webhook?', okLabel: 'Yes, set up' }
+  );
+  if (!ok) return;
+  if (btn) { btn.disabled = true; btn.textContent = '🔐 Setting up…'; }
+  if (status) status.textContent = 'Talking to Calendly…';
+  if (output) { output.style.display = 'none'; output.innerHTML = ''; }
+  try {
+    var resp = await fetch('/api/calendly-setup-webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: 'PB2025' })
+    });
+    var data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      throw new Error(data.error || data.detail || ('HTTP ' + resp.status));
+    }
+    if (status) status.textContent = '';
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Re-run setup (rotates the key)'; }
+    if (output) {
+      output.style.display = 'block';
+      output.innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+          '<div style="font-size:18px">🔑</div>' +
+          '<div style="font-family:var(--f-head);font-size:13px;color:#A07030;font-weight:700">Signing key — copy this NOW (won\'t be shown again)</div>' +
+        '</div>' +
+        '<div style="font-family:monospace;font-size:12px;background:white;padding:10px 14px;border-radius:8px;border:1px solid rgba(232,160,32,0.4);word-break:break-all;color:var(--magenta);margin-bottom:10px" id="calendly-signing-key-value">' +
+          escapeHtml(data.signingKey) +
+        '</div>' +
+        '<button class="btn-sm primary" onclick="copyCalendlySigningKey()" style="font-size:11px">📋 Copy to clipboard</button>' +
+        '<details style="margin-top:12px">' +
+          '<summary style="cursor:pointer;font-size:12px;color:#5A4632;font-weight:700">Next steps →</summary>' +
+          '<ol style="font-size:12px;color:#5A4632;line-height:1.7;padding-left:22px;margin-top:6px">' +
+            '<li>Open <a href="https://app.netlify.com/sites/the-happy-hub/settings/env" target="_blank" rel="noopener" style="color:var(--hot-pink)">Netlify environment variables</a></li>' +
+            '<li>Click <strong>Add a variable</strong></li>' +
+            '<li>Key: <code>CALENDLY_WEBHOOK_SIGNING_KEY</code></li>' +
+            '<li>Value: paste the signing key above</li>' +
+            '<li>Save → Netlify redeploys in ~60 seconds → 🔒 pill above flips to "Signed"</li>' +
+          '</ol>' +
+          '<div style="font-size:11px;color:var(--stone);margin-top:8px;font-style:italic">Until the env var is set, the webhook keeps accepting unsigned events (so we don\'t break the live flow during the changeover).</div>' +
+        '</details>' +
+        '<div style="font-size:11px;color:#5A4632;margin-top:10px">Deleted ' + (data.deleted || []).length + ' old webhook(s). New webhook created at <code style="font-size:10px">' + escapeHtml(data.callbackUrl) + '</code>.</div>';
+    }
+    if (typeof branded !== 'undefined' && branded.success) branded.success('Signed webhook created. Paste the key into Netlify next.');
+  } catch (err) {
+    if (status) status.textContent = '';
+    if (btn) { btn.disabled = false; btn.textContent = '🔐 Set up signed webhook'; }
+    if (typeof branded !== 'undefined' && branded.error) branded.error('Setup failed: ' + (err && err.message || 'unknown error'));
+  }
+}
+
+function copyCalendlySigningKey() {
+  var el = document.getElementById('calendly-signing-key-value');
+  if (!el) return;
+  var key = el.textContent || '';
+  if (typeof copyToClipboard === 'function') copyToClipboard(key);
+  else {
+    try { navigator.clipboard.writeText(key); branded.toast('Key copied'); }
+    catch (e) { branded.alert('Could not copy — select + copy manually.'); }
   }
 }
 
@@ -3220,14 +3337,24 @@ async function loadClients() {
     }
   } catch(e) { console.log('localStorage failed:', e.message); }
 
-  // Truly nothing — only THEN load demo data, and only if we've never
-  // seen real data on this device.
-  if (!hasRealData) {
+  // v11500 stop-the-bleeding: demo data ONLY loads when explicitly opted
+  // in via ?demo=1 query param. Previously fell through here on cold-cache
+  // states, which is how James/Sarah/Ann persona records leaked into the
+  // production Blob. The hub is now in production with real seeded clients,
+  // so a fresh install on a new device should show empty (and pull from
+  // /api/get-clients on first paint), not demo personas.
+  var wantsDemo = false;
+  try { wantsDemo = new URLSearchParams(window.location.search).get('demo') === '1'; } catch (e) {}
+  if (wantsDemo && !hasRealData) {
     clients = getDemoClients();
-    console.log('Fresh install — using demo clients:', clients.length);
+    console.log('[loadClients] ?demo=1 — using demo clients:', clients.length);
   } else {
     clients = [];
-    console.warn('[loadClients] No data anywhere but real data flag is set — leaving clients empty rather than loading demo');
+    if (hasRealData) {
+      console.warn('[loadClients] No data anywhere but real data flag is set — leaving empty (will refill from server)');
+    } else {
+      console.warn('[loadClients] No data found. Pass ?demo=1 to force demo data, otherwise the dashboard will fill from /api/get-clients on next refresh.');
+    }
   }
 }
 
@@ -3542,7 +3669,6 @@ async function flushSaveQueue() {
 
 function getDemoClients() {
   if (window.DEMO_CLIENTS && Array.isArray(window.DEMO_CLIENTS)) {
-    console.log('Demo clients loaded from external file:', window.DEMO_CLIENTS.length);
     return window.DEMO_CLIENTS;
   }
   console.warn('DEMO_CLIENTS not loaded — check js/demo-data.js script tag');
@@ -3655,7 +3781,6 @@ async function enterCoach() {
     document.getElementById('coach-hub').classList.add('active');
     // Pull all shared state from Netlify Blobs in parallel with the client list
     await Promise.all([loadClients(), loadRemoteState('coach').catch(function(e){ console.warn('[remote-state]', e); })]);
-    console.log('Clients loaded:', clients.length, clients.map(function(c){return c.name;}));
     // Run weekly accountability check (Mondays only, once per Monday)
     await runWeeklyAccountabilityCheck();
     renderClients();
@@ -3664,7 +3789,6 @@ async function enterCoach() {
     // Safety: re-render after short delay in case DOM isn't ready
     setTimeout(function() {
       if (document.getElementById('clients-grid').children.length === 0) {
-        console.log('Re-rendering clients...');
         renderClients();
       }
     }, 300);
@@ -6741,6 +6865,8 @@ async function simulateWebhook() {
   if(existing) {
     existing.programs = existing.programs||[];
     existing.programs.push(progEntry);
+    // v11500 stop-the-bleeding: ensure the test flag stays set if simulator was run on this email
+    existing.isTest = true;
     client = existing;
   } else {
     var code = name.split(' ')[0].toUpperCase().slice(0,4)+Math.floor(Math.random()*900+100);
@@ -6748,6 +6874,10 @@ async function simulateWebhook() {
       id:'client-'+email.replace(/[^a-z0-9]/g,'-')+'-'+Date.now(),
       name:name, email:email, biz:q2||q1||'',
       clientAccess:code, status:'active',
+      // v11500 stop-the-bleeding: tag every simulate-booking record so the
+      // data hygiene panel can find + bulk-clean them. Also displayed as
+      // a "🧪 Test" pill on cards so Phoebe can distinguish at a glance.
+      isTest: true,
       createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
       programs:[progEntry], source:'calendly-simulation',
     };
@@ -11534,19 +11664,8 @@ async function deleteTask(clientId, taskId) {
   renderTasksPanel(client, currentProgramId);
 }
 
-function renderTask(t, clientId) {
-  var dueStr = t.dueDate ? ' · Due ' + new Date(t.dueDate).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) : '';
-  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-soft)">' +
-    '<div onclick="toggleTaskDone(\'' + clientId + '\',\'' + t.id + '\')" style="width:18px;height:18px;border-radius:99px;border:2px solid var(--border);flex-shrink:0;cursor:pointer;margin-top:2px;' + (t.done ? 'background:var(--hot-pink);border-color:var(--hot-pink)' : '') + '"></div>' +
-    '<div style="flex:1">' +
-    '<div style="font-size:13px;color:var(--magenta);' + (t.done ? 'text-decoration:line-through;opacity:0.5' : '') + '">' + t.text + '</div>' +
-    '<div style="font-size:11px;color:var(--stone);margin-top:2px">' + (t.isAuto ? '⚡ Auto · ' : '') + dueStr + '</div>' +
-    '</div>' +
-    // v11410: archive (soft) + delete forever (hard, with confirm)
-    '<button onclick="archiveTask(\'' + clientId + '\',\'' + t.id + '\')" title="Archive · removes from view, can be restored" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--stone);padding:2px 6px">📦</button>' +
-    '<button onclick="deleteTask(\'' + clientId + '\',\'' + t.id + '\')" title="Delete forever" style="background:none;border:none;cursor:pointer;font-size:14px;color:#C0392B;padding:2px 6px">×</button>' +
-    '</div>';
-}
+// v11440 cleanup: removed dead `renderTask()` function (replaced by
+// renderSingleTask in the per-client tasks panel).
 
 async function addTaskFromTemplate(clientId, progId, sel) {
   var text = sel.value;
@@ -14091,6 +14210,323 @@ async function syncIntakeDefaultsToAllClients() {
   branded.success('Synced — ' + added + ' question' + (added === 1 ? '' : 's') + ' added across ' + arr.length + ' clients.');
 }
 
+// ════════════════════════════════════════════════════════════════════
+// v11500: DATA HYGIENE — Settings panel that finds + cleans junk records
+// (demo personas, test bookings, Zoom-sync orphan placeholders, dupes).
+// Lists everything first; deletes only on explicit confirm.
+// ════════════════════════════════════════════════════════════════════
+
+// IDs of demo personas that may have leaked from public/js/demo-data.js
+// into the production Blobs during cold-cache states. Safe to delete —
+// they were never real clients.
+var DEMO_CLIENT_IDS = ['client-james-w', 'client-sarah-c', 'client-ann-d'];
+
+// Canonical seeded real clients + Elodie test — never offered for delete
+var PROTECTED_CLIENT_IDS = [
+  'client-elodie-b',
+  'client-annalouise-m', 'client-christine-l', 'client-frances-p',
+  'client-julie-j', 'client-kari-m', 'client-louise-s', 'client-yvette-p',
+];
+
+// Quick canonical-name match for Zoom orphan auto-merge suggestions
+var CANONICAL_NAME_TO_ID = {
+  'frances pratt':         'client-frances-p',
+  'louise syphers':        'client-louise-s',
+  'lou syphers':           'client-louise-s',
+  'yvette polley':         'client-yvette-p',
+  'kari marsden':          'client-kari-m',
+  'christine lukich':      'client-christine-l',
+  'julie judge':           'client-julie-j',
+  'anna-louise macallister': 'client-annalouise-m',
+};
+
+function _normaliseEmail(e) { return (e || '').toLowerCase().trim(); }
+function _emailRoot(e) {
+  // "ameliadeanblamey17@gmail.com" → "ameliadeanblamey"
+  // Strips @domain + trailing digits in the local-part
+  var local = _normaliseEmail(e).split('@')[0] || '';
+  return local.replace(/[._\-]/g, '').replace(/\d+$/, '');
+}
+
+function _categoriseClient(c) {
+  if (!c || !c.id) return 'unknown';
+  if (PROTECTED_CLIENT_IDS.indexOf(c.id) >= 0) return 'protected';
+  if (DEMO_CLIENT_IDS.indexOf(c.id) >= 0) return 'demo';
+  if (c.isTest) return 'test'; // v11500 stop-the-bleeding flag
+  if (c.id.indexOf('client-zoom-') === 0) return 'zoom-orphan';
+  // Heuristic: simulate-booking test entries
+  var em = _normaliseEmail(c.email);
+  if (em === 'test@happymoneyjourney.com') return 'test';
+  if (em === 'happymoneyjourney@gmail.com' && (c.biz || '').toLowerCase().indexOf('happy money journey') >= 0) return 'test';
+  return 'real';
+}
+
+async function renderDataHygienePanel() {
+  var btn = document.getElementById('data-hygiene-scan-btn');
+  var status = document.getElementById('data-hygiene-status');
+  var output = document.getElementById('data-hygiene-output');
+  if (!output) return;
+  if (btn) { btn.disabled = true; btn.textContent = '🔍 Scanning…'; }
+  if (status) status.textContent = 'Walking every client record…';
+  output.innerHTML = '';
+
+  // Refresh from server so we're working off the latest state
+  try { await loadClients(); } catch (e) {}
+  var arr = Array.isArray(clients) ? clients : [];
+
+  // Bucket the records
+  var buckets = { protected:[], real:[], demo:[], test:[], 'zoom-orphan':[], unknown:[] };
+  arr.forEach(function(c) {
+    var cat = _categoriseClient(c);
+    buckets[cat] = buckets[cat] || [];
+    buckets[cat].push(c);
+  });
+
+  // Find duplicates within "real" bucket — by email-root + by name
+  var dupGroups = []; // [{ key, label, members: [client, client, ...] }]
+  var seenByEmailRoot = {};
+  var seenByLowerName = {};
+  arr.forEach(function(c) {
+    var cat = _categoriseClient(c);
+    if (cat !== 'real' && cat !== 'protected') return;
+    var root = _emailRoot(c.email);
+    var nm = (c.name || '').toLowerCase().trim();
+    if (root) (seenByEmailRoot[root] = seenByEmailRoot[root] || []).push(c);
+    if (nm) (seenByLowerName[nm] = seenByLowerName[nm] || []).push(c);
+  });
+  Object.keys(seenByEmailRoot).forEach(function(k) {
+    var members = seenByEmailRoot[k];
+    if (members.length < 2) return;
+    dupGroups.push({ key:'email:'+k, label:'Email-variant duplicates · "' + k + '"', members:members });
+  });
+  Object.keys(seenByLowerName).forEach(function(k) {
+    var members = seenByLowerName[k];
+    if (members.length < 2) return;
+    // Only add if not already covered by email-root group
+    var covered = members.every(function(m) {
+      return dupGroups.some(function(g) { return g.members.indexOf(m) >= 0; });
+    });
+    if (!covered) dupGroups.push({ key:'name:'+k, label:'Same-name records · "' + k + '"', members:members });
+  });
+
+  // Render each section
+  var html = '';
+
+  // ─── Demo personas ────────────────────────────────────────────────
+  if (buckets.demo.length) {
+    html += '<div style="background:#FFF0F0;border:1.5px solid rgba(192,57,43,0.3);border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">' +
+        '<div style="font-size:18px">🔴</div>' +
+        '<div style="font-family:var(--f-head);font-size:14px;color:#A03030;font-weight:700">Demo personas (' + buckets.demo.length + ')</div>' +
+        '<button class="btn-sm" onclick="dataHygieneSelectAll(\'demo\')" style="font-size:11px;margin-left:auto">☑ Select all</button>' +
+        '<button class="btn-sm" onclick="dataHygieneDeleteSelected()" style="font-size:11px;background:#C0392B;color:white;border-color:#C0392B">× Delete selected</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#5A2D08;line-height:1.5;margin-bottom:8px">Fictional clients (James, Sarah, Ann) that leaked from <code>demo-data.js</code> during early cold-cache loads. Safe to delete.</div>' +
+      buckets.demo.map(function(c) { return _hygieneRow(c, 'demo'); }).join('') +
+    '</div>';
+  }
+
+  // ─── Test bookings ────────────────────────────────────────────────
+  if (buckets.test.length) {
+    html += '<div style="background:#FFF8E8;border:1.5px solid rgba(232,160,32,0.4);border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">' +
+        '<div style="font-size:18px">🧪</div>' +
+        '<div style="font-family:var(--f-head);font-size:14px;color:#A07030;font-weight:700">Test bookings (' + buckets.test.length + ')</div>' +
+        '<button class="btn-sm" onclick="dataHygieneSelectAll(\'test\')" style="font-size:11px;margin-left:auto">☑ Select all</button>' +
+        '<button class="btn-sm" onclick="dataHygieneDeleteSelected()" style="font-size:11px;background:#C0392B;color:white;border-color:#C0392B">× Delete selected</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#5A4632;line-height:1.5;margin-bottom:8px">Created via Settings → "Simulate booking" or marked <code>isTest:true</code>. Safe to delete.</div>' +
+      buckets.test.map(function(c) { return _hygieneRow(c, 'test'); }).join('') +
+    '</div>';
+  }
+
+  // ─── Zoom orphan placeholders ─────────────────────────────────────
+  if (buckets['zoom-orphan'].length) {
+    html += '<div style="background:#F0F4FA;border:1.5px solid rgba(95,163,168,0.4);border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">' +
+        '<div style="font-size:18px">🎬</div>' +
+        '<div style="font-family:var(--f-head);font-size:14px;color:#3F7A7E;font-weight:700">Zoom orphan placeholders (' + buckets['zoom-orphan'].length + ')</div>' +
+        '<button class="btn-sm" onclick="dataHygieneSelectAll(\'zoom-orphan\')" style="font-size:11px;margin-left:auto">☑ Select all</button>' +
+        '<button class="btn-sm" onclick="dataHygieneDeleteSelected()" style="font-size:11px;background:#C0392B;color:white;border-color:#C0392B">× Delete selected</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#3F7A7E;line-height:1.5;margin-bottom:8px">Auto-created by "Sync Zoom" when a recording couldn\'t be matched to a client. Topic-only records ("March round", "Unknown contact", "My Meeting") have no real client behind them — safe to delete. Where a topic matches a canonical client name, we suggest a merge target.</div>' +
+      buckets['zoom-orphan'].map(function(c) {
+        var nm = (c.name || '').toLowerCase().trim();
+        var suggestedTarget = CANONICAL_NAME_TO_ID[nm];
+        return _hygieneRow(c, 'zoom-orphan', suggestedTarget);
+      }).join('') +
+    '</div>';
+  }
+
+  // ─── Duplicate groups (by email-root or by name) ──────────────────
+  if (dupGroups.length) {
+    html += '<div style="background:#FDEFF5;border:1.5px solid rgba(229,4,139,0.3);border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">' +
+        '<div style="font-size:18px">👥</div>' +
+        '<div style="font-family:var(--f-head);font-size:14px;color:var(--magenta);font-weight:700">Likely duplicates (' + dupGroups.length + ' group' + (dupGroups.length === 1 ? '' : 's') + ')</div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--magenta);line-height:1.5;margin-bottom:8px">Multiple records share an email-root or full name. <strong>Review each group manually</strong> — open one, decide which to keep, then delete the others below. (Email-root strips trailing digits — "ameliadeanblamey17" matches "ameliadeanblamey".)</div>' +
+      dupGroups.map(function(g) { return _hygieneDupGroupHtml(g); }).join('') +
+    '</div>';
+  }
+
+  // ─── Summary if nothing junky ─────────────────────────────────────
+  if (!buckets.demo.length && !buckets.test.length && !buckets['zoom-orphan'].length && !dupGroups.length) {
+    html = '<div style="background:linear-gradient(135deg,#F0F9F0,#E8F4E8);border:1.5px solid #6FA56F;border-radius:12px;padding:18px;text-align:center">' +
+      '<div style="font-size:36px;margin-bottom:6px">✨</div>' +
+      '<div style="font-family:var(--f-head);font-size:15px;color:#3F6B3F;font-weight:700">No junk records found</div>' +
+      '<div style="font-size:12px;color:#3F6B3F;margin-top:4px">' + buckets.protected.length + ' canonical · ' + buckets.real.length + ' real client records.</div>' +
+    '</div>';
+  }
+
+  // ─── Stats footer ─────────────────────────────────────────────────
+  html += '<div style="font-size:11px;color:var(--stone);padding:10px 14px;background:var(--paper);border-radius:8px;margin-top:8px">' +
+    'Total: <strong>' + arr.length + '</strong> records · ' +
+    buckets.protected.length + ' canonical · ' +
+    buckets.real.length + ' real · ' +
+    buckets.demo.length + ' demo · ' +
+    buckets.test.length + ' test · ' +
+    buckets['zoom-orphan'].length + ' zoom orphan · ' +
+    dupGroups.length + ' dup group' + (dupGroups.length === 1 ? '' : 's') +
+  '</div>';
+
+  output.innerHTML = html;
+  if (btn) { btn.disabled = false; btn.textContent = '🔄 Re-scan'; }
+  if (status) status.textContent = '';
+}
+
+function _hygieneRow(c, bucket, suggestedTarget) {
+  var subline = [];
+  if (c.email) subline.push(escapeHtml(c.email));
+  if (c.id)    subline.push('<code style="font-size:10px">' + escapeHtml(c.id) + '</code>');
+  var progCount = (c.programs || []).length;
+  if (progCount) subline.push(progCount + ' prog' + (progCount === 1 ? '' : 's'));
+  var noteCount = (c.programs || []).reduce(function(s, p) { return s + ((p.sessionNotes || []).length); }, 0);
+  if (noteCount) subline.push(noteCount + ' session note' + (noteCount === 1 ? '' : 's'));
+
+  var mergeBtn = suggestedTarget
+    ? '<button class="btn-sm" onclick="dataHygieneMergeIntoCanonical(\'' + escapeHtml(c.id) + '\',\'' + escapeHtml(suggestedTarget) + '\')" title="Merge this orphan into the matching canonical client" style="font-size:10px;padding:3px 8px;background:rgba(95,163,168,0.18);color:#3F7A7E;border:1px solid #5FA3A8">↔ Merge into ' + escapeHtml(suggestedTarget.replace('client-','').replace('-','-')) + '</button>'
+    : '';
+
+  return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:white;border:1px solid var(--border);border-radius:8px;margin-bottom:4px">' +
+    '<input type="checkbox" class="data-hygiene-check" data-id="' + escapeHtml(c.id) + '" data-bucket="' + bucket + '" style="margin:0">' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="font-size:13px;color:var(--magenta);font-weight:600">' + escapeHtml(c.name || '(no name)') + '</div>' +
+      '<div style="font-size:11px;color:var(--stone)">' + subline.join(' · ') + '</div>' +
+    '</div>' +
+    mergeBtn +
+    '<button class="btn-sm" onclick="openClient(\'' + escapeHtml(c.id) + '\')" style="font-size:10px;padding:3px 8px">Open</button>' +
+  '</div>';
+}
+
+function _hygieneDupGroupHtml(g) {
+  var rows = g.members.map(function(c) {
+    var label = (c.email || '') + ' · ' + (c.id || '');
+    var protectedStar = PROTECTED_CLIENT_IDS.indexOf(c.id) >= 0 ? ' <span style="color:#6FA56F;font-size:11px">⭐ canonical</span>' : '';
+    var sessionNoteCount = (c.programs || []).reduce(function(s, p) { return s + ((p.sessionNotes || []).length); }, 0);
+    var winsCount = (c.wins || []).length + (c.programs || []).reduce(function(s, p) { return s + ((p.wins || []).length); }, 0);
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:white;border:1px solid var(--border);border-radius:8px;margin-bottom:3px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:12px;color:var(--magenta);font-weight:600">' + escapeHtml(c.name || '(no name)') + protectedStar + '</div>' +
+        '<div style="font-size:11px;color:var(--stone)">' + escapeHtml(label) + ' · ' + ((c.programs || []).length) + ' prog · ' + sessionNoteCount + ' note · ' + winsCount + ' win</div>' +
+      '</div>' +
+      '<button class="btn-sm" onclick="openClient(\'' + escapeHtml(c.id) + '\')" style="font-size:10px;padding:3px 8px">Open</button>' +
+      (PROTECTED_CLIENT_IDS.indexOf(c.id) < 0
+        ? '<button class="btn-sm" onclick="dataHygieneDeleteOne(\'' + escapeHtml(c.id) + '\')" style="font-size:10px;padding:3px 8px;background:transparent;color:#C0392B;border:1px solid rgba(192,57,43,0.3)">× Delete this</button>'
+        : '<span style="font-size:10px;color:#6FA56F;padding:0 6px">protected</span>') +
+    '</div>';
+  }).join('');
+  return '<div style="margin-bottom:10px;padding:10px;background:rgba(229,4,139,0.04);border-radius:8px">' +
+    '<div style="font-size:12px;font-weight:700;color:var(--magenta);margin-bottom:6px">' + escapeHtml(g.label) + '</div>' +
+    rows +
+  '</div>';
+}
+
+function dataHygieneSelectAll(bucket) {
+  document.querySelectorAll('.data-hygiene-check[data-bucket="' + bucket + '"]').forEach(function(el) { el.checked = true; });
+}
+
+async function dataHygieneDeleteSelected() {
+  var ids = Array.from(document.querySelectorAll('.data-hygiene-check:checked')).map(function(el) { return el.dataset.id; });
+  if (!ids.length) { branded.alert('Tick at least one record first.'); return; }
+  var ok = await branded.confirm('Permanently delete ' + ids.length + ' record' + (ids.length === 1 ? '' : 's') + '? This can\'t be undone — but you can re-add them via Settings → Add client if you change your mind.', { title: 'Delete forever?', okLabel: 'Delete', danger: true });
+  if (!ok) return;
+  await _dataHygieneCallDelete(ids);
+}
+
+async function dataHygieneDeleteOne(id) {
+  var c = clients.find(function(x) { return x.id === id; });
+  var name = c ? (c.name || id) : id;
+  var ok = await branded.confirm('Delete ' + escapeHtml(name) + ' permanently? This can\'t be undone.', { title: 'Delete record?', okLabel: 'Delete', danger: true });
+  if (!ok) return;
+  await _dataHygieneCallDelete([id]);
+}
+
+async function _dataHygieneCallDelete(ids) {
+  branded.toast('Deleting…');
+  try {
+    var resp = await fetch('/api/delete-client', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ pin: 'PB2025', clientIds: ids })
+    });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+    branded.success('Deleted ' + (data.deleted || []).length + ' record' + ((data.deleted || []).length === 1 ? '' : 's') + '.');
+    // Drop them from local state too
+    var del = new Set(data.deleted || []);
+    if (Array.isArray(clients)) clients = clients.filter(function(c) { return !del.has(c.id); });
+    if (typeof renderClients === 'function') renderClients();
+    // Re-scan
+    renderDataHygienePanel();
+  } catch (err) {
+    branded.error('Delete failed: ' + (err && err.message || 'unknown error'));
+  }
+}
+
+async function dataHygieneMergeIntoCanonical(orphanId, canonicalId) {
+  var orphan = clients.find(function(c) { return c.id === orphanId; });
+  var canon  = clients.find(function(c) { return c.id === canonicalId; });
+  if (!orphan || !canon) { branded.alert('Couldn\'t find both records — try Re-scan.'); return; }
+  var orphanProgs = (orphan.programs || []).length;
+  var orphanNotes = (orphan.programs || []).reduce(function(s, p) { return s + ((p.sessionNotes || []).length); }, 0);
+  var ok = await branded.confirm(
+    'Merge "' + (orphan.name || orphanId) + '" into "' + (canon.name || canonicalId) + '"?\n\n' +
+    'This will:\n' +
+    '• Append ' + orphanProgs + ' program(s) and ' + orphanNotes + ' session note(s) onto the canonical record\n' +
+    '• Delete the orphan record (' + orphanId + ')\n\n' +
+    'Email + name + access code on the canonical record stay unchanged.',
+    { title: 'Merge orphan into canonical?', okLabel: 'Merge' }
+  );
+  if (!ok) return;
+  // Append orphan programs onto canon
+  canon.programs = (canon.programs || []).concat(orphan.programs || []);
+  // Append top-level wins (rare on zoom orphans but defensive)
+  canon.wins = (canon.wins || []).concat(orphan.wins || []);
+  canon.updatedAt = new Date().toISOString();
+  try {
+    await persistClient(canon);
+  } catch (e) {
+    branded.error('Could not save canonical: ' + (e && e.message || 'unknown'));
+    return;
+  }
+  // Now delete the orphan
+  try {
+    var resp = await fetch('/api/delete-client', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ pin: 'PB2025', clientIds: [orphanId] })
+    });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+    if (Array.isArray(clients)) clients = clients.filter(function(c) { return c.id !== orphanId; });
+    branded.success('Merged.');
+    renderDataHygienePanel();
+  } catch (err) {
+    branded.error('Merge succeeded but delete failed: ' + (err && err.message || 'unknown'));
+  }
+}
+
 function renderUniversalIntake(client, prog) {
   if (!client) return '';
   var fields = _ensureClientIntakeFields(client);
@@ -16128,12 +16564,17 @@ function renderClients() {
     var checkboxHtml = bulkOn
       ? '<div class="bulk-checkbox' + (checked ? ' on' : '') + '">' + (checked ? '✓' : '') + '</div>'
       : '';
-    return '<div class="client-card' + (bulkOn ? ' bulk-mode' : '') + (checked ? ' bulk-selected' : '') + '" data-cid="'+c.id+'" onclick="openClientById(this.dataset.cid)"> ' +
+    // v11500: 🧪 Test pill for simulate-booking records — so Phoebe can spot
+    // them at a glance and clean them up via Settings → Data hygiene
+    var testPill = c.isTest
+      ? '<span title="Test record — created via Settings → Simulate booking. Clean up via Settings → 🧹 Data hygiene." style="font-size:9px;font-weight:700;background:rgba(232,160,32,0.18);color:#A07030;padding:2px 6px;border-radius:99px;margin-left:6px">🧪 TEST</span>'
+      : '';
+    return '<div class="client-card' + (bulkOn ? ' bulk-mode' : '') + (checked ? ' bulk-selected' : '') + (c.isTest ? ' is-test' : '') + '" data-cid="'+c.id+'" onclick="openClientById(this.dataset.cid)"> ' +
       checkboxHtml +
       '<div class="client-card-top">' +
       '<div class="client-avatar">'+initials+'</div>' +
       '<div style="flex:1;min-width:0">' +
-      '<div class="client-card-name">'+c.name+'</div>' +
+      '<div class="client-card-name">'+c.name+ testPill +'</div>' +
       '<div class="client-card-prog">'+(c.biz||c.email||'')+'</div>' +
       '</div>' +
       '<span class="client-status status-'+(c.status||'new')+'" style="border-left:3px solid '+healthColor+'">'+(c.status||'new')+'</span>' +
@@ -16468,7 +16909,6 @@ function setTaskFilter(mode) {
 }
 
 function renderTaskSheet() {
-  console.log('[TaskSheet] render called. clients:', typeof clients, Array.isArray(clients) ? clients.length : 'not-array');
   var el = document.getElementById('task-sheet-content');
   if (!el) { console.error('[TaskSheet] task-sheet-content NOT FOUND'); return; }
 
@@ -16499,7 +16939,6 @@ function renderTaskSheet() {
       } catch(e) {}
     });
   });
-  console.log('[TaskSheet] gathered', allItems.length, 'items');
 
   var totalAll=allItems.length, totalPending=0, totalCoach=0, totalClient=0, totalOverdue=0, totalDone=0;
   allItems.forEach(function(x) {
@@ -16618,7 +17057,6 @@ function renderTaskSheet() {
   el.innerHTML = html;
   // v11420: keep the bottom action bar in sync with the current selection
   if (typeof renderBulkActionBar === 'function') renderBulkActionBar();
-  console.log('[TaskSheet] rendered successfully, html length:', html.length);
 }
 
 // ============================================================
@@ -19259,7 +19697,6 @@ function renderClientStatusStrip(client) {
 }
 
 function renderHome() {
-  console.log('[Home] render called');
   var el = document.getElementById('home-content');
   if (!el) return;
   // v11300: auto-update client health (cheap, idempotent — only saves if
@@ -19674,7 +20111,6 @@ function renderHome() {
   if (typeof renderActivityFeed === 'function') renderActivityFeed();
   // Check for unmatched Zooms in background — fills the slot if any are found
   if (typeof checkUnmatchedZooms === 'function') checkUnmatchedZooms();
-  console.log('[Home] rendered, html length:', html.length);
 }
 
 // ============================================================
