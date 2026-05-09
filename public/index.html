@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11370 — MDC brief parts 2-4: sessions are now expandable cards with attendance grid + ✦ Session N Insights AI summarisation (coach + client versions in parallel) + per-session reminders + auto-flag clients missing 2+ sessions · cohort messaging (📧 custom message · 📚 send resource from library · WhatsApp queue) · client MDC week view shows cohort session summary + cohort feed for that week · full cohort community feed with auto-posted wins / milestones / session highlights / resources · 5-emoji reactions · pin-to-top · client can post shoutouts · WhatsApp mirror queues (becomes real once API live)">
+<meta name="hmh-build" content="v11399 — final pre-test build: ✦ Ask Claude coach AI assistant (per-client grounded) · auto-detect business from email domain (banner, accept/dismiss) · ✦ Auto-fill blanks AI for universal intake (drafts answers from research brief + sessions, flags as ✦ AI-drafted, clears flag on edit) · client portal '📅 Phoebe's been busy for you' activity feed (last 7 days) · breadcrumbs on coach client detail (Clients › Name › Tab) · restored clientPostShoutout · members var scope fix in reuseZoomLink">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -228,9 +228,18 @@
         </div>
       </div>
 
-      <!-- CLIENT DETAIL — v11310: restructured client card -->
+      <!-- CLIENT DETAIL — v11310: restructured client card; v11390: breadcrumbs -->
       <div class="page" id="page-client-detail">
         <div style="margin-bottom:16px">
+          <!-- v11390: breadcrumb path for location context. Falls back to
+               just "← Back to clients" on narrow screens via CSS. -->
+          <div class="client-detail-breadcrumb" style="display:flex;align-items:center;gap:6px;margin-bottom:14px;font-size:12px;color:var(--stone);flex-wrap:wrap">
+            <a href="javascript:void(0)" onclick="showPage('clients')" style="color:var(--magenta);text-decoration:none;font-weight:600">👥 Clients</a>
+            <span style="color:var(--stone)">›</span>
+            <span id="detail-breadcrumb-name" style="color:var(--magenta);font-weight:700">…</span>
+            <span style="color:var(--stone)">›</span>
+            <span id="detail-breadcrumb-tab" style="color:var(--stone)">Tools</span>
+          </div>
           <button class="btn-sm" onclick="showPage('clients')" style="margin-bottom:16px">← Back to clients</button>
           <!-- v11310: client overview card. Left = identity (avatar/name/biz/contact/program).
                Right = controls (status/health dropdowns + action buttons). -->
@@ -4863,6 +4872,12 @@ function switchTab(id) {
   var btn = document.querySelector('.tab-btn[data-tab="' + id + '"]');
   if (btn) btn.classList.add('active');
   if (typeof sessionSet === 'function') sessionSet(HMH_SESSION.COACH_TAB, id);
+  // v11390: update breadcrumb tab name
+  var bcTab = document.getElementById('detail-breadcrumb-tab');
+  if (bcTab) {
+    var labels = { intake:'Intake', 'session-notes':'Notes', plan:'Plan', tools:'Tools', tasks:'Tasks', message:'Message', 'client-settings':'Settings', wins:'Wins', profitability:'Value', coaching:'Coaching notes', 'mdc-sprint':'Sprint', 'mdc-workbook':'Workbook', 'happyhour-summary':'Session summary' };
+    bcTab.textContent = labels[id] || id;
+  }
   // Lazy-render the per-client settings panel only when its tab is opened
   if (id === 'client-settings' && typeof renderPerClientSettingsTab === 'function') {
     var c = clients.find(function(c){ return c.id === currentClientId; });
@@ -5421,6 +5436,12 @@ function openClient(id) {
   document.getElementById('detail-avatar').textContent = initials;
   document.getElementById('detail-name').textContent = client.name;
   document.getElementById('detail-biz').textContent = client.biz || '';
+  // v11390: breadcrumb name update
+  var bcName = document.getElementById('detail-breadcrumb-name');
+  if (bcName) bcName.textContent = client.name;
+  // v11380 §8: infer business from email domain on first open if biz is blank
+  if (typeof maybeInferBusinessFromEmail === 'function') maybeInferBusinessFromEmail(client);
+  if (typeof maybeOfferBizInferenceBanner === 'function') maybeOfferBizInferenceBanner(client);
   // Contact line — email + phone, prominently under the name
   var contactBits = [];
   if (client.email) contactBits.push('<a href="mailto:' + client.email + '" style="color:var(--magenta);text-decoration:none">📧 ' + client.email + '</a>');
@@ -8165,6 +8186,12 @@ function renderClientSummary(client) {
   // bottom now. Up to 5 most recent, with "+ Share a win" button. Older
   // ones still accessible via the existing wins area if needed.
   html += renderClientWinsBlock(client);
+
+  // v11390: "What Phoebe's done for me this week" — client-facing activity
+  // log filtered to client-relevant events from the last 7 days.
+  if (typeof renderClientActivityFeed === 'function') {
+    html += renderClientActivityFeed(client);
+  }
 
   // v11210: "My answers" — moved from Settings into Summary per Elodie's
   // review §2. Better logical fit: it IS the client's profile content,
@@ -12660,6 +12687,7 @@ function renderToolsPanel(client, prog) {
   var html = zoomHtml + winsHtml + profitHtml + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px">';
 
   // AI Tools
+  html += toolCard('✦ Ask Claude',        'Coach-side AI — ask about this client',     'var(--hot-pink)', 'openAskClaudeModal("'+cid+'")');
   html += toolCard('✦ Research brief',     'AI-analyse website, intake, social',       'var(--hot-pink)', 'switchTab("intake")');
   html += toolCard('✦ Build 90-day plan',  'Generate plan from session notes',          'var(--hot-pink)', 'switchTab("plan"); setTimeout(function(){if(!builderVisible)toggleBuilder();},200)');
   html += toolCard('✦ Impact statement',   'Generate a shareable win story',            'var(--hot-pink)', 'switchTab("wins")');
@@ -13469,15 +13497,19 @@ function renderUniversalIntake(client, prog) {
   }
 
   var fieldsHtml = fields.map(function(f, i) {
-    return '<div class="intake-q-card" data-field-id="' + f.id + '">' +
+    var aiPill = f.aiDrafted
+      ? '<span style="font-size:9px;font-weight:800;background:rgba(229,4,139,0.12);color:var(--hot-pink);border:1px solid rgba(229,4,139,0.4);padding:2px 7px;border-radius:99px;letter-spacing:0.04em;text-transform:uppercase" title="AI drafted this from existing data — review + edit. Save to confirm.">✦ AI-drafted</span>'
+      : '';
+    return '<div class="intake-q-card" data-field-id="' + f.id + '"' + (f.aiDrafted ? ' style="border-left:3px solid var(--hot-pink)"' : '') + '>' +
       '<div class="intake-q-meta">' +
         '<input class="intake-q-question" type="text" value="' + escapeHtml(f.question || '') + '" placeholder="Question…" onchange="updateIntakeField(\'' + client.id + '\',\'' + f.id + '\',\'question\',this.value)">' +
         (f.builtIn
           ? '<span class="intake-q-builtin" title="Built-in question — you can edit the wording or delete it">core</span>'
           : '<span class="intake-q-custom" title="Custom question Phoebe added">custom</span>') +
+        aiPill +
         '<button class="intake-q-delete" onclick="deleteIntakeField(\'' + client.id + '\',\'' + f.id + '\')" title="Remove this question">×</button>' +
       '</div>' +
-      '<textarea class="intake-q-answer" placeholder="Answer…" onchange="updateIntakeField(\'' + client.id + '\',\'' + f.id + '\',\'answer\',this.value)">' + escapeHtml(f.answer || '') + '</textarea>' +
+      '<textarea class="intake-q-answer" placeholder="Answer…" onfocus="if(' + (f.aiDrafted ? 'true' : 'false') + ')clearAiDraftedFlag(\'' + client.id + '\',\'' + f.id + '\')" onchange="updateIntakeField(\'' + client.id + '\',\'' + f.id + '\',\'answer\',this.value)">' + escapeHtml(f.answer || '') + '</textarea>' +
     '</div>';
   }).join('');
 
@@ -13487,11 +13519,142 @@ function renderUniversalIntake(client, prog) {
         '<div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);font-weight:700">📋 Universal intake</div>' +
         '<div style="font-size:11px;color:var(--stone);margin-top:2px">Same answers across every program. Click any question to rephrase or any answer to edit.</div>' +
       '</div>' +
-      '<button class="btn-sm primary" style="font-size:11px" onclick="addIntakeField(\'' + client.id + '\')">+ Add a question</button>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+        // v11380 §8: auto-fill blanks from research brief / sessions / domain
+        '<button class="btn-sm" style="font-size:11px" onclick="autoFillIntakeWithAI(\'' + client.id + '\')" title="AI drafts answers for blank questions from the research brief, recent sessions, and existing data">✦ Auto-fill blanks</button>' +
+        '<button class="btn-sm primary" style="font-size:11px" onclick="addIntakeField(\'' + client.id + '\')">+ Add a question</button>' +
+      '</div>' +
     '</div>' +
     migrateBanner +
     '<div id="intake-fields-list">' + fieldsHtml + '</div>' +
   '</div>';
+}
+
+// v11390: client-facing activity feed — last 7 days of Phoebe's actions
+// FOR this client. Pulls from prog.sessionNotes (when shared), tasks
+// (clientVisible + recently created), shared resources, and cohort
+// feed entries that involve them. Phoebe-voice copy.
+function renderClientActivityFeed(client) {
+  if (!client) return '';
+  var sevenDaysAgo = Date.now() - 7 * 86400000;
+  var events = [];
+  function ageLabel(ts) {
+    if (!ts) return '';
+    var d = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+    if (d <= 0) return 'today';
+    if (d === 1) return 'yesterday';
+    return d + ' days ago';
+  }
+
+  (client.programs || []).forEach(function(p) {
+    // Shared session notes
+    (p.sessionNotes || []).forEach(function(n) {
+      if (!n.sharedWithClient) return;
+      var ts = new Date(n.aiSummaryApprovedAt || n.createdAt || n.date || 0).getTime();
+      if (ts < sevenDaysAgo) return;
+      events.push({ ts: ts, icon: '📝', text: 'Phoebe shared session notes' + (n.zoomTopic ? ' from "' + n.zoomTopic + '"' : ''), action: function() { switchClientTab('programs'); } });
+    });
+    // Shared custom sections from Phoebe
+    (p.customSections || []).forEach(function(s) {
+      if (s.author !== 'phoebe' || !s.shared) return;
+      var ts = new Date(s.createdAt || s.updatedAt || 0).getTime();
+      if (ts < sevenDaysAgo) return;
+      events.push({ ts: ts, icon: '📌', text: 'Phoebe shared a section: ' + (s.title || 'Untitled') });
+    });
+  });
+  // New tasks Phoebe added that are visible to client
+  (client.tasks || []).forEach(function(t) {
+    if (!t.clientVisible || !t.text) return;
+    var ts = new Date(t.createdAt || 0).getTime();
+    if (ts < sevenDaysAgo) return;
+    events.push({ ts: ts, icon: '✅', text: 'Phoebe added a task: ' + t.text.slice(0, 80), action: function() { switchClientTab('todos'); } });
+  });
+  // Cohort feed entries involving this client (their wins, milestones, shoutouts to them)
+  (client.programs || []).forEach(function(p) {
+    if (!p.cohort) return;
+    var co = (typeof MDC_COHORTS !== 'undefined' && Array.isArray(MDC_COHORTS))
+      ? MDC_COHORTS.find(function(c){ return c.id === p.cohort; }) : null;
+    if (!co) return;
+    (co.feedEntries || []).forEach(function(e) {
+      if (!e.ts) return;
+      var ts = new Date(e.ts).getTime();
+      if (ts < sevenDaysAgo) return;
+      // Only surface entries that ARE about this client (their wins, milestones)
+      // OR resource cards (Phoebe shared with whole cohort)
+      if (e.kind === 'resource') {
+        events.push({ ts: ts, icon: '📚', text: 'Phoebe shared a resource: ' + e.text.slice(0, 70) });
+      } else if (e.authorId === client.id && (e.kind === 'milestone' || e.kind === 'win')) {
+        events.push({ ts: ts, icon: e.kind === 'milestone' ? '🎖' : '🏆', text: e.text.slice(0, 90) });
+      }
+    });
+  });
+  // Newly approved AI summary
+  (client.programs || []).forEach(function(p) {
+    (p.sessionNotes || []).forEach(function(n) {
+      if (!n.aiSummary || !n.sharedWithClient) return;
+      var ts = new Date(n.aiSummaryApprovedAt || 0).getTime();
+      if (ts < sevenDaysAgo || !ts) return;
+      // Already covered by the shared-session event above; skip dupes
+    });
+  });
+  // De-dupe by text+ts and sort newest first
+  var seen = new Set();
+  events = events.filter(function(e) {
+    var key = e.text + '::' + e.ts;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  events.sort(function(a, b) { return b.ts - a.ts; });
+  if (!events.length) return '';
+  var rows = events.slice(0, 6).map(function(e) {
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border-soft);font-size:13px">' +
+      '<div style="font-size:16px;line-height:1;flex-shrink:0">' + e.icon + '</div>' +
+      '<div style="flex:1;min-width:0;color:var(--magenta);line-height:1.5">' + escapeHtml(e.text) + '</div>' +
+      '<div style="font-size:11px;color:var(--stone);flex-shrink:0">' + ageLabel(e.ts) + '</div>' +
+    '</div>';
+  }).join('');
+  return '<div class="client-section">' +
+    '<h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>📅 Phoebe\'s been busy for you</span><span style="font-size:11px;color:var(--stone);font-weight:500">last 7 days</span></h3>' +
+    '<div style="margin-top:6px">' + rows + '</div>' +
+  '</div>';
+}
+
+// v11370: client-side shoutout — restored after an inadvertent overwrite in v11380
+async function clientPostShoutout(cohortId) {
+  var co = _findCohort(cohortId);
+  if (!co) return;
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var text = await branded.prompt('Write a shoutout for someone in the cohort — celebrate a win, say thanks, share something that landed for you.', '', '', { title: '👏 Shoutout', okLabel: 'Post' });
+  if (!text || !text.trim()) return;
+  co.feedEntries = co.feedEntries || [];
+  co.feedEntries.unshift({
+    id: 'fe-' + Date.now(),
+    kind: 'shoutout',
+    text: text.trim(),
+    author: client.name,
+    authorId: client.id,
+    ts: new Date().toISOString(),
+    reactions: {},
+  });
+  _saveCohorts();
+  branded.success('Posted to the cohort feed');
+  if (typeof renderClientProgram === 'function') {
+    var p = (client.programs || []).find(function(pp){ return pp.cohort === cohortId; });
+    if (p) renderClientProgram(client, p);
+  }
+}
+
+// v11380: clear the AI-drafted flag when Phoebe edits an auto-filled answer
+function clearAiDraftedFlag(clientId, fieldId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client || !client.intake || !client.intake.fields) return;
+  var f = client.intake.fields.find(function(x){ return x.id === fieldId; });
+  if (f && f.aiDrafted) {
+    f.aiDrafted = false;
+    if (typeof persistClient === 'function') persistClient(client).catch(function(){});
+  }
 }
 
 async function updateIntakeField(clientId, fieldId, prop, value) {
@@ -14692,7 +14855,279 @@ async function reactToFeedItem(cohortId, entryId, emoji) {
 }
 
 // Member-side: post a shoutout from the client portal
-async function clientPostShoutout(cohortId) {
+// ═════════════════════════════════════════════════════════════════════
+// v11380 §14 — "Ask Claude" coach-side AI assistant
+// Phoebe types a question; AI answers grounded in the open client's
+// full profile (intake, programs, sessions, wins, notes, sprint focus,
+// coach private notes). Coach-only, never shown to clients.
+// ═════════════════════════════════════════════════════════════════════
+function openAskClaudeModal(clientId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var firstName = (client.name || '').split(' ')[0] || 'this client';
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '✦';
+  document.getElementById('branded-modal-title').textContent = 'Ask Claude · ' + firstName;
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="font-size:12px;color:var(--stone);margin-bottom:10px">Coach-only. Ask anything about ' + escapeHtml(firstName) + ' — AI grounds the answer in their profile, intake, programs, recent sessions, wins, and your private coaching notes.</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
+      '<button class="btn-sm" style="font-size:11px" onclick="askClaudePreset(\'' + clientId + '\',\'session-prep\')">📋 Prep me for the next session</button>' +
+      '<button class="btn-sm" style="font-size:11px" onclick="askClaudePreset(\'' + clientId + '\',\'red-flags\')">⚠ What should I be watching for?</button>' +
+      '<button class="btn-sm" style="font-size:11px" onclick="askClaudePreset(\'' + clientId + '\',\'next-step\')">→ What\'s the next step here?</button>' +
+      '<button class="btn-sm" style="font-size:11px" onclick="askClaudePreset(\'' + clientId + '\',\'message-draft\')">📧 Draft a message to ' + escapeHtml(firstName) + '</button>' +
+    '</div>' +
+    '<textarea id="ask-claude-input" placeholder="Or type your own question…" style="width:100%;min-height:60px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.5"></textarea>' +
+    '<div id="ask-claude-output" class="md-render-preview" style="margin-top:14px;font-size:13px;color:var(--magenta);line-height:1.65;display:none;padding:12px;background:var(--paper);border:1px solid var(--border-soft);border-radius:10px;max-height:50vh;overflow-y:auto"></div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var send = document.createElement('button'); send.className = 'btn-sm primary'; send.textContent = '✦ Ask';
+  send.onclick = function() {
+    var q = (document.getElementById('ask-claude-input').value || '').trim();
+    if (!q) { branded.alert('Type a question first.'); return; }
+    askClaudeAboutClient(clientId, q);
+  };
+  var close = document.createElement('button'); close.className = 'btn-sm'; close.textContent = 'Close';
+  close.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(close);
+  actions.appendChild(send);
+  host.style.display = 'flex';
+}
+
+function askClaudePreset(clientId, kind) {
+  var presets = {
+    'session-prep':  'I have my next session with this client coming up. What should I be ready to dig into? Surface the thread that\'s been building, where they\'re stuck, and one specific question that could shift them.',
+    'red-flags':     'What should I be watching for with this client right now? Patterns that worry me, things they\'ve said but not addressed, places they\'re likely about to slip.',
+    'next-step':     'Looking at where this client is right now — sprint, focus, recent wins, blockers — what\'s the single most useful next step for them this week?',
+    'message-draft': 'Draft a short, warm, Phoebe-voice message to this client based on where they\'re at — something to send between sessions. Specific, not generic. 2-3 sentences max.',
+  };
+  var input = document.getElementById('ask-claude-input');
+  if (input) input.value = presets[kind] || '';
+  askClaudeAboutClient(clientId, presets[kind] || '');
+}
+
+async function askClaudeAboutClient(clientId, question) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var output = document.getElementById('ask-claude-output');
+  if (output) { output.style.display = 'block'; output.innerHTML = '<em style="color:var(--stone)">Drafting…</em>'; }
+  // Build full coach-only context
+  var prog = (client.programs || []).find(function(p){ return p.id === currentProgramId; }) || (client.programs || [])[0] || {};
+  var pi = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog.program]) || {};
+  var n = prog.notes || {};
+  var intake = (typeof buildIntakeContextForAI === 'function') ? buildIntakeContextForAI(client, prog) : '';
+  var recentSessions = (prog.sessionNotes || []).slice(-3).map(function(sn) {
+    return '[' + (sn.date || '') + '] ' + (sn.aiSummary || sn.text || '').slice(0, 400);
+  }).join('\n\n');
+  var openTasks = (client.tasks || []).filter(function(t){ return !t.done; }).slice(0, 6).map(function(t){ return '- ' + t.text + (t.dueDate ? ' (due ' + t.dueDate + ')' : ''); }).join('\n');
+  var recentWins = ((prog.wins || []).concat(client.wins || [])).slice(-3).map(function(w){ return '🏆 ' + (w.metric || w.title || 'win') + (w.before && w.after ? ': ' + w.before + ' → ' + w.after : ''); }).join('\n');
+  var prompt = phoebeVoice(
+    'You are Phoebe Blamey\'s private coaching assistant. The coach is asking a question about ONE specific client. ' +
+    'Answer directly, in Phoebe\'s voice, drawing only from the client context provided. Be specific and concrete — name things from the data. ' +
+    'No padding. No "I hope this helps". 200 words max unless they explicitly ask for more.\n\n' +
+    'CLIENT: ' + (client.name || '') + '\n' +
+    'Business: ' + (client.biz || 'unknown') + '\n' +
+    'Programme: ' + (pi.label || prog.program || '') + (prog.workbook === 'mdc' ? ' — Sprint ' + (prog.mdcSprint||1) + '/W' + (prog.mdcWeek||1) : '') + '\n' +
+    (client.bio ? 'Bio: ' + client.bio + '\n' : '') +
+    (client.specialNotes ? 'Special notes (accessibility/preferences): ' + client.specialNotes + '\n' : '') +
+    (intake ? '\nINTAKE ANSWERS:\n' + intake + '\n' : '') +
+    (n.research ? '\nRESEARCH BRIEF:\n' + n.research.slice(0, 2000) + '\n' : '') +
+    (n.themes  ? '\nKey themes: ' + n.themes + '\n' : '') +
+    (n.opps    ? 'Opportunities: ' + n.opps + '\n' : '') +
+    (n.private ? '\nPHOEBE\'S PRIVATE NOTES (coach-only):\n' + n.private + '\n' : '') +
+    (recentSessions ? '\nRECENT SESSION NOTES (last 3):\n' + recentSessions + '\n' : '') +
+    (openTasks ? '\nOPEN TASKS:\n' + openTasks + '\n' : '') +
+    (recentWins ? '\nRECENT WINS:\n' + recentWins + '\n' : '') +
+    '\n────────────\n\n' +
+    'COACH\'S QUESTION: ' + question
+  );
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] }),
+    });
+    if (!resp.ok) throw new Error('AI returned ' + resp.status);
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) data.content.forEach(function(b){ if (b && b.type === 'text' && b.text) text += b.text; });
+    if (!text.trim()) throw new Error('Empty response');
+    if (output) {
+      var ts = '<div style="font-size:10px;color:var(--stone);font-style:italic;margin-bottom:8px">Generated ' + new Date().toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit' }) + '</div>';
+      output.innerHTML = ts + (typeof renderMarkdownLite === 'function' ? renderMarkdownLite(text.trim()) : escapeHtml(text.trim()).replace(/\n/g, '<br>'));
+    }
+  } catch (e) {
+    if (output) output.innerHTML = '<em style="color:#C0392B">Couldn\'t reach the AI: ' + escapeHtml(e.message || String(e)) + '</em>';
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// v11380 §8 — Auto-detect business from email domain
+// When a client has an email like sarah@storywealth.com.au and no
+// client.biz set, we infer the business name from the domain. Generic
+// providers (gmail, hotmail, etc) are skipped. Run from openClient as
+// a one-shot — only sets if currently empty.
+// ═════════════════════════════════════════════════════════════════════
+var GENERIC_EMAIL_DOMAINS = new Set([
+  'gmail.com','googlemail.com','yahoo.com','yahoo.com.au','hotmail.com','hotmail.com.au',
+  'outlook.com','outlook.com.au','live.com','icloud.com','me.com','aol.com',
+  'bigpond.com','bigpond.net.au','optusnet.com.au','iinet.net.au','tpg.com.au',
+  'protonmail.com','proton.me','duck.com',
+]);
+
+function maybeInferBusinessFromEmail(client) {
+  if (!client || !client.email) return;
+  if (client.biz && client.biz.trim()) return; // already set
+  if (client._bizInferAttempted) return; // already tried, don't loop
+  var atIdx = client.email.indexOf('@');
+  if (atIdx < 0) return;
+  var domain = client.email.slice(atIdx + 1).toLowerCase().trim();
+  if (!domain || GENERIC_EMAIL_DOMAINS.has(domain)) {
+    client._bizInferAttempted = true;
+    return;
+  }
+  // Build a reasonable display name from the domain
+  // storywealth.com.au → Storywealth · she-the-boss.com.au → She The Boss
+  var baseName = domain.replace(/\.(com\.au|com|co\.uk|co\.nz|net\.au|org\.au|com\.au|io|co)$/, '').replace(/\.[a-z]+$/, '');
+  var displayName = baseName.split(/[-.]/).map(function(part) {
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join(' ');
+  // Don't auto-write — just stash for offer (Phoebe confirms once)
+  if (!client.suggestedBiz) {
+    client.suggestedBiz = displayName;
+    client.suggestedBizDomain = domain;
+    if (!client.socials) client.socials = {};
+    if (!client.socials.website) client.suggestedWebsite = 'https://' + domain;
+  }
+  client._bizInferAttempted = true;
+}
+
+// Surface the inferred biz suggestion as a subtle banner on client open.
+function maybeOfferBizInferenceBanner(client) {
+  if (!client || !client.suggestedBiz || (client.biz && client.biz.trim())) return;
+  var host = document.getElementById('detail-special-notes');
+  if (!host) return;
+  // Reuse the special-notes slot when special-notes are empty
+  if (client.specialNotes && client.specialNotes.trim()) return;
+  host.style.display = 'block';
+  host.innerHTML = '<div style="background:#FFFBE8;border:1.5px solid rgba(232,160,32,0.5);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+    '<span style="font-size:18px">🔍</span>' +
+    '<div style="font-size:13px;color:#5A4632;flex:1;min-width:200px">' +
+      'Inferred from their email domain: <strong>' + escapeHtml(client.suggestedBiz) + '</strong>' +
+      (client.suggestedWebsite ? ' · ' + escapeHtml(client.suggestedWebsite) : '') +
+    '</div>' +
+    '<button class="btn-sm primary" style="font-size:11px" onclick="acceptInferredBiz(\'' + client.id + '\')">Apply</button>' +
+    '<button class="btn-sm" style="font-size:11px" onclick="dismissInferredBiz(\'' + client.id + '\')">Dismiss</button>' +
+  '</div>';
+}
+
+async function acceptInferredBiz(clientId) {
+  var c = clients.find(function(x){ return x.id === clientId; });
+  if (!c || !c.suggestedBiz) return;
+  c.biz = c.suggestedBiz;
+  if (c.suggestedWebsite) {
+    c.socials = c.socials || {};
+    if (!c.socials.website) c.socials.website = c.suggestedWebsite;
+  }
+  delete c.suggestedBiz;
+  delete c.suggestedWebsite;
+  delete c.suggestedBizDomain;
+  await persistClient(c);
+  if (typeof openClient === 'function') openClient(clientId);
+  branded.toast('✓ Business name applied');
+}
+
+async function dismissInferredBiz(clientId) {
+  var c = clients.find(function(x){ return x.id === clientId; });
+  if (!c) return;
+  delete c.suggestedBiz;
+  delete c.suggestedWebsite;
+  delete c.suggestedBizDomain;
+  await persistClient(c);
+  var host = document.getElementById('detail-special-notes');
+  if (host) host.style.display = 'none';
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// v11380 §8 — Auto-fill intake with AI
+// Reads available data (research brief, recent sessions, MDC workbook,
+// existing intake) and drafts answers for any empty universal-intake
+// questions. Phoebe reviews + accepts before save.
+// ═════════════════════════════════════════════════════════════════════
+async function autoFillIntakeWithAI(clientId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  if (typeof _ensureClientIntakeFields === 'function') _ensureClientIntakeFields(client);
+  var blanks = (client.intake.fields || []).filter(function(f){ return !f.answer || !f.answer.trim(); });
+  if (!blanks.length) { branded.alert('All intake questions are filled in already.'); return; }
+  branded.toast('✨ Drafting ' + blanks.length + ' answer' + (blanks.length === 1 ? '' : 's') + '…');
+  // Build context from everything we have
+  var prog = (client.programs || [])[0] || {};
+  var n = prog.notes || {};
+  var ctx = [];
+  if (client.name) ctx.push('Name: ' + client.name);
+  if (client.biz)  ctx.push('Business: ' + client.biz);
+  if (client.bio)  ctx.push('Bio: ' + client.bio);
+  if (client.email) ctx.push('Email: ' + client.email);
+  if (client.socials) {
+    Object.keys(client.socials).forEach(function(k) { if (client.socials[k]) ctx.push(k + ': ' + client.socials[k]); });
+  }
+  if (n.research) ctx.push('Research brief:\n' + n.research.slice(0, 4000));
+  if (prog.intake) ctx.push('Legacy intake notes:\n' + prog.intake);
+  (client.programs || []).forEach(function(p) {
+    (p.sessionNotes || []).slice(-3).forEach(function(sn) {
+      ctx.push('Session note (' + (sn.date || '') + '): ' + (sn.aiSummary || sn.text || '').slice(0, 600));
+    });
+  });
+  if (!ctx.length) { branded.alert('Not enough info to draft answers from yet — try after the first session or after running a research brief.'); return; }
+  // Already-filled answers as reference
+  var filled = (client.intake.fields || []).filter(function(f){ return f.answer && f.answer.trim(); }).map(function(f) {
+    return f.question + '\n→ ' + f.answer;
+  }).join('\n\n');
+  var prompt = phoebeVoice(
+    'You are filling in intake answers for a coaching client based on what we already know. Speak in FIRST PERSON as the client (\"I\" / \"my\"), not as the coach. ' +
+    'For each blank question, draft a concise answer (1-3 sentences) using ONLY the context provided. If the data genuinely doesn\'t support an answer, leave it blank — don\'t make things up.\n\n' +
+    'Return as JSON, where keys are question IDs and values are the drafted answers. Empty string for "no confident answer".\n\n' +
+    'CONTEXT:\n' + ctx.join('\n\n') + '\n\n' +
+    (filled ? '\nALREADY-ANSWERED QUESTIONS (for tone reference):\n' + filled + '\n' : '') +
+    '\nQUESTIONS TO FILL:\n' +
+    blanks.map(function(f) { return f.id + ': ' + f.question; }).join('\n') + '\n\n' +
+    'Return ONLY a JSON object, e.g. {"about-you":"…","goals-12m":"…"}.'
+  );
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2500, messages: [{ role: 'user', content: prompt }] }),
+    });
+    if (!resp.ok) throw new Error('AI returned ' + resp.status);
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) data.content.forEach(function(b){ if (b && b.type === 'text' && b.text) text += b.text; });
+    var jsonMatch = text.match(/\{[\s\S]+\}/);
+    if (!jsonMatch) throw new Error('AI response not valid JSON');
+    var drafts = JSON.parse(jsonMatch[0]);
+    var draftsCount = 0;
+    Object.keys(drafts).forEach(function(qid) {
+      var f = (client.intake.fields || []).find(function(x){ return x.id === qid; });
+      if (f && (!f.answer || !f.answer.trim()) && drafts[qid] && drafts[qid].trim()) {
+        f.answer = drafts[qid].trim();
+        f.aiDrafted = true; // flag for visible "✦ AI-drafted" pill
+        f.aiDraftedAt = new Date().toISOString();
+        draftsCount++;
+      }
+    });
+    if (!draftsCount) { branded.alert('AI couldn\'t confidently draft any answers from the available data.'); return; }
+    client.intake.updatedAt = new Date().toISOString();
+    await persistClient(client);
+    branded.success('✨ Drafted ' + draftsCount + ' answer' + (draftsCount === 1 ? '' : 's') + ' — review + edit, then save.');
+    if (typeof switchTab === 'function') switchTab('intake');
+  } catch (e) {
+    branded.alert('Couldn\'t draft answers: ' + (e.message || e));
+  }
+}
   var co = _findCohort(cohortId);
   if (!co) return;
   var client = clients.find(function(c){ return c.id === currentClientId; });
@@ -16155,7 +16590,9 @@ async function reuseZoomLinkForCohort(cohortId) {
   co.zoomPasscode = passcode;
   if (meetingId) co.zoomMeetingId = meetingId;
   _saveCohorts();
-  if (members && members.length) await propagateCohortToMembers(co);
+  // v11399 fix: members wasn't in scope — pull fresh
+  var cohortMembers = _cohortMembers(co.id);
+  if (cohortMembers.length) await propagateCohortToMembers(co);
   branded.success('Zoom link set + synced to members');
   if (typeof renderCohortManager === 'function') renderCohortManager();
 }

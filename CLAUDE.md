@@ -141,12 +141,12 @@ Louise Syphers, Yvette Polley, Frances Pratt, Kari Marsden, Christine Lukich, Ju
 
 In rough priority order:
 
-1. **Rotate the Anthropic API key.** It was visible in chat history during the build. Generate a new one at console.anthropic.com → update Netlify env var → done.
-2. **Rotate the Google OAuth Client Secret + refresh token** after the first successful Gmail send — they were pasted into chat during setup. To rotate: console.cloud.google.com → APIs & Services → Credentials → reset secret on the Happy Hub Mailer client; then redo the OAuth Playground step to get a new refresh token; update both env vars in Netlify.
-3. **AI flagging in Research Brief** — add a "⚠️ For Phoebe's attention" section that surfaces red flags / things she should probe.
-4. **Zoom auto-trigger webhook** — currently the "Pull from Zoom" button works manually. Webhook would auto-trigger after a session ends.
-5. **Twilio SMS** — optional. Email covers most needs.
-6. **Test the full Calendly → AI social discovery → Research Brief → Plan Builder flow end-to-end** with one real client.
+1. **Rotate the Anthropic API key.** Visible in chat history during the build. Generate a new one at console.anthropic.com → update Netlify env var → done.
+2. **Rotate the Google OAuth Client Secret + refresh token** after first successful Gmail send. To rotate: console.cloud.google.com → APIs & Services → Credentials → reset secret on the Happy Hub Mailer client; redo the OAuth Playground step; update both env vars in Netlify.
+3. **WhatsApp Business API** — UI shipped (Settings card with setup instructions, message queues stored on cohorts). Becomes live once Phoebe completes Meta Business setup + adds env vars `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_VERIFY_TOKEN`.
+4. **Stripe Standard** — UI shipped (Settings card with setup instructions, Phoebe-defined products surface on client recommendation card). Live checkout activates with env vars `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` (+ optional `STRIPE_WEBHOOK_SECRET`).
+5. **Twilio SMS** — env var detection wired (`TWILIO_ACCOUNT_SID` / `_AUTH_TOKEN` / `_FROM_NUMBER`); UI shows status pill in Settings.
+6. **End-to-end real client test** — Calendly → AI Research Brief → first session → Zoom transcript → AI summary → review queue → publish → wins logged. Test once secrets are rotated.
 
 ## Style and tone for everything Phoebe-facing
 
