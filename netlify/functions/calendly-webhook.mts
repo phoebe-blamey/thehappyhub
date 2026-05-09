@@ -98,10 +98,15 @@ export default async (req: Request) => {
   // v11500: read raw body first (signature verification needs the exact bytes)
   const rawBody = await req.text();
 
-  // v11500: verify signature when CALENDLY_WEBHOOK_SIGNING_KEY is configured.
-  // Soft-fails if the env var is not set (so the existing webhook keeps
-  // working until Phoebe sets up signing via Settings → Calendly).
-  const signingKey = Netlify.env.get("CALENDLY_WEBHOOK_SIGNING_KEY") || "";
+  // v11500: verify signature when a Calendly signing key is configured.
+  // v11630: also accept several plausible env-var names so the verifier
+  // matches whatever Phoebe set in Netlify (CALENDLY_KEY etc).
+  const signingKey =
+    Netlify.env.get("CALENDLY_WEBHOOK_SIGNING_KEY") ||
+    Netlify.env.get("CALENDLY_SIGNING_KEY") ||
+    Netlify.env.get("CALENDLY_WEBHOOK_KEY") ||
+    Netlify.env.get("CALENDLY_KEY") ||
+    "";
   if (signingKey) {
     const sigHeader = req.headers.get("calendly-webhook-signature") || "";
     const v = verifyCalendlySignature(rawBody, sigHeader, signingKey);

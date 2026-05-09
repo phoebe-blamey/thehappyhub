@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11620 — regression repair. Two issues found during sweep + fixed: (1) Phoebe's Knowledge Bank in the help drawer wasn't showing reliably — the visibility gate required BOTH currentClientId AND client-hub.classList.contains('active'). The class state lags during some mobile-portrait navigation flows. Simplified to: show whenever currentClientId is set AND we're not in the coach hub. (2) The v11590 wisdom-link CTA never made it to clients — the client portal renders renderInlineWisdom (compact) inside the greeting strip, not the full renderWisdomCard. Inline version now ALSO carries the link pill, routed via WISDOM_TAG_LINKS (Pricing → podcast, Money → course, etc.). Per-quote link/linkLabel overrides still work. Plus comprehensive regression sweep — all 29 major feature functions verified defined + called, no UI elements removed accidentally.">
+<meta name="hmh-build" content="v11630 — env-var name fan-out for the Calendly webhook signing key. Both integrations-status (status pill) AND calendly-webhook (signature verifier) now accept any of: CALENDLY_WEBHOOK_SIGNING_KEY (canonical), CALENDLY_SIGNING_KEY, CALENDLY_WEBHOOK_KEY, or CALENDLY_KEY. Documented name stays CALENDLY_WEBHOOK_SIGNING_KEY but the shorter aliases work too — pill flips green regardless of which one Phoebe typed in Netlify.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========

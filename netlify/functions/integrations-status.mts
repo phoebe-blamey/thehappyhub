@@ -13,7 +13,15 @@ export default async () => {
     zoom:  env("ZOOM_ACCOUNT_ID") && env("ZOOM_CLIENT_ID") && env("ZOOM_CLIENT_SECRET"),
     zoomWebhook: env("ZOOM_VERIFICATION_TOKEN"),
     calendly: env("CALENDLY_API_TOKEN"),
-    calendlyWebhookSigning: env("CALENDLY_WEBHOOK_SIGNING_KEY"),
+    // v11630: accept several plausible env-var names so the pill flips
+    // green regardless of how it was typed in Netlify. Documented name
+    // is CALENDLY_WEBHOOK_SIGNING_KEY but Phoebe also tried CALENDLY_KEY
+    // first, so we check both. The webhook handler reads the same set.
+    calendlyWebhookSigning:
+      env("CALENDLY_WEBHOOK_SIGNING_KEY") ||
+      env("CALENDLY_SIGNING_KEY") ||
+      env("CALENDLY_WEBHOOK_KEY") ||
+      env("CALENDLY_KEY"),
     anthropic: env("ANTHROPIC_API_KEY"),
     twilio: env("TWILIO_ACCOUNT_SID") && env("TWILIO_AUTH_TOKEN") && env("TWILIO_FROM_NUMBER"),
     stripe: env("STRIPE_SECRET_KEY") && env("STRIPE_PUBLISHABLE_KEY"),
