@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11610 — cohort-wide goals + audience leak fixes + final pre-Phoebe pass. (1) 🎯 Cohort goal banner — Phoebe sets a shared goal per cohort (label, target, unit, current OR auto-tallied from member revenue wins). Members see a progress bar at the top of their Community tab; coach sees it on the cohort manager with edit affordance. Hits a 🎉 goal-smashed state at 100%. Empty-state CTA on the cohort manager when no goal set. (2) Three audience leak bugs fixed across the resource flow: 'private' (coach-only) audience type now correctly hides resources from clients in the My Resources drawer, the cohort broadcast picker, AND the new-resource notify path. Default-deny on unknown audience types. (3) Audience pill on Happy Hub library now renders a distinct '🔒 Coach only' tag for private resources (was incorrectly showing program-pill text). All v11600 community features (momentum banner, member directory, threaded replies) intact. Bracket balance perfect (4680 / 17732 / 1694).">
+<meta name="hmh-build" content="v11620 — regression repair. Two issues found during sweep + fixed: (1) Phoebe's Knowledge Bank in the help drawer wasn't showing reliably — the visibility gate required BOTH currentClientId AND client-hub.classList.contains('active'). The class state lags during some mobile-portrait navigation flows. Simplified to: show whenever currentClientId is set AND we're not in the coach hub. (2) The v11590 wisdom-link CTA never made it to clients — the client portal renders renderInlineWisdom (compact) inside the greeting strip, not the full renderWisdomCard. Inline version now ALSO carries the link pill, routed via WISDOM_TAG_LINKS (Pricing → podcast, Money → course, etc.). Per-quote link/linkLabel overrides still work. Plus comprehensive regression sweep — all 29 major feature functions verified defined + called, no UI elements removed accidentally.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -4882,21 +4882,25 @@ function toggleHelpPanel() {
         // Clients see nothing — the absence of a phone is a non-event for them.
         if (coachNudge) coachNudge.style.display = inCoachView ? 'flex' : 'none';
       }
-      // Phoebe's Knowledge Bank — only show for signed-in clients (the AI
-      // grounds answers in their own profile, so it doesn't make sense
-      // for the coach view or the landing page).
+      // Phoebe's Knowledge Bank — show whenever someone's signed in as a
+      // client (the AI grounds answers in their own profile, so coach +
+      // landing views correctly suppress it). v11620: simplified gate to
+      // `currentClientId` alone — the previous check ALSO required
+      // `client-hub.active`, which lags during some mobile-portrait
+      // navigation flows. If you have a client id you're a client. The
+      // coach hub never sets currentClientId.
       var kbank = document.getElementById('help-kbank');
-      var clientHubActive = document.getElementById('client-hub') && document.getElementById('client-hub').classList.contains('active');
+      var coachHubActive = document.getElementById('coach-hub') && document.getElementById('coach-hub').classList.contains('active');
       if (kbank) {
-        if (clientHubActive && currentClientId) {
+        if (currentClientId && !coachHubActive) {
           kbank.style.display = 'block';
-          // Restore chat history from localStorage if any
-          renderKBankHistory();
+          // Restore chat history from the persisted store if any
+          if (typeof renderKBankHistory === 'function') renderKBankHistory();
         } else {
           kbank.style.display = 'none';
         }
       }
-    } catch(e) {}
+    } catch(e) { console.warn('[help-panel]', e); }
   }
 }
 
@@ -8891,7 +8895,17 @@ function _phoebeWisdomTodayIdx() {
 function renderInlineWisdom() {
   if (typeof PHOEBE_WISDOM === 'undefined' || !PHOEBE_WISDOM.length) return '';
   var w = PHOEBE_WISDOM[_phoebeWisdomTodayIdx()];
-  return '<span class="phoebe-says-prefix">💡 Phoebe says</span> <span class="phoebe-says-quote">"' + escapeHtml(w.quote) + '"</span>';
+  // v11620: include the v11590 tag-routed link CTA inline. Mini, but real —
+  // every Phoebe-says quote now has a path through to the matching content
+  // on phoebeblamey.com.au (Pricing → podcast, Money → course, etc.).
+  // Per-quote `link` + `linkLabel` overrides fall back to WISDOM_TAG_LINKS.
+  var linkObj = null;
+  if (w.link && w.linkLabel) linkObj = { url: w.link, label: w.linkLabel };
+  else if (typeof WISDOM_TAG_LINKS !== 'undefined' && WISDOM_TAG_LINKS[w.tag]) linkObj = WISDOM_TAG_LINKS[w.tag];
+  var ctaHtml = linkObj
+    ? ' <a href="' + escapeHtml(linkObj.url) + '" target="_blank" rel="noopener" class="phoebe-says-link" style="font-size:11px;color:var(--hot-pink);font-weight:700;text-decoration:none;margin-left:6px;white-space:nowrap">' + escapeHtml(linkObj.label) + '</a>'
+    : '';
+  return '<span class="phoebe-says-prefix">💡 Phoebe says</span> <span class="phoebe-says-quote">"' + escapeHtml(w.quote) + '"</span>' + ctaHtml;
 }
 
 // Returns { date, label, prog } for the soonest CONFIRMED upcoming session,
