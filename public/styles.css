@@ -40,22 +40,8 @@
   --teal:        #5FA3A8;
   --border:      rgba(229,4,139,0.12);
   --border-soft: rgba(229,4,139,0.06);
-  /* v11720: Albert Sans added as the primary body font to match
-     phoebeblamey.com.au. AllRoundGothic stays for headings. Poppins
-     remains in the body fallback chain so legacy renders + the canvas
-     badge generator keep working until every fallback finishes
-     swapping. */
-  --f-head: "AllRoundGothic", "Albert Sans", "Poppins", sans-serif;
-  --f-body: "Albert Sans", "Poppins", system-ui, sans-serif;
-  /* v11720: readability tier. The platform's primary users are 40-50+
-     (Phoebe's actual client cohort), so type sizes are bumped a notch
-     across the board. Use these tokens for NEW UI; legacy hard-coded
-     font-size:13px etc. still works but feels small. */
-  --fs-body:    15px;   /* baseline body copy */
-  --fs-helper:  13px;   /* helper text, hints, micro */
-  --fs-button:  14px;   /* button labels */
-  --fs-heading: 22px;   /* section headings */
-  --lh-body:    1.6;    /* generous line height — easier scanning */
+  --f-head: "AllRoundGothic", "Poppins", sans-serif;
+  --f-body: "Poppins", sans-serif;
   /* Semantic layer — light theme (default).
      Use these in NEW components. Each token has a single semantic role
      so swapping themes is a one-line override. */
@@ -120,33 +106,7 @@
   }
 }
 
-body { font-family: var(--f-body); background: var(--paper); color: var(--magenta); min-height: 100vh; font-size: var(--fs-body); line-height: var(--lh-body); }
-/* v11720: BRAND WAVE — three-layer organic pink wave taken directly
-   from phoebeblamey.com.au. Used as a section divider to tie the
-   platform visually to her site. Apply to any block as a child:
-     <div class="brand-wave"></div>
-   Sits at the bottom of the parent (which must be position:relative).
-   Variants:
-     .brand-wave.flip  → wave at the top of the next section
-     .brand-wave.mist  → teal-mist variant for variety
-   The SVG fill is data-URI so no extra HTTP request. */
-.brand-wave {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 50px;
-  pointer-events: none;
-  background-repeat: no-repeat;
-  background-position: bottom;
-  background-size: 100% 50px;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 140' preserveAspectRatio='none'><g fill='%23F0A3C7'><path d='M0 51.76c36.21-2.25 77.57-3.58 126.42-3.58 320 0 320 57 640 57 271.15 0 312.58-40.91 513.58-53.4V0H0z' fill-opacity='.3'/><path d='M0 24.31c43.46-5.69 94.56-9.25 158.42-9.25 320 0 320 89.24 640 89.24 256.13 0 307.28-57.16 481.58-80V0H0z' fill-opacity='.5'/><path d='M0 0v3.4C28.2 1.6 59.4.59 94.42.59c320 0 320 84.3 640 84.3 285 0 316.17-66.85 545.58-81.49V0z'/></g></svg>");
-}
-.brand-wave.flip { transform: scaleY(-1); bottom: auto; top: -1px; }
-.brand-wave.mist {
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 140' preserveAspectRatio='none'><g fill='%235FA3A8'><path d='M0 51.76c36.21-2.25 77.57-3.58 126.42-3.58 320 0 320 57 640 57 271.15 0 312.58-40.91 513.58-53.4V0H0z' fill-opacity='.18'/><path d='M0 24.31c43.46-5.69 94.56-9.25 158.42-9.25 320 0 320 89.24 640 89.24 256.13 0 307.28-57.16 481.58-80V0H0z' fill-opacity='.30'/><path d='M0 0v3.4C28.2 1.6 59.4.59 94.42.59c320 0 320 84.3 640 84.3 285 0 316.17-66.85 545.58-81.49V0z' fill-opacity='.55'/></g></svg>");
-}
-@media (max-width: 600px) { .brand-wave { height: 36px; background-size: 100% 36px; } }
+body { font-family: var(--f-body); background: var(--paper); color: var(--magenta); min-height: 100vh; }
 
 /* ========== LANDING ========== */
 #landing {
@@ -155,7 +115,7 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
 }
 .landing-logo { font-family: var(--f-head); font-size: clamp(38px,7vw,64px); font-weight: 800;
   color: var(--hot-pink); line-height: 1; text-align: center; margin-bottom: 8px; }
-.landing-sub { font-size: 14px; letter-spacing: 0.15em; text-transform: uppercase;
+.landing-sub { font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase;
   color: var(--stone); margin-bottom: 48px; text-align: center; }
 .access-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr));
   gap: 16px; width: 100%; max-width: 800px; }
@@ -163,26 +123,21 @@ body { font-family: var(--f-body); background: var(--paper); color: var(--magent
   border-radius: 20px; padding: 28px; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; }
 .access-card:hover { border-color: var(--hot-pink); box-shadow: 0 8px 32px rgba(236,44,138,0.12); }
 .access-card .card-icon { font-size: 28px; margin-bottom: 12px; }
-/* v11720: larger card heading + body copy for 40-50+ readers */
-.access-card h3 { font-family: var(--f-head); font-size: 22px; color: var(--magenta); margin-bottom: 6px; line-height: 1.2; }
-.access-card p { font-size: 15px; color: var(--stone); line-height: 1.6; margin-bottom: 16px; }
+.access-card h3 { font-family: var(--f-head); font-size: 18px; color: var(--magenta); margin-bottom: 6px; }
+.access-card p { font-size: 13px; color: var(--stone); line-height: 1.6; margin-bottom: 16px; }
 .access-card .prog-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
-.prog-tag { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; padding: 4px 10px;
+.prog-tag { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; padding: 3px 9px;
   border-radius: 99px; background: var(--marshmallow); color: var(--hot-pink); text-transform: uppercase; }
 .pin-row { display: flex; gap: 8px; min-width: 0; }
-/* v11720: PIN input bumped to 15px so older users can read what they
-   type. Padding nudged up so the tap target clears 44px on phone. */
 .pin-row input { flex: 1; min-width: 0; border: 1.5px solid var(--border); border-radius: 99px;
-  padding: 12px 18px; font-family: var(--f-body); font-size: 15px; color: var(--magenta);
-  background: var(--marshmallow); outline: none; transition: border-color 0.2s; min-height: 44px; }
+  padding: 10px 16px; font-family: var(--f-body); font-size: 13px; color: var(--magenta);
+  background: var(--marshmallow); outline: none; transition: border-color 0.2s; }
 .pin-row input:focus { border-color: var(--hot-pink); }
-/* v11720: Enter button bumped — 44px min-height for accessible tap
-   target on phones + larger label for older readers. */
 .btn-enter { background: var(--hot-pink); color: white; border: none; border-radius: 99px;
-  padding: 12px 24px; font-family: var(--f-body); font-size: 15px; font-weight: 600;
-  cursor: pointer; transition: background 0.2s; white-space: nowrap; flex-shrink: 0; min-height: 44px; }
+  padding: 10px 20px; font-family: var(--f-body); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: background 0.2s; white-space: nowrap; flex-shrink: 0; }
 .btn-enter:hover { background: var(--magenta); }
-.error-msg { font-size: 13px; color: #C0392B; margin-top: 8px; min-height: 16px; }
+.error-msg { font-size: 12px; color: #C0392B; margin-top: 8px; min-height: 16px; }
 /* v11210: phone-edge clipping — landing page padding could push the
    Enter button off-screen on narrow phones. Tighten card padding + ensure
    the access-card has predictable width. Elodie §6. */
@@ -357,13 +312,10 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .coach-layout { display: flex; flex: 1; overflow: auto; min-height: 0; }
 .sidebar { width: 220px; background: var(--marshmallow); border-right: 1px solid var(--border);
   padding: 20px 0; flex-shrink: 0; overflow-y: auto; }
-/* v11720: sidebar readability — section headings 10px → 11px,
-   items 13px → 14px so Phoebe can read the nav from a normal
-   distance without squinting. */
-.sidebar-section { padding: 8px 16px 4px; font-size: 11px; font-weight: 700;
+.sidebar-section { padding: 8px 16px 4px; font-size: 10px; font-weight: 700;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--stone); }
-.sidebar-item { display: flex; align-items: center; gap: 10px; padding: 11px 20px;
-  font-size: 14px; color: var(--magenta); cursor: pointer; transition: background 0.15s;
+.sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+  font-size: 13px; color: var(--magenta); cursor: pointer; transition: background 0.15s;
   border-radius: 0; position: relative; }
 .sidebar-item:hover { background: rgba(236,44,138,0.06); }
 .sidebar-item.active { background: var(--marshmallow); color: var(--hot-pink); font-weight: 600; }
@@ -373,9 +325,8 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .coach-main { flex: 1; overflow-y: auto; padding: 32px; min-height: 400px; }
 .page { display: none; }
 .page.active { display: block; }
-/* v11720: page title bumped + page sub from 14px to 15px */
-.page-title { font-family: var(--f-head); font-size: 30px; color: var(--magenta); margin-bottom: 6px; line-height: 1.15; }
-.page-sub { font-size: 15px; color: var(--stone); margin-bottom: 28px; line-height: 1.55; }
+.page-title { font-family: var(--f-head); font-size: 26px; color: var(--magenta); margin-bottom: 6px; }
+.page-sub { font-size: 14px; color: var(--stone); margin-bottom: 28px; }
 
 /* ========== CLIENTS GRID ========== */
 .clients-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -524,13 +475,9 @@ html, body { overflow-x: hidden; max-width: 100vw; }
   background: var(--border-soft);
   margin: 6px 4px;
 }
-/* v11720: small button readability — was 12px which is below the
-   AA-recommended floor for 40+ users. Bumped to 14px / 13px on phones
-   via the media query at the bottom of this file. Padding lifted so
-   the tap target stays ≥40px tall. */
-.btn-sm { padding: 9px 18px; border-radius: 99px; font-family: var(--f-body); font-size: 14px;
+.btn-sm { padding: 7px 16px; border-radius: 99px; font-family: var(--f-body); font-size: 12px;
   font-weight: 500; border: 1.5px solid var(--border); cursor: pointer; background: white;
-  color: var(--magenta); transition: all 0.15s; min-height: 38px; }
+  color: var(--magenta); transition: all 0.15s; }
 .btn-sm:hover { border-color: var(--hot-pink); }
 .btn-sm.primary { background: var(--hot-pink); color: white; border-color: var(--hot-pink); }
 .btn-sm.primary:hover { background: var(--magenta); border-color: var(--magenta); }
