@@ -969,6 +969,63 @@ body[data-live-sync="synced"] .topbar-date::after {
 .client-section { background: white; border: 1.5px solid var(--border); border-radius: 14px;
   padding: 16px 18px; margin-bottom: 12px; }
 .client-section h3 { font-family: var(--f-head); font-size: 16px; color: var(--magenta); margin-bottom: 10px; }
+
+/* ════════════════════════════════════════════════════════════════════
+   v11721 — body text colour: #222222 inside Summary, Programs and
+   Settings panes only. Phoebe asked for this so the body copy is
+   easier to read for her 40-50+ client cohort, while keeping the
+   pinks as highlights on headings, buttons, notes and status pills.
+
+   The rendering JS sprinkles inline color:var(--magenta) through
+   body text, so we need !important to win over inline styles. We
+   intentionally exclude:
+     • h1-h6  (headings stay magenta as a highlight)
+     • button / .btn-sm / .btn-enter  (buttons keep their colours)
+     • [class*="tab"] / .prog-tag / .cprog-tab  (pills + tabs stay branded)
+     • span/div nested inside any of the above
+   ════════════════════════════════════════════════════════════════════ */
+#client-summary-area,
+#client-content-area,
+#client-settings-area {
+  color: #222222;
+}
+#client-summary-area p,
+#client-summary-area li,
+#client-summary-area td,
+#client-summary-area label,
+#client-summary-area em,
+#client-summary-area strong,
+#client-summary-area small,
+#client-summary-area span:not(button *):not(.btn-sm *):not(.btn-enter *):not([class*="tab"] *):not(.prog-tag *):not(.cprog-tab *):not(.pill *),
+#client-summary-area div:not(button):not(.btn-sm):not(.btn-enter):not([class*="tab"]):not(.prog-tag):not(.cprog-tab):not(.pill),
+#client-content-area p,
+#client-content-area li,
+#client-content-area td,
+#client-content-area label,
+#client-content-area em,
+#client-content-area strong,
+#client-content-area small,
+#client-content-area span:not(button *):not(.btn-sm *):not(.btn-enter *):not([class*="tab"] *):not(.prog-tag *):not(.cprog-tab *):not(.pill *),
+#client-content-area div:not(button):not(.btn-sm):not(.btn-enter):not([class*="tab"]):not(.prog-tag):not(.cprog-tab):not(.pill),
+#client-settings-area p,
+#client-settings-area li,
+#client-settings-area td,
+#client-settings-area label,
+#client-settings-area em,
+#client-settings-area strong,
+#client-settings-area small,
+#client-settings-area span:not(button *):not(.btn-sm *):not(.btn-enter *):not([class*="tab"] *):not(.prog-tag *):not(.cprog-tab *):not(.pill *),
+#client-settings-area div:not(button):not(.btn-sm):not(.btn-enter):not([class*="tab"]):not(.prog-tag):not(.cprog-tab):not(.pill) {
+  color: #222222 !important;
+}
+/* Restore brand magenta on headings inside these panes (acts as a
+   highlight against the now-dark body copy). */
+#client-summary-area h1, #client-summary-area h2, #client-summary-area h3, #client-summary-area h4, #client-summary-area h5, #client-summary-area h6,
+#client-content-area h1, #client-content-area h2, #client-content-area h3, #client-content-area h4, #client-content-area h5, #client-content-area h6,
+#client-settings-area h1, #client-settings-area h2, #client-settings-area h3, #client-settings-area h4, #client-settings-area h5, #client-settings-area h6 {
+  color: var(--magenta) !important;
+}
+
 .client-section h3 + p { margin-top: -4px; }
 /* Tighter section vertical rhythm — less scrolling, more density */
 .client-section .sprint-grid { gap: 10px; }
