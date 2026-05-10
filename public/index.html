@@ -3929,7 +3929,23 @@ async function restoreSession() {
       document.getElementById('landing').style.display = 'none';
       document.getElementById('client-hub').classList.add('active');
       currentClientId = client.id;
-      loadRemoteState('client').catch(function(e){ console.warn('[remote-state]', e); });
+      // v11710-bugfix: chain a re-render of the Community tab gate AFTER
+      // remote state lands. Was fire-and-forget, so the tab visibility
+      // check ran against the hardcoded MDC_COHORTS default — any cohort
+      // Phoebe added post-deploy wouldn't match, leaving the tab hidden
+      // for legit cohort members.
+      loadRemoteState('client')
+        .then(function() {
+          if (typeof updateClientCommunityTabVisibility === 'function') {
+            try { updateClientCommunityTabVisibility(client); } catch(e) {}
+          }
+          var activeTabBtn = document.querySelector('.client-tab.active');
+          var activeTab = activeTabBtn ? activeTabBtn.dataset.ctab : '';
+          if (activeTab === 'community' && typeof renderClientCommunityTab === 'function') {
+            try { renderClientCommunityTab(client); } catch(e) {}
+          }
+        })
+        .catch(function(e){ console.warn('[remote-state]', e); });
       try { startLiveSync(); } catch (e) {}
       loadClientPortal(client);
       // Restore the active client-portal tab (summary/programs/settings)
@@ -4001,7 +4017,23 @@ async function enterClient() {
     currentClientId = client.id;
     // Pull shared state (cohorts, coach phone, hub resources) so the
     // client portal sees the latest of everything Phoebe has set up.
-    loadRemoteState('client').catch(function(e){ console.warn('[remote-state]', e); });
+    // v11710-bugfix: re-run the Community tab visibility gate AFTER the
+    // cohorts blob has hydrated — without this, MDC_COHORTS only has the
+    // hardcoded defaults at gate-check time and any cohort Phoebe added
+    // through the Cohort Manager (cohort-{timestamp} ids) won't match,
+    // hiding the Community tab for legit members.
+    loadRemoteState('client')
+      .then(function() {
+        if (typeof updateClientCommunityTabVisibility === 'function') {
+          try { updateClientCommunityTabVisibility(client); } catch(e) {}
+        }
+        var activeTabBtn = document.querySelector('.client-tab.active');
+        var activeTab = activeTabBtn ? activeTabBtn.dataset.ctab : '';
+        if (activeTab === 'community' && typeof renderClientCommunityTab === 'function') {
+          try { renderClientCommunityTab(client); } catch(e) {}
+        }
+      })
+      .catch(function(e){ console.warn('[remote-state]', e); });
     try { startLiveSync(); } catch (e) {}
     loadClientPortal(client);
   } else {
