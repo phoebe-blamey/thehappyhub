@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11713 — AI email draft assistant on the Message tab AND inside the cohort-broadcast modal. ✦ AI draft button → asks Phoebe one question (what's this email for?) → Haiku drafts subject + body in her voice with the right context (programme + recent wins + last session for a single client; round + member count + next session + recent shared wins for a cohort). Cohort drafts use {name} placeholder so per-member personalisation still works. v11712: 'Million Dollar Conspiracy Sprint' rename + 3-tap-logo coach reveal on phone. v11711: Community tab race fix. v11710: 11 batch items.">
+<meta name="hmh-build" content="v11714 — client-side notifications inbox restored. New 🔔 bell on the client topbar (matching Phoebe's coach bell) opens a persistent inbox of EVERYTHING she's shared with this client: session notes, custom sections, new to-dos, cohort shoutouts addressed to them, badges awarded. Yellow badge counts unread. Items stay readable forever — 'Mark all seen' clears the badge. Lives alongside the existing 'what's new since last visit' hero pill, which only shows fresh items. v11713: AI email draft. v11712: MDC rename + 3-tap-logo. v11711: Community tab race fix. v11710: 11 batch items.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -1159,6 +1159,15 @@
          flips to a vertical column so Sign Out sits BELOW Settings (Elodie:
          "reduces horizontal crowding, groups related controls logically"). -->
     <div class="topbar-actions">
+    <!-- v11714: client-side notifications bell — opens the Notifications
+         inbox showing every shared note, new task, custom section, badge,
+         shoutout, and cohort update from Phoebe. Yellow badge shows the
+         unread count. Persistent inbox (not gated on last-visit), so
+         clients always have a clear place to see what's been shared. -->
+    <button id="client-topbar-notif-bell" onclick="openClientNotificationsInbox()" title="Notifications from Phoebe" aria-label="Notifications" class="topbar-action-btn topbar-tap" style="position:relative">
+      🔔
+      <span id="client-topbar-notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--sunshine);color:var(--magenta);font-size:9px;font-weight:800;padding:1px 5px;border-radius:99px;line-height:1.2;border:1.5px solid var(--magenta)">0</span>
+    </button>
     <!-- v11100: theme toggle (sun/moon) — switches between light + dark.
          Persists in localStorage as `hmh_theme`. -->
     <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" class="topbar-action-btn topbar-tap">🌙</button>
@@ -7775,6 +7784,9 @@ function loadClientPortal(client) {
   // v10900: "since you were last here" hero pill. Stamps the visit ts
   // AFTER computing what's new so this visit's content is "old" next time.
   if (typeof updateClientHeroWhatsNew === 'function') updateClientHeroWhatsNew(client);
+  // v11714: client topbar notifications bell — persistent inbox of
+  // everything Phoebe has shared. Badge shows unread count.
+  if (typeof refreshClientNotifBadge === 'function') refreshClientNotifBadge();
 }
 
 // Detects activity Phoebe has added since the client's last visit and
@@ -8679,6 +8691,8 @@ function switchClientTab(which, opts) {
   if (which === 'wins')      renderClientWinsTab(client);
   if (which === 'community') renderClientCommunityTab(client);
   if (which === 'settings')  renderClientSettings(client);
+  // v11714: keep the notifications-bell badge fresh on every tab switch
+  if (typeof refreshClientNotifBadge === 'function') refreshClientNotifBadge();
   if (typeof sessionSet === 'function') {
     sessionSet(HMH_SESSION.PORTAL_TAB, which);
     sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
@@ -11747,6 +11761,213 @@ async function saveClientSettingsField(key, value) {
     var firstName = (client.name||'').split(' ')[0] || 'You';
     var heroName = document.getElementById('client-hero-name');
     if (heroName) heroName.textContent = firstName + '\'s Hub';
+  }
+}
+
+// =====================================================================
+// v11714: CLIENT-SIDE NOTIFICATIONS INBOX
+// =====================================================================
+// Persistent inbox of everything Phoebe has shared with this client —
+// shared session notes, new client-visible tasks, shared custom
+// sections, cohort shoutouts addressed to this member, badges Phoebe
+// awarded. Works alongside the existing "what's new since last visit"
+// hero pill (which shows recent items only). Bell badge counts unread.
+// Items stay readable forever; "Mark all seen" clears the badge.
+//
+// "Seen" state lives on client.clientNotifSeen (array of stable item
+// keys, persisted via the normal save path). This keeps the inbox
+// truthful across devices.
+function _computeClientNotifs(client) {
+  if (!client) return [];
+  var items = [];
+  // (1) Shared session notes from Phoebe
+  (client.programs || []).forEach(function(p) {
+    var progLabel = (typeof PROGRAMS !== 'undefined' && PROGRAMS[p.program] && PROGRAMS[p.program].label) || p.label || p.program || 'Programme';
+    (p.sessionNotes || []).forEach(function(n) {
+      if (!n || !n.sharedWithClient) return;
+      var ts = n.aiSummaryApprovedAt || n.createdAt || n.date || '';
+      if (!ts) return;
+      items.push({
+        key:  'note::' + (n.id || (p.id + '::' + ts)),
+        kind: 'note',
+        icon: '📝',
+        title: 'New session note · ' + progLabel,
+        body: (n.zoomTopic || n.title || '').slice(0, 120),
+        ts: ts,
+        progId: p.id,
+      });
+    });
+    (p.customSections || []).forEach(function(s) {
+      if (!s || s.author !== 'phoebe' || !s.shared) return;
+      var ts = s.updatedAt || s.createdAt || '';
+      if (!ts) return;
+      items.push({
+        key:  'sec::' + (s.id || (p.id + '::' + ts)),
+        kind: 'section',
+        icon: '📌',
+        title: 'Phoebe shared a section · ' + progLabel,
+        body: (s.title || '').slice(0, 120),
+        ts: ts,
+        progId: p.id,
+      });
+    });
+    // (2) Cohort shoutouts addressed to this member
+    if (Array.isArray(p.cohortFeed)) {
+      p.cohortFeed.forEach(function(f) {
+        if (!f) return;
+        if (f.aboutClientId && f.aboutClientId !== client.id) return;
+        if (!f.text && !f.title) return;
+        var ts = f.at || f.createdAt || '';
+        if (!ts) return;
+        items.push({
+          key:  'feed::' + (f.id || (p.id + '::' + ts)),
+          kind: 'shoutout',
+          icon: '🌟',
+          title: f.aboutClientId === client.id ? 'Phoebe gave you a shoutout' : 'Cohort update from Phoebe',
+          body: (f.text || f.title || '').slice(0, 160),
+          ts: ts,
+          progId: p.id,
+        });
+      });
+    }
+  });
+  // (3) Client-visible tasks added by Phoebe
+  (client.tasks || []).forEach(function(t) {
+    if (!t || !t.clientVisible) return;
+    if (t.archived || t.deleted) return;
+    var ts = t.createdAt || '';
+    if (!ts) return;
+    items.push({
+      key:  'task::' + (t.id || ts),
+      kind: 'task',
+      icon: '✅',
+      title: 'New to-do from Phoebe',
+      body: (t.text || '').slice(0, 160),
+      ts: ts,
+    });
+  });
+  // (4) Badges awarded by Phoebe (manually) — these are usually a
+  //    surprise so they belong in the inbox.
+  (client.badges || []).forEach(function(b) {
+    if (!b) return;
+    var ts = b.awardedAt || b.at || '';
+    if (!ts) return;
+    items.push({
+      key:  'badge::' + (b.id || b.key || ts),
+      kind: 'badge',
+      icon: '🏆',
+      title: 'Badge earned · ' + (b.name || b.label || 'Achievement'),
+      body: b.desc || '',
+      ts: ts,
+    });
+  });
+  // Sort newest first; cap to 50 so the inbox stays calm
+  items.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+  return items.slice(0, 50);
+}
+
+function refreshClientNotifBadge() {
+  var bell = document.getElementById('client-topbar-notif-bell');
+  var badge = document.getElementById('client-topbar-notif-badge');
+  if (!bell || !badge) return;
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) { badge.style.display = 'none'; bell.style.display = 'none'; return; }
+  bell.style.display = '';
+  var seen = Array.isArray(client.clientNotifSeen) ? client.clientNotifSeen : [];
+  var seenSet = {};
+  seen.forEach(function(k) { seenSet[k] = true; });
+  var items = _computeClientNotifs(client);
+  var unread = items.filter(function(it) { return !seenSet[it.key]; });
+  if (!unread.length) { badge.style.display = 'none'; return; }
+  badge.textContent = unread.length > 9 ? '9+' : String(unread.length);
+  badge.style.display = 'inline-block';
+}
+
+function openClientNotificationsInbox() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var items = _computeClientNotifs(client);
+  var seen = Array.isArray(client.clientNotifSeen) ? client.clientNotifSeen : [];
+  var seenSet = {};
+  seen.forEach(function(k) { seenSet[k] = true; });
+  var html = '';
+  if (!items.length) {
+    html = '<div style="font-size:13px;color:var(--magenta);text-align:center;padding:24px 12px;line-height:1.6">Nothing yet ✨<br><span style="font-size:11px;color:var(--stone)">When Phoebe shares a note, sets a task, gives you a badge or posts a shoutout, it lands here.</span></div>';
+  } else {
+    items.forEach(function(it) {
+      var isUnread = !seenSet[it.key];
+      var when = '';
+      try { when = new Date(it.ts).toLocaleString('en-AU', { weekday:'short', day:'numeric', month:'short', hour:'numeric', minute:'2-digit' }); } catch (e) { when = it.ts; }
+      var clickable = it.progId ? ' onclick="openClientProgramFromInbox(\'' + it.progId + '\',\'' + it.key + '\')"' : ' onclick="markClientNotifSeen(\'' + it.key + '\')"';
+      html += '<div' + clickable + ' style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border-soft);background:' + (isUnread ? 'rgba(229,4,139,0.05)' : 'white') + ';cursor:pointer">' +
+        '<div style="font-size:18px;flex-shrink:0">' + it.icon + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;color:var(--magenta);font-weight:' + (isUnread ? '700' : '500') + '">' + escapeHtml(it.title) + '</div>' +
+          (it.body ? '<div style="font-size:11px;color:var(--stone);margin-top:2px;line-height:1.45">' + escapeHtml(it.body) + '</div>' : '') +
+          '<div style="font-size:10px;color:var(--stone);margin-top:3px">' + escapeHtml(when) + '</div>' +
+        '</div>' +
+      '</div>';
+    });
+  }
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '🔔';
+  document.getElementById('branded-modal-title').textContent = 'Notifications from Phoebe';
+  var bodyEl = document.getElementById('branded-modal-body');
+  bodyEl.innerHTML = '<div style="max-height:60vh;overflow-y:auto;margin:0 -8px">' + html + '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  if (items.length) {
+    var allSeen = items.every(function(it){ return seenSet[it.key]; });
+    if (!allSeen) {
+      var clearBtn = document.createElement('button');
+      clearBtn.className = 'btn-sm';
+      clearBtn.textContent = 'Mark all seen';
+      clearBtn.onclick = function() { markAllClientNotifsSeen(); };
+      actions.appendChild(clearBtn);
+    }
+  }
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'btn-sm primary';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(closeBtn);
+  host.style.display = 'flex';
+  host._cancel = function() { host.style.display = 'none'; };
+}
+
+async function markClientNotifSeen(key) {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client || !key) return;
+  client.clientNotifSeen = Array.isArray(client.clientNotifSeen) ? client.clientNotifSeen : [];
+  if (client.clientNotifSeen.indexOf(key) < 0) {
+    client.clientNotifSeen.push(key);
+    if (typeof persistClient === 'function') { try { await persistClient(client); } catch(e) {} }
+  }
+  refreshClientNotifBadge();
+}
+
+async function markAllClientNotifsSeen() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var items = _computeClientNotifs(client);
+  client.clientNotifSeen = items.map(function(it){ return it.key; });
+  if (typeof persistClient === 'function') { try { await persistClient(client); } catch(e) {} }
+  var host = document.getElementById('branded-modal-host');
+  if (host) host.style.display = 'none';
+  refreshClientNotifBadge();
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('All caught up ✨');
+}
+
+function openClientProgramFromInbox(progId, notifKey) {
+  if (notifKey) markClientNotifSeen(notifKey);
+  var host = document.getElementById('branded-modal-host');
+  if (host) host.style.display = 'none';
+  if (typeof openClientProgramFromSummary === 'function') {
+    try { openClientProgramFromSummary(progId); } catch(e) {}
+  } else if (typeof switchClientTab === 'function') {
+    switchClientTab('programs');
   }
 }
 
