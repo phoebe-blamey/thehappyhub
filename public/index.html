@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11710 — second wave of Phoebe's overnight notes (the remaining 11). (1) Home page reorder: Today's commitments now sit between Recent Wins (above) and Recent Activity (below) — was at the very top, not where her eye lands. (2) Check-ins parity: every auto-suggested check-in row now has ✓ Done / 📦 Snooze 14d / × Dismiss-forever buttons matching regular tasks. (3) Ask Claude promoted from buried Tools tab to a top-level pink action button next to Message client — Claude has the full client profile so she can ask anything. (4) Client portal task archive + delete with notify-Phoebe — clients can hide a task they've outgrown OR delete it, and either action posts to Phoebe's activity log so she's looped in. (5) Achievements accordion remembers open/closed state across program switches via localStorage — was reverting on every render. (6) Revenue dashboard: clients-to-flag panel between business stats and the rest — surfaces red health, 30+ days no win, 21+ days silent. (7) Message tab quick-link toolbar: one-click Open Zoom + Paste Zoom + Open portal + Paste portal link, with cohort Zoom fallback for MDC clients. (8) Coach socials pre-fill confirmed working in openEditClient (website, LinkedIn, Instagram, Facebook, TikTok, WhatsApp). (9) AI brief is now an iterative conversation: each Phoebe reply is logged on the program record and threaded into the next regeneration prompt so Claude has the full back-and-forth, not just the latest reply. Reply textarea clears after each round. 'Conversation so far' history visible in the panel. (10) Program Builder full save flow: after AI generates the plan, three new actions — 💾 Save as program template (parses headings into customSections and saves to coach settings, applicable to any client), 📋 Copy, ✎ Edit in textarea. (11) Notifications centre: groups of 3+ updates get an ✦ Digest button that calls Haiku to summarise the thread in Phoebe's voice (one short sentence).">
+<meta name="hmh-build" content="v11712 — quick-fix follow-ups: (a) Renamed the MDC programme to 'Million Dollar Conspiracy Sprint' wherever clients see it (program label, cohort tile, Community fallback copy, default cohort names, client-portal landing tag). 'MDC' stays as the coach-side short tag so Phoebe's nav doesn't get crowded. (b) Phone access to coach page — the 'type phoebe' keyboard sequence is awkward on iOS, so a 3-tap-on-PeaBe-logo gesture now reveals the coach card too (works on touch + auto-focuses the PIN field). v11711 fix: Community tab race-condition no longer hides the tab for legit cohort members — was reading MDC_COHORTS before /api/cohorts had hydrated. v11710 features (full list in commit message).">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -92,7 +92,7 @@
       <p>Access your program workbook, session notes, action plan and resources.</p>
       <div class="prog-tags">
         <span class="prog-tag">90-Day Builder</span>
-        <span class="prog-tag">MDC</span>
+        <span class="prog-tag">Million Dollar Conspiracy Sprint</span>
         <span class="prog-tag">Happy Hour</span>
       </div>
       <div class="pin-row">
@@ -1345,8 +1345,8 @@
           <div class="p-desc">General coaching · custom plan</div>
         </div>
         <div class="prog-opt" data-prog="mdc" onclick="selectProg(this)">
-          <div class="p-name">Million Dollar Conspiracy</div>
-          <div class="p-desc">8-week group intensive</div>
+          <div class="p-name">Million Dollar Conspiracy Sprint</div>
+          <div class="p-desc">24-week cohort programme</div>
         </div>
         <div class="prog-opt" data-prog="audit" onclick="selectProg(this)">
           <div class="p-name">Business Audit</div>
@@ -1963,15 +1963,15 @@ var PROGRAMS = {
   'happyhour':  { label:'Happy Hour',                    short:'Happy Hour',   color:'prog-happyhour',workbook:'happyhour', icon:'☀️', lengthDays: null }, // single 90-min session
   'adhoc':      { label:'Ad Hoc Coaching',               short:'Ad Hoc',       color:'prog-audit',   workbook:'session',   icon:'💬', lengthDays: null },
   'audit':      { label:'Beautiful Business Audit',      short:'Audit',        color:'prog-audit',   workbook:'audit',     icon:'🔍', lengthDays: 60  },
-  'mdc':        { label:'Million Dollar Conspiracy',     short:'MDC',          color:'prog-mdc',     workbook:'mdc',       icon:'💡', lengthDays: 168 }, // 24 weeks
-  'mdc-inquiry':{ label:'MDC Inquiry',                   short:'MDC Inquiry',  color:'prog-mdc',     workbook:'inquiry',   icon:'💡', lengthDays: null },
+  'mdc':        { label:'Million Dollar Conspiracy Sprint', short:'MDC',       color:'prog-mdc',     workbook:'mdc',       icon:'💡', lengthDays: 168 }, // 24 weeks — client-facing label is the full name; "MDC" stays as the coach short-tag.
+  'mdc-inquiry':{ label:'Million Dollar Conspiracy Sprint · Inquiry', short:'MDC Inquiry', color:'prog-mdc', workbook:'inquiry', icon:'💡', lengthDays: null },
   'inquiry':    { label:'Discovery Call',                short:'Discovery',    color:'prog-stone',   workbook:'inquiry',   icon:'🤝', lengthDays: null },
   'podcast':    { label:'Podcast Recording',             short:'Podcast',      color:'prog-stone',   workbook:'none',      icon:'🎙', lengthDays: null },
   'partner':    { label:'Partner Meeting',               short:'Partner',      color:'prog-stone',   workbook:'none',      icon:'🤝', lengthDays: null },
   'research':   { label:'Research Chat',                 short:'Research',     color:'prog-stone',   workbook:'none',      icon:'🔬', lengthDays: null },
   'general':    { label:'General Session',               short:'Session',      color:'prog-stone',   workbook:'none',      icon:'📌', lengthDays: null },
   'builder-6m': { label:'Business Builder (6-month)',      short:'Builder 6M',   color:'prog-mdc',     workbook:'90day',     icon:'🏗', lengthDays: 180 },
-  'mdc-cohort': { label:'MDC Cohort Member',               short:'MDC',          color:'prog-mdc',     workbook:'mdc',       icon:'💡', lengthDays: 168 },
+  'mdc-cohort': { label:'Million Dollar Conspiracy Sprint Member', short:'MDC',  color:'prog-mdc',     workbook:'mdc',       icon:'💡', lengthDays: 168 },
 };
 
 // Coach PIN is stored in localStorage so Phoebe can change it from Settings.
@@ -2628,8 +2628,8 @@ async function changeClientAccessCode(clientId, newCode) {
 
 // MDC Cohorts — run every 90 days
 var MDC_COHORTS = [
-  { id:'cohort-1', name:'MDC Cohort 1', dates:'Apr–Jun 2026', start:'2026-04-01', end:'2026-06-30', whatsapp:'https://chat.whatsapp.com/example1', zoomLink:'', nextSessionDate:'', nextSessionTime:'', active:true },
-  { id:'cohort-2', name:'MDC Cohort 2', dates:'Jul–Sep 2026', start:'2026-07-01', end:'2026-09-30', whatsapp:'', zoomLink:'', nextSessionDate:'', nextSessionTime:'', active:false },
+  { id:'cohort-1', name:'Million Dollar Conspiracy Sprint · Round 1', dates:'Apr–Jun 2026', start:'2026-04-01', end:'2026-06-30', whatsapp:'https://chat.whatsapp.com/example1', zoomLink:'', nextSessionDate:'', nextSessionTime:'', active:true },
+  { id:'cohort-2', name:'Million Dollar Conspiracy Sprint · Round 2', dates:'Jul–Sep 2026', start:'2026-07-01', end:'2026-09-30', whatsapp:'', zoomLink:'', nextSessionDate:'', nextSessionTime:'', active:false },
 ];
 
 // ════════════════════════════════════════════════════════════════════
@@ -4082,23 +4082,64 @@ window.addEventListener('load', async function() {
   }
   if (grid && !revealCoach) grid.style.gridTemplateColumns = '1fr';
   if (!revealCoach) {
-    // Secret keyboard sequence — type "phoebe" anywhere to reveal the
-    // coach card. Resets after 3s of inactivity.
+    // Reveal the coach card via ANY of these — desktop and mobile both
+    // covered, and the localStorage flag means after the first reveal on
+    // a device it stays revealed forever.
+    //
+    //  (a) Type "phoebe" anywhere on the page (desktop keyboard).
+    //  (b) v11712: tap the PeaBe logo image 3 times within 1.5s
+    //      (mobile-friendly — phones can't trigger keyboard sequences
+    //      reliably from the landing without also filling the access-code
+    //      input). Phoebe asked for an easier phone reveal because the
+    //      keyboard trick is awkward on iOS.
+    //  (c) Bookmarked URL with ?coach=1.
+    function _doReveal() {
+      if (coachCard) coachCard.style.display = '';
+      if (grid) grid.style.gridTemplateColumns = '';
+      try { localStorage.setItem('hmh_session_coach_known', '1'); } catch (err) {}
+      // Scroll the coach card into view + focus the PIN input — saves a
+      // second tap on phones.
+      try {
+        if (coachCard && typeof coachCard.scrollIntoView === 'function') {
+          coachCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        var pinInput = document.getElementById('coach-pin');
+        if (pinInput) setTimeout(function(){ try { pinInput.focus(); } catch(e) {} }, 350);
+      } catch (e) {}
+    }
     var typed = '';
     var typedTimer = null;
     document.addEventListener('keydown', function(e) {
       if (!e.key || e.key.length !== 1) return;
       typed += e.key.toLowerCase();
       if (typed.length > 6) typed = typed.slice(-6);
-      if (typed === 'phoebe') {
-        if (coachCard) coachCard.style.display = '';
-        if (grid) grid.style.gridTemplateColumns = '';
-        try { localStorage.setItem('hmh_session_coach_known', '1'); } catch (err) {}
-        typed = '';
-      }
+      if (typed === 'phoebe') { _doReveal(); typed = ''; }
       if (typedTimer) clearTimeout(typedTimer);
       typedTimer = setTimeout(function(){ typed = ''; }, 3000);
     });
+    // 3-tap-on-logo gesture (mobile-friendly). The PeaBe SVG and the
+    // "PeaBe Coaching Hub" text both count as the tap target so Phoebe
+    // doesn't have to aim precisely.
+    var tapCount = 0;
+    var tapTimer = null;
+    function _tapHandler(e) {
+      tapCount += 1;
+      if (tapCount >= 3) {
+        tapCount = 0;
+        if (tapTimer) { clearTimeout(tapTimer); tapTimer = null; }
+        _doReveal();
+        return;
+      }
+      if (tapTimer) clearTimeout(tapTimer);
+      tapTimer = setTimeout(function(){ tapCount = 0; }, 1500);
+    }
+    var brandMark = document.querySelector('.landing-brand-mark');
+    var brandText = document.querySelector('.landing-logo');
+    if (brandMark) brandMark.addEventListener('click', _tapHandler);
+    if (brandText) brandText.addEventListener('click', _tapHandler);
+    // Make the logo feel tappable — slight cursor + active state hint
+    if (brandMark) brandMark.style.cursor = 'pointer';
+    if (brandText) brandText.style.cursor = 'pointer';
   }
   // ?logout — explicit sign-out URL, clears session + shows landing. Useful
   // when a coach has been testing as a client and wants to escape the
@@ -13280,7 +13321,7 @@ function renderMDCGroup() {
   el.innerHTML =
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">' +
     '<div><div style="font-family:var(--f-head);font-size:18px;color:var(--magenta)">' + mdcClients.length + ' cohort members</div>' +
-    '<div style="font-size:13px;color:var(--stone)">Million Dollar Conspiracy</div></div>' +
+    '<div style="font-size:13px;color:var(--stone)">Million Dollar Conspiracy Sprint</div></div>' +
     '<button class="btn-sm primary" onclick="generateGroupInsights()">✦ AI cohort insights</button>' +
     '</div>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:24px">' + cohortHtml + '</div>' +
@@ -19140,7 +19181,7 @@ function renderClientCommunityTab(client) {
     area.innerHTML =
       '<div class="client-section">' +
         '<h3>🌟 Community</h3>' +
-        '<div style="font-size:13px;color:var(--magenta);line-height:1.6">The Community space is for MDC cohort members. You\'ll see your cohort\'s feed here once you join one.</div>' +
+        '<div style="font-size:13px;color:var(--magenta);line-height:1.6">The Community space is for Million Dollar Conspiracy Sprint members. You\'ll see your cohort\'s feed here once you join one.</div>' +
       '</div>';
     return;
   }
@@ -20597,7 +20638,7 @@ async function confirmAddToCohort(clientId, cohortId) {
   if (!prog) {
     if (!c.programs) c.programs = [];
     prog = {
-      id:'prog-mdc-'+Date.now(), program:'mdc', workbook:'mdc', label:'MDC Cohort',
+      id:'prog-mdc-'+Date.now(), program:'mdc', workbook:'mdc', label:'Million Dollar Conspiracy Sprint',
       sessionDate:new Date().toISOString().split('T')[0], status:'active', cohort:cohortId,
       sessionNotes:[], plan:[], notes:{}, tasks:[]
     };
