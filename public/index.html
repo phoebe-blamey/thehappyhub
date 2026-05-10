@@ -33,9 +33,13 @@
      CSS actually uses (500/600/700/800) and dropped italic entirely
      (zero font-style:italic in styles.css). Saves a font file + faster
      parse. font-display:swap means we render with system fonts first
-     and swap in Poppins when it arrives — no FOIT. -->
-<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
-<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"></noscript>
+     and swap in Poppins when it arrives — no FOIT.
+     v11720: Albert Sans added alongside Poppins. The website uses
+     Albert Sans for body copy; matching it here ties the platform to
+     her brand. Both fonts share a similar geometric character so the
+     Poppins fallback keeps everything legible during font swap. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap"></noscript>
 
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
@@ -47,7 +51,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11715 — pre-client-test cleanup. Dark-mode 🌙 toggle pulled from both coach + client topbars: rendering wasn't reliable across every page (form fields + cohort panel + client portal hero had hard-coded light backgrounds, so flipping to dark left orphan blocks). Code + JS hooks remain — restoring is a CSS-audit job documented in docs/FUTURE.md. v11714: client-side notifications bell. v11713: AI email draft. v11712: MDC rename + 3-tap-logo. v11711: Community tab race fix. v11710: 11 batch items. READY FOR CLIENT TESTING.">
+<meta name="hmh-build" content="v11720 — design + colour pass to match phoebeblamey.com.au. (1) Albert Sans loaded as primary body font (the site's body font), AllRoundGothic stays for headings. Poppins kept in the fallback chain. (2) Brand wave divider — the actual triple-layer pink SVG used on her website section dividers is now a reusable .brand-wave CSS class, baked into the client hero. .brand-wave.flip + .brand-wave.mist variants available. (3) READABILITY TIER for 40-50+ readers: body baseline 13px → 15px, page titles 26px → 30px, sidebar items 13px → 14px, small buttons 12px → 14px, Enter button 13px → 15px, PIN input 13px → 15px with 44px min tap target. Line-height 1.6 across body. v11715: dark-mode 🌙 toggle pulled. v11714: client notifications bell. v11713: AI email draft. v11712: MDC rename + 3-tap-logo. v11711: Community tab race fix. v11710: 11 batch items. READY FOR CLIENT TESTING.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -1215,6 +1219,10 @@
            the mood pill when there's fresh activity from Phoebe (shared
            notes, new tasks, new wins, new shared sections). Click to expand. -->
       <div id="client-hero-whats-new" class="client-hero-whats-new" style="display:none"></div>
+      <!-- v11720: brand wave divider — same triple-layer pink wave used
+           on phoebeblamey.com.au section dividers. Anchors the hero
+           visually to her website. -->
+      <div class="brand-wave" aria-hidden="true"></div>
     </div>
     <!-- New-note notification banner — shows when Phoebe has shared something
          the client hasn't read yet. Click "Read it" jumps to that program. -->
