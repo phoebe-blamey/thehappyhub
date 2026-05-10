@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11712 — quick-fix follow-ups: (a) Renamed the MDC programme to 'Million Dollar Conspiracy Sprint' wherever clients see it (program label, cohort tile, Community fallback copy, default cohort names, client-portal landing tag). 'MDC' stays as the coach-side short tag so Phoebe's nav doesn't get crowded. (b) Phone access to coach page — the 'type phoebe' keyboard sequence is awkward on iOS, so a 3-tap-on-PeaBe-logo gesture now reveals the coach card too (works on touch + auto-focuses the PIN field). v11711 fix: Community tab race-condition no longer hides the tab for legit cohort members — was reading MDC_COHORTS before /api/cohorts had hydrated. v11710 features (full list in commit message).">
+<meta name="hmh-build" content="v11713 — AI email draft assistant on the Message tab AND inside the cohort-broadcast modal. ✦ AI draft button → asks Phoebe one question (what's this email for?) → Haiku drafts subject + body in her voice with the right context (programme + recent wins + last session for a single client; round + member count + next session + recent shared wins for a cohort). Cohort drafts use {name} placeholder so per-member personalisation still works. v11712: 'Million Dollar Conspiracy Sprint' rename + 3-tap-logo coach reveal on phone. v11711: Community tab race fix. v11710: 11 batch items.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -536,8 +536,17 @@
               <input id="msg-subject" placeholder="e.g. Your session notes from today" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;margin-top:6px">
             </div>
             <div class="form-group" style="margin-bottom:16px">
-              <label>Message</label>
-              <textarea id="msg-body" placeholder="Write your message here — it will be sent directly from phoebe@phoebeblamey.com.au" style="width:100%;min-height:140px;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6;margin-top:6px"></textarea>
+              <label style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span>Message</span>
+                <!-- v11713: AI draft assistant. Tap → tell Claude what
+                     this email is for, and a draft (subject + body) lands
+                     in the form, written in Phoebe's voice with this
+                     client's context (programme, recent wins, last
+                     session date). Phoebe edits and sends. -->
+                <button class="btn-sm" type="button" onclick="aiDraftClientEmail()" style="font-size:11px;background:linear-gradient(135deg,#FFE0EE,#FDEFF5);border-color:rgba(229,4,139,0.4);color:var(--hot-pink);font-weight:700" title="Tell Claude what this email is for and get a draft in your voice with this client's context">✦ AI draft email</button>
+                <span id="msg-ai-draft-status" style="font-size:11px;color:var(--stone);font-style:italic"></span>
+              </label>
+              <textarea id="msg-body" placeholder="Write your message here — it will be sent directly from phoebe@phoebeblamey.com.au. Or tap ✦ AI draft email to have Claude write a first pass." style="width:100%;min-height:140px;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6;margin-top:6px"></textarea>
             </div>
             <button id="send-msg-btn" class="btn-sm primary" onclick="sendMessageToClient()">Send</button>
             <div style="font-size:12px;color:var(--stone);margin-top:12px">Sent messages are automatically logged as coach notes and appear in your Gmail Sent folder. Email is live; SMS requires Twilio setup — see Settings.</div>
@@ -12786,6 +12795,199 @@ function renderMessageQuickLinks() {
   slot.style.display = 'flex';
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// v11713 — AI email draft assistant.
+// Both flavours (single client + cohort broadcast) ask Phoebe one
+// question — "what's this email for?" — then call Haiku with the
+// PHOEBE_VOICE rules and the right context (programme, recent wins,
+// last session date for a single client; round, member count, next
+// session, recent shared wins for a cohort). The result drops into the
+// subject + body fields. Phoebe edits before sending.
+// ═════════════════════════════════════════════════════════════════════
+
+// Single-client AI draft. Wired to the ✦ AI draft email button on the
+// Message tab. Pulls the active client + their first active programme
+// for context, then asks Haiku for a subject + body in Phoebe's voice.
+async function aiDraftClientEmail() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) { branded.alert('Open a client first.'); return; }
+  var subjectEl = document.getElementById('msg-subject');
+  var bodyEl    = document.getElementById('msg-body');
+  var statusEl  = document.getElementById('msg-ai-draft-status');
+  if (!bodyEl) return;
+  var intent = await branded.prompt(
+    'What\'s this email for? One line is enough.\n\ne.g. "Reschedule Tuesday\'s session to next Thursday 2pm" · "Send the workbook link and ask how she felt about the audit" · "Check in — she\'s gone quiet for 3 weeks"',
+    '',
+    'What\'s this email about?',
+    { title: '✦ AI draft email · ' + (client.name || 'this client'), okLabel: 'Draft it' }
+  );
+  if (!intent || !intent.trim()) return;
+  if (statusEl) statusEl.textContent = 'Drafting…';
+  // Build a tight context block — programme name, status, last session,
+  // the 3 most recent wins, and the most recent coach note title (if any).
+  var prog = (client.programs || []).find(function(p){ return p && !p.locked && p.status !== 'complete'; }) || (client.programs || [])[0] || null;
+  var ctxLines = [];
+  ctxLines.push('Client: ' + (client.name || '') + (client.biz ? ' (' + client.biz + ')' : ''));
+  if (prog) {
+    var progLabel = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog.program]) ? (PROGRAMS[prog.program].label || prog.program) : (prog.label || prog.program || '');
+    ctxLines.push('Programme: ' + progLabel + (prog.sessionDate ? ' · started ' + prog.sessionDate : ''));
+  }
+  var allWins = (client.wins || []).concat(...(client.programs || []).map(function(p) { return p.wins || []; }));
+  if (allWins.length) {
+    ctxLines.push('Recent wins:');
+    allWins.slice(0, 3).forEach(function(w) {
+      if (!w) return;
+      ctxLines.push('  · ' + (w.title || '(no title)') + (w.metric ? ' · ' + w.metric : '') + (w.after ? ' → ' + w.after : ''));
+    });
+  }
+  // Last coach note title (if any) — gives Claude a thread to pick up
+  var notes = (prog && prog.sessionNotes) || [];
+  if (notes.length) {
+    var lastNote = notes[notes.length - 1];
+    if (lastNote && lastNote.title) ctxLines.push('Last session: ' + lastNote.title + (lastNote.date ? ' · ' + lastNote.date : ''));
+  }
+  var contextBlock = ctxLines.join('\n');
+  var prompt = phoebeVoice(
+    'Draft an email from Phoebe Blamey to her client. Phoebe just told you what it\'s for — write it in her voice.\n\n' +
+    'WHAT THIS EMAIL IS FOR:\n' + intent.trim() + '\n\n' +
+    'CLIENT CONTEXT:\n' + contextBlock + '\n\n' +
+    'Return JSON only — no preamble, no commentary, no markdown fence:\n' +
+    '{"subject":"<short subject line, no all-caps, no exclamation marks>","body":"<the email body, plain text, ends with \'Phoebe x\' on its own line>"}'
+  );
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!resp.ok) throw new Error('AI returned ' + resp.status);
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) {
+      data.content.forEach(function(b) { if (b && b.type === 'text' && b.text) text += b.text; });
+    }
+    text = (text || '').trim();
+    // Strip ``` fences if Claude added them despite instructions
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+    if (typeof _looksLikeAIRefusal === 'function' && _looksLikeAIRefusal(text)) {
+      throw new Error('AI returned a refusal — try rewording the intent.');
+    }
+    var parsed;
+    try { parsed = JSON.parse(text); }
+    catch (e) {
+      // Fallback: if not valid JSON, treat the whole thing as the body
+      parsed = { subject: '', body: text };
+    }
+    if (subjectEl && parsed.subject) subjectEl.value = parsed.subject;
+    if (bodyEl && parsed.body) bodyEl.value = parsed.body;
+    if (statusEl) statusEl.textContent = 'Draft ready — edit before sending.';
+    setTimeout(function(){ if (statusEl) statusEl.textContent = ''; }, 6000);
+    if (typeof branded !== 'undefined' && branded.toast) branded.toast('✦ Draft ready');
+  } catch (err) {
+    console.warn('[aiDraftClientEmail]', err);
+    if (statusEl) statusEl.textContent = '';
+    if (typeof branded !== 'undefined' && branded.error) branded.error('Couldn\'t draft just now: ' + (err && err.message || 'unknown error'));
+  }
+}
+
+// Cohort broadcast AI draft. Wired to the ✦ AI draft button inside the
+// broadcastToCohort modal. Same shape as the single-client version, but
+// with cohort-level context and an instruction to use {name} as a
+// per-member placeholder so personalisation still works at send time.
+async function aiDraftCohortBroadcast(cohortId) {
+  var co = (typeof _findCohort === 'function') ? _findCohort(cohortId) : null;
+  if (!co) { branded.alert('Cohort not found.'); return; }
+  var members = (typeof _cohortMembers === 'function') ? _cohortMembers(cohortId) : [];
+  var subjectEl = document.getElementById('bcast-subject');
+  var bodyEl    = document.getElementById('bcast-body');
+  var statusEl  = document.getElementById('bcast-ai-draft-status');
+  if (!bodyEl) return;
+  var intent = await branded.prompt(
+    'What\'s this email for? One line.\n\ne.g. "Remind everyone next session is Tues 7pm" · "Share the link to the new shared workbook" · "Celebrate the cohort hitting $200k combined revenue this month"',
+    '',
+    'What\'s this cohort email about?',
+    { title: '✦ AI draft · ' + (co.name || 'cohort'), okLabel: 'Draft it' }
+  );
+  if (!intent || !intent.trim()) return;
+  if (statusEl) statusEl.textContent = 'Drafting…';
+  // Cohort context — round name, member count, next session date,
+  // a few recent shared wins from the feed.
+  var ctxLines = [];
+  ctxLines.push('Cohort: ' + (co.name || 'Cohort'));
+  ctxLines.push('Members: ' + members.length);
+  if (co.dates) ctxLines.push('Round dates: ' + co.dates);
+  // Find next upcoming session
+  if (Array.isArray(co.sessions) && co.sessions.length) {
+    var todayLocal = (typeof _localTodayStr === 'function') ? _localTodayStr() : new Date().toISOString().split('T')[0];
+    var future = co.sessions.filter(function(s){ return s.date && s.date >= todayLocal; }).sort(function(a, b){ return (a.date||'').localeCompare(b.date||''); });
+    if (future[0]) ctxLines.push('Next session: ' + future[0].date + (future[0].time ? ' · ' + future[0].time : ''));
+  }
+  // Pull a few shared wins as cohort flavour
+  var sharedWins = [];
+  members.forEach(function(m) {
+    var ws = (m.wins || []).concat(...(m.programs || []).map(function(p) { return p.wins || []; }));
+    ws.forEach(function(w) {
+      if (w && w.shared !== false) sharedWins.push({ name: m.name, win: w });
+    });
+  });
+  sharedWins.sort(function(a, b) { return new Date(b.win.at || 0).getTime() - new Date(a.win.at || 0).getTime(); });
+  if (sharedWins.length) {
+    ctxLines.push('Recent shared wins:');
+    sharedWins.slice(0, 3).forEach(function(sw) {
+      ctxLines.push('  · ' + (sw.name || '') + ': ' + (sw.win.title || ''));
+    });
+  }
+  var contextBlock = ctxLines.join('\n');
+  var prompt = phoebeVoice(
+    'Draft a cohort-wide email from Phoebe Blamey to her Million Dollar Conspiracy Sprint members. Phoebe just told you what it\'s for — write it in her voice.\n\n' +
+    'WHAT THIS EMAIL IS FOR:\n' + intent.trim() + '\n\n' +
+    'COHORT CONTEXT:\n' + contextBlock + '\n\n' +
+    'IMPORTANT — use {name} (with the curly braces) wherever you greet a member, e.g. "Hi {name},". The send pipeline replaces {name} with each person\'s actual name at send time. Do NOT use a real name.\n\n' +
+    'Return JSON only — no preamble, no commentary, no markdown fence:\n' +
+    '{"subject":"<short subject line, no all-caps, no exclamation marks>","body":"<the email body, plain text, starts with \'Hi {name},\' and ends with \'Phoebe x\' on its own line>"}'
+  );
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 900,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!resp.ok) throw new Error('AI returned ' + resp.status);
+    var data = await resp.json();
+    var text = '';
+    if (Array.isArray(data.content)) {
+      data.content.forEach(function(b) { if (b && b.type === 'text' && b.text) text += b.text; });
+    }
+    text = (text || '').trim();
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+    if (typeof _looksLikeAIRefusal === 'function' && _looksLikeAIRefusal(text)) {
+      throw new Error('AI returned a refusal — try rewording the intent.');
+    }
+    var parsed;
+    try { parsed = JSON.parse(text); }
+    catch (e) {
+      parsed = { subject: '', body: text };
+    }
+    if (subjectEl && parsed.subject) subjectEl.value = parsed.subject;
+    if (bodyEl && parsed.body) bodyEl.value = parsed.body;
+    if (statusEl) statusEl.textContent = 'Draft ready — edit before sending.';
+    setTimeout(function(){ if (statusEl) statusEl.textContent = ''; }, 6000);
+    if (typeof branded !== 'undefined' && branded.toast) branded.toast('✦ Cohort draft ready');
+  } catch (err) {
+    console.warn('[aiDraftCohortBroadcast]', err);
+    if (statusEl) statusEl.textContent = '';
+    if (typeof branded !== 'undefined' && branded.error) branded.error('Couldn\'t draft just now: ' + (err && err.message || 'unknown error'));
+  }
+}
+
 // Pastes a labelled URL into the open message body at the cursor position
 // (or appends if no cursor focus).
 function msgPasteLink(url, label) {
@@ -21062,7 +21264,16 @@ async function broadcastToCohort(cohortId, channel) {
       '<input id="bcast-subject" placeholder="A note from Phoebe" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none">' +
     '</div>' +
     '<div style="margin-bottom:12px">' +
-      '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">Message</label>' +
+      '<label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">' +
+        '<span>Message</span>' +
+        // v11713: AI draft assistant for cohort broadcasts. Tap → tell
+        // Claude what this email is for; the draft is written in
+        // Phoebe's voice with cohort context (round number, member
+        // count, next session date, recent shared wins). Uses {name}
+        // as a placeholder so per-member personalisation still works.
+        '<button class="btn-sm" type="button" onclick="aiDraftCohortBroadcast(\'' + cohortId + '\')" style="font-size:10px;padding:4px 9px;background:linear-gradient(135deg,#FFE0EE,#FDEFF5);border-color:rgba(229,4,139,0.4);color:var(--hot-pink);font-weight:700;text-transform:none;letter-spacing:0" title="Tell Claude what this email is for — draft lands in your voice with cohort context">✦ AI draft</button>' +
+        '<span id="bcast-ai-draft-status" style="font-size:10px;color:var(--stone);font-style:italic;text-transform:none;letter-spacing:0"></span>' +
+      '</label>' +
       '<textarea id="bcast-body" rows="6" placeholder="Hi {name},\n\n…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"></textarea>' +
       '<div style="font-size:10px;color:var(--stone);margin-top:4px;font-style:italic">Tip: use {name} or {firstName} as a placeholder — they\'re replaced per-client at send time.</div>' +
     '</div>' +
