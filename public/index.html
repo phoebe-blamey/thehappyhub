@@ -47,7 +47,7 @@
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11714 — client-side notifications inbox restored. New 🔔 bell on the client topbar (matching Phoebe's coach bell) opens a persistent inbox of EVERYTHING she's shared with this client: session notes, custom sections, new to-dos, cohort shoutouts addressed to them, badges awarded. Yellow badge counts unread. Items stay readable forever — 'Mark all seen' clears the badge. Lives alongside the existing 'what's new since last visit' hero pill, which only shows fresh items. v11713: AI email draft. v11712: MDC rename + 3-tap-logo. v11711: Community tab race fix. v11710: 11 batch items.">
+<meta name="hmh-build" content="v11715 — pre-client-test cleanup. Dark-mode 🌙 toggle pulled from both coach + client topbars: rendering wasn't reliable across every page (form fields + cohort panel + client portal hero had hard-coded light backgrounds, so flipping to dark left orphan blocks). Code + JS hooks remain — restoring is a CSS-audit job documented in docs/FUTURE.md. v11714: client-side notifications bell. v11713: AI email draft. v11712: MDC rename + 3-tap-logo. v11711: Community tab race fix. v11710: 11 batch items. READY FOR CLIENT TESTING.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -126,8 +126,13 @@
         🔔
         <span id="topbar-notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--sunshine);color:var(--magenta);font-size:9px;font-weight:800;padding:1px 5px;border-radius:99px;line-height:1.2;border:1.5px solid var(--magenta)">0</span>
       </button>
-      <!-- v11100: theme toggle (sun/moon) — switches light <-> dark -->
-      <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" class="topbar-action-btn topbar-tap">🌙</button>
+      <!-- v11715: theme toggle (sun/moon) hidden — dark mode wasn't
+           rendering reliably across every page (form fields + cohort
+           panel + client portal had hard-coded light backgrounds). Pulled
+           from the coach topbar pre-client-test. Restore is queued in
+           docs/FUTURE.md alongside a proper dark-theme audit. The
+           toggleTheme() function + [data-theme-toggle] hooks remain so
+           the button can be put back without code surgery later. -->
       <button class="btn-logout topbar-tap" onclick="logout()">Sign out</button>
     </div>
   </div>
@@ -1168,9 +1173,8 @@
       🔔
       <span id="client-topbar-notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--sunshine);color:var(--magenta);font-size:9px;font-weight:800;padding:1px 5px;border-radius:99px;line-height:1.2;border:1.5px solid var(--magenta)">0</span>
     </button>
-    <!-- v11100: theme toggle (sun/moon) — switches between light + dark.
-         Persists in localStorage as `hmh_theme`. -->
-    <button data-theme-toggle onclick="toggleTheme()" title="Switch theme" aria-label="Toggle dark mode" class="topbar-action-btn topbar-tap">🌙</button>
+    <!-- v11715: theme toggle hidden on client side too — see coach
+         topbar comment. Restore queued in docs/FUTURE.md. -->
     <!-- v10900: settings gear in the topbar — fast access to client preferences
          without making Settings a peer of Summary/Programs/To-dos in the
          primary nav. The Settings tab still exists below for discoverability. -->
