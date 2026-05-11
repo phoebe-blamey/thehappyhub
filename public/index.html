@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11737">
-<link rel="stylesheet" href="styles.css?v=11737">
+<link rel="preload" as="style" href="styles.css?v=11738">
+<link rel="stylesheet" href="styles.css?v=11738">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11737 — community + coach polish. (1) Coach search button: was white-on-pink (invisible after the topbar palette flip); now ink-on-cream with rule border. (2) Cohort manager: community feed moved to TOP of the cohort manager view, right after the cohort picker. (3) Client portal community tab renamed to 'MDC Community Hub' (top nav, bottom tab, and section heading). (4) Shoutout composer: third step asks 'Send to WhatsApp group?' with default-on confirmation; if WhatsApp env vars configured, posts to /api/send-message immediately; otherwise feed entry saves with sendToWhatsApp:true + whatsappSent:false so it can be flushed later. (5) Empty-state copy updated to read 'Community Hub' throughout. v11736 — final polish + sweep. (1) Titles render in sentence case (text-transform: lowercase + ::first-letter uppercase) so 'WHAT WE WANT TO DO' shows as 'What we want to do' — copy untouched. All headings locked to AllRoundGothic Bold. (2) READABILITY for 40-50+: body 15px / line-height 1.6, card padding 26px, tagline bumped to 16px, helper text to 13px ink-soft. (3) Login programme tags hidden — looked cluttered. (4) Note for Claude FAB removed entirely. (5) peabe.svg logo font chain leads with AllRoundGothic. (6) Defensive overrides for any lingering color:white inline styles inside the new mint hero. (7) Landing page rebuilt to match palette — cream bg, ink headings, sunshine Enter button. (8) Coach portal sidebar + page titles aligned with new palette. (9) Hot-pink signature underline retained on hero name. Cache v=11736.">
+<meta name="hmh-build" content="v11738 — Build-plan-from-Zoom bug fixes. (1) NAME-MATCH bug: zoom-transcript was matching recordings by date proximity only — pulled Sam's transcript when Phoebe was on Scott Taylor's profile. Fixed by fetching the client record first and filtering Zoom recordings whose .topic contains the client's first name (word-boundary regex so 'Sam' doesn't match 'Samira'). Falls back to date proximity only if the name match returns nothing. If no name match AND multiple recordings in the window, returns an error listing the available topics so Phoebe can use Settings → Unmatched Zoom Recordings to assign manually. (2) AUTH bug: was using ?access_token= query param which sometimes returned Zoom's HTML auth-flow page (with embedded JS cookie code) — exactly the garbage Phoebe saw in the transcript field. Switched to Authorization Bearer header + redirect:follow + Content-Type check + raw HTML/JS detection. Returns 502 with hint about cloud_recording:read:content:master scope if the response isn't VTT. (3) FRONT-END: textarea bumped from min 90px to 260px, ink colour, larger font (14px). Added '✕ Clear' button. Auto-build on pull is now manual ('⚡ Generate plan' click required) so Phoebe can review the transcript first. _transcriptLooksLikeCode() heuristic warns BEFORE sending garbage to the AI. v11737 — community + coach polish. (1) Coach search button: was white-on-pink (invisible after the topbar palette flip); now ink-on-cream with rule border. (2) Cohort manager: community feed moved to TOP of the cohort manager view, right after the cohort picker. (3) Client portal community tab renamed to 'MDC Community Hub' (top nav, bottom tab, and section heading). (4) Shoutout composer: third step asks 'Send to WhatsApp group?' with default-on confirmation; if WhatsApp env vars configured, posts to /api/send-message immediately; otherwise feed entry saves with sendToWhatsApp:true + whatsappSent:false so it can be flushed later. (5) Empty-state copy updated to read 'Community Hub' throughout. v11736 — final polish + sweep. (1) Titles render in sentence case (text-transform: lowercase + ::first-letter uppercase) so 'WHAT WE WANT TO DO' shows as 'What we want to do' — copy untouched. All headings locked to AllRoundGothic Bold. (2) READABILITY for 40-50+: body 15px / line-height 1.6, card padding 26px, tagline bumped to 16px, helper text to 13px ink-soft. (3) Login programme tags hidden — looked cluttered. (4) Note for Claude FAB removed entirely. (5) peabe.svg logo font chain leads with AllRoundGothic. (6) Defensive overrides for any lingering color:white inline styles inside the new mint hero. (7) Landing page rebuilt to match palette — cream bg, ink headings, sunshine Enter button. (8) Coach portal sidebar + page titles aligned with new palette. (9) Hot-pink signature underline retained on hero name. Cache v=11736.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -429,13 +429,14 @@
               <button class="btn-sm primary" onclick="fetchZoomTranscript()" id="zoom-fetch-btn">Pull from Zoom</button>
             </div>
             <div class="divider-or">— or paste manually —</div>
-            <textarea id="inline-zoom-notes" placeholder="Paste your Zoom AI transcript or session notes here…"
-              style="width:100%;min-height:90px;border:1.5px solid var(--border);border-radius:8px;padding:12px;
-              font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;
+            <textarea id="inline-zoom-notes" placeholder="Paste your Zoom AI transcript or session notes here, OR pull from Zoom above. The full editable transcript appears here — edit anything before generating the plan."
+              style="width:100%;min-height:260px;border:1.5px solid var(--border);border-radius:8px;padding:12px;
+              font-family:var(--f-body);font-size:14px;color:var(--ink);background:white;outline:none;
               resize:vertical;line-height:1.6;margin-bottom:10px"></textarea>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <button class="btn-sm primary" onclick="buildPlanInline()" id="inline-plan-btn">⚡ Generate plan</button>
               <button class="btn-sm" onclick="toggleBuilder()">Hide</button>
+              <button class="btn-sm" onclick="document.getElementById('inline-zoom-notes').value='';document.getElementById('inline-plan-status').textContent=''" title="Clear the pasted notes so you can start fresh">✕ Clear</button>
               <span id="inline-plan-status" style="font-size:12px;color:var(--teal);font-weight:500"></span>
             </div>
             <div id="inline-plan-output" class="ai-output"></div>
@@ -7118,13 +7119,38 @@ async function fetchZoomTranscript() {
     });
     var data = await resp.json();
     if (!resp.ok || data.error) {
-      notes.placeholder = data.error + (data.hint ? '\n\nHint: '+data.hint : '');
+      // v11738: surface available topics if the name-match failed, so
+      // Phoebe knows which Zoom recording was actually in the window.
+      var msg = (data.error || 'Could not fetch');
+      if (data.hint) msg += '\n\nHint: ' + data.hint;
+      if (Array.isArray(data.availableTopics) && data.availableTopics.length) {
+        msg += '\n\nRecordings in the window:\n• ' + data.availableTopics.join('\n• ');
+      }
+      notes.value = '';
+      notes.placeholder = msg;
       status.textContent = '⚠ ' + (data.error||'Could not fetch');
+      branded.alert(msg, { title: '⚠ ' + (data.error || 'Pull from Zoom failed') });
     } else {
+      // v11738: validate the transcript looks like text not code. Even
+      // with the server-side HTML check, defensive client-side check
+      // catches edge cases. If it looks like JS/HTML, surface a warning
+      // before overwriting the textarea so Phoebe can decide.
+      var looksLikeCode = _transcriptLooksLikeCode(data.transcript || '');
+      if (looksLikeCode) {
+        status.textContent = '⚠ Transcript looks like code, not speech';
+        branded.alert('The Zoom server returned what looks like JavaScript / page source rather than session speech. This usually means the transcript file URL needs broader OAuth scope. Open Zoom Marketplace → Happy Hub → Scopes and ensure cloud_recording:read:content:master is enabled.', { title: '⚠ Transcript looks malformed' });
+        btn.disabled = false; btn.textContent = 'Pull from Zoom';
+        return;
+      }
       notes.value = data.transcript;
-      status.textContent = '✓ Transcript pulled — building plan…';
-      logActivity('transcript', 'Transcript pulled from Zoom for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (data.meetingTopic||'Session') + ' · ' + (data.characterCount||'?') + ' chars' });
-      setTimeout(buildPlanInline, 500);
+      var nameNote = data.nameMatched
+        ? ('✓ Matched on name + date for ' + (data.clientName || client.name))
+        : ('⚠ Closest by date — verify the transcript belongs to ' + (data.clientName || client.name));
+      status.textContent = '✓ Transcript pulled · ' + (data.characterCount || '?') + ' chars · ' + nameNote;
+      logActivity('transcript', 'Transcript pulled from Zoom for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (data.meetingTopic||'Session') + ' · ' + (data.characterCount||'?') + ' chars · matched=' + (data.nameMatched?'name':'date-only') });
+      // v11738: do NOT auto-build the plan. Phoebe asked to be able
+      // to review + edit the transcript text before generating. The
+      // ⚡ Generate plan button is right below and clearly labelled.
     }
   } catch(e) {
     notes.placeholder = 'Could not connect — ensure site is deployed to Netlify.';
@@ -7133,10 +7159,33 @@ async function fetchZoomTranscript() {
   btn.disabled = false; btn.textContent = 'Pull from Zoom';
 }
 
+// v11738: detect when "transcript" content is actually code / page
+// source. Heuristic — speech transcripts don't have function declarations,
+// curly braces, or HTML tags clustered together.
+function _transcriptLooksLikeCode(s) {
+  if (!s || typeof s !== 'string') return false;
+  var sample = s.slice(0, 2000);
+  var codeMarkers = (sample.match(/function\s+\w+|var\s+\w+\s*=|document\.cookie|<!DOCTYPE|<html|window\./gi) || []).length;
+  var braceCount = (sample.match(/[{}]/g) || []).length;
+  var lengthHint = sample.length;
+  if (codeMarkers >= 2) return true;
+  if (braceCount > 12 && lengthHint < 800) return true;
+  return false;
+}
+
 // ========== INLINE PLAN BUILDER ==========
 async function buildPlanInline() {
   var notes = document.getElementById('inline-zoom-notes').value.trim();
   if (!notes) { branded.alert('Paste your Zoom notes first'); return; }
+  // v11738: catch garbage input (JS, HTML) before sending to AI — saves
+  // a token spend and avoids the AI refusal response Phoebe saw earlier.
+  if (typeof _transcriptLooksLikeCode === 'function' && _transcriptLooksLikeCode(notes)) {
+    var ok = await branded.confirm(
+      'The text you\'ve pasted looks like code or page source, not session speech. The plan generator probably can\'t work with this. Continue anyway?',
+      { title: '⚠ This doesn\'t look like a transcript', okLabel: 'Continue anyway', cancelLabel: 'Let me fix it', danger: true }
+    );
+    if (!ok) return;
+  }
   var client = clients.find(function(c) { return c.id === currentClientId; });
   var prog   = client ? (client.programs||[]).find(function(p) { return p.id === currentProgramId; }) : null;
   var clientName = client ? client.name : 'Client';
