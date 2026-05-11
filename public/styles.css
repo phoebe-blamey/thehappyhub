@@ -1058,6 +1058,77 @@ body[data-live-sync="synced"] .topbar-date::after {
 .client-section h3 { font-family: var(--f-head); font-size: 16px; color: var(--magenta); margin-bottom: 10px; }
 
 /* ════════════════════════════════════════════════════════════════════
+   v11723 — section visibility pass per Phoebe's website screenshot.
+   Sections were differentiated by thin pink borders (harsh + invisible
+   at distance). Her site uses BOLD COLOUR ZONES — different background
+   shades give each section its own identity. No extra padding (she
+   said breathing room isn't necessary), no harsh lines.
+
+   New scheme inside #client-hub content panes:
+   • Page background gets a soft pink wash so cards "float" on it
+   • Section borders removed; soft tinted shadow takes their place
+   • Corners go from 14px → 18px (rounder = friendlier, matches the
+     website cards)
+   • Every Nth section gets a different tinted background fill so
+     adjacent sections never look identical:
+       1st  → white
+       2nd  → soft pink  (marshmallow tint)
+       3rd  → soft teal  (mist tint)
+       4th  → cream      (sunshine tint at low opacity)
+     The cycle repeats. Same dark text, same brand pinks for
+     headings — only the background varies.
+   ════════════════════════════════════════════════════════════════════ */
+#client-summary-area,
+#client-content-area,
+#client-settings-area {
+  background:
+    radial-gradient(1200px 600px at 0% 0%, rgba(240,163,199,0.18), transparent 60%),
+    radial-gradient(1000px 500px at 100% 30%, rgba(95,163,168,0.10), transparent 60%),
+    #FFF6FA;
+}
+#client-summary-area .client-section,
+#client-content-area .client-section,
+#client-settings-area .client-section {
+  border: none !important;
+  border-radius: 18px !important;
+  box-shadow: 0 1px 0 rgba(229,4,139,0.06), 0 6px 22px rgba(229,4,139,0.08);
+  margin-bottom: 14px !important;
+}
+/* Cycle of section background tints — adjacent sections get visibly
+   different fills so Phoebe can see where one ends and the next
+   begins, without any borders. */
+#client-summary-area .client-section:nth-of-type(4n+1),
+#client-content-area .client-section:nth-of-type(4n+1),
+#client-settings-area .client-section:nth-of-type(4n+1) {
+  background: #FFFFFF !important;
+}
+#client-summary-area .client-section:nth-of-type(4n+2),
+#client-content-area .client-section:nth-of-type(4n+2),
+#client-settings-area .client-section:nth-of-type(4n+2) {
+  background: #FDEFF5 !important; /* soft pink */
+}
+#client-summary-area .client-section:nth-of-type(4n+3),
+#client-content-area .client-section:nth-of-type(4n+3),
+#client-settings-area .client-section:nth-of-type(4n+3) {
+  background: #E8F2F2 !important; /* soft teal/mist */
+}
+#client-summary-area .client-section:nth-of-type(4n+4),
+#client-content-area .client-section:nth-of-type(4n+4),
+#client-settings-area .client-section:nth-of-type(4n+4) {
+  background: #FFFBE8 !important; /* soft cream */
+}
+/* Also bump card-style divs (the inline-styled "background:white" cards
+   the JS render sprinkles in) so they pick up the same soft cycle —
+   but only the immediate children of the content panes. */
+#client-summary-area > div[style*="background:white"],
+#client-content-area > div[style*="background:white"],
+#client-settings-area > div[style*="background:white"] {
+  border: none !important;
+  box-shadow: 0 1px 0 rgba(229,4,139,0.06), 0 6px 22px rgba(229,4,139,0.08) !important;
+}
+
+
+/* ════════════════════════════════════════════════════════════════════
    v11721 — body text colour: #222222 inside Summary, Programs and
    Settings panes only. Phoebe asked for this so the body copy is
    easier to read for her 40-50+ client cohort, while keeping the

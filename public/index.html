@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css">
-<link rel="stylesheet" href="styles.css">
+<link rel="preload" as="style" href="styles.css?v=11723">
+<link rel="stylesheet" href="styles.css?v=11723">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11722 — client portal header restyled to match phoebeblamey.com.au. Topbar moved from solid magenta to soft-pink gradient so it blends with the wave divider sitting beneath it. Hero flipped from magenta-with-white-text to pale-pink-with-dark-text, mirroring the website hero. Tagline reads in hot-pink as the accent. Two wave dividers bracket the hero — the same triple-layer pink SVG used on her website section dividers. SCOPED to #client-hub only — coach portal unchanged. v11721: body text → #222222 in Summary, Programs, Settings panes. v11715: dark-mode pulled. v11714: client notifications bell. v11713: AI email draft. v11712: MDC rename + 3-tap-logo. v11711: Community tab race fix. v11710: 11 batch items. READY FOR CLIENT TESTING.">
+<meta name="hmh-build" content="v11723 — three fixes. (1) AI-refusal text leaking into the client hero's 'My Why' pin is now filtered at render time — if the saved why looks like an AI refusal (or is >300 chars), the empty-state '+ Add my why' placeholder shows instead. Elodie's test client was affected. (2) Section visibility per Phoebe's website screenshot — borders removed (harsh), corners 14px → 18px (friendlier, matches website cards), shadow added so sections float, and adjacent sections rotate through 4 background tints (white → soft pink → soft teal → soft cream) so you can see where one ends and the next begins WITHOUT extra padding. (3) styles.css cache-busted to v=11723 so the v11722 hero swap finally appears for users with a stale service-worker cache. v11722: hero restyled to match website. v11721: body text → #222222. v11710-v11715: notification bell, AI email draft, rename + 3-tap-logo, race fix, batch items. READY FOR CLIENT TESTING.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -12122,6 +12122,19 @@ function updateClientHeroWhy(client) {
     if (p.workbook === 'mdc' && p.mdcWorkbook && p.mdcWorkbook.vision && !fromMdc) fromMdc = p.mdcWorkbook.vision;
   });
   var displayed = (client.why && client.why.trim()) || fromMdc || '';
+  // v11723: AI refusal text was getting saved into the why field (when
+  // an AI brief refused and the text got pasted in). Treat any saved
+  // refusal-shaped content as empty so the placeholder shows instead.
+  // Also catch obvious-not-a-why patterns (very long, contains "**The
+  // issue:**" markdown, mentions "Elodie is Phoebe's daughter" etc).
+  if (displayed && typeof _looksLikeAIRefusal === 'function' && _looksLikeAIRefusal(displayed)) {
+    displayed = '';
+  }
+  // Belt-and-braces: anything longer than 300 chars almost certainly
+  // isn't a "why" sentence — it's pasted-in AI output. Show placeholder.
+  if (displayed && displayed.length > 300) {
+    displayed = '';
+  }
   if (displayed) {
     // v11210: explicit ✏️ edit affordance — Elodie's review flagged that
     // editing AI-drafted content isn't visually obvious. The whole pin is
