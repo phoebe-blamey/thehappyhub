@@ -3960,6 +3960,55 @@ body::before { display: none !important; }
   text-decoration-color: var(--hot-pink) !important;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   v11735 — designer's call: remove the wave at the bottom of the hero.
+   Two waves in close proximity (topbar wave + hero wave) was over-
+   decorated. The topbar wave already establishes the wave motif as
+   the brand pattern. The hero now reads as a clean rounded mint tile
+   sitting on the pink page, with the topbar wave doing all the
+   organic-curve work.
+   ════════════════════════════════════════════════════════════════════ */
+#client-hub .client-hero {
+  /* Restore symmetric rounded corners — was 28px top, 0 bottom */
+  border-radius: 28px !important;
+  /* Reduce the bottom padding now that there's no wave to clear */
+  padding: 44px 48px 36px !important;
+  /* Drop shadow gives lift without needing the wave for definition */
+  box-shadow: 0 2px 4px rgba(92,61,41,0.06), 0 16px 40px rgba(92,61,41,0.10) !important;
+  overflow: hidden !important;
+  margin: 24px 24px 28px !important;
+}
+@media (max-width: 640px) {
+  #client-hub .client-hero {
+    margin: 16px 16px 22px !important;
+    padding: 32px 24px 28px !important;
+  }
+}
+/* Remove the v11733 hero ::after wave entirely */
+#client-hub .client-hero::after {
+  display: none !important;
+}
+/* ::before (circle echo) stays hidden too — clean hero */
+#client-hub .client-hero::before {
+  display: none !important;
+}
+
+/* Subtle designer touches on the hero — a soft mint-deep inner edge
+   on the right side gives the tile a touch of dimension without being
+   loud. */
+#client-hub .client-hero {
+  background-image:
+    radial-gradient(ellipse at top right, rgba(157,192,176,0.35), transparent 55%),
+    linear-gradient(180deg, var(--mint), var(--mint)) !important;
+}
+
+/* Tighten the spacing between hero and tab strip now that the hero
+   is self-contained. */
+#client-hub .client-tabs {
+  margin-top: 0 !important;
+}
+
+
 
 
 
