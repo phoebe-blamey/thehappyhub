@@ -48,16 +48,65 @@ function formatSessionTime(iso: string): string {
   }
 }
 
-function buildReminderEmail(args: {
+// v11747: read Phoebe's saved email template (if any) from the coach
+// -settings blob. Maps tier.key → template key in coachSettings.emailTemplates.
+async function _readReminderTemplate(tierKey: string): Promise<{ subject: string; body: string } | null> {
+  const map: Record<string, string> = { "1d": "reminder24h", "1h": "reminder1h", "10m": "reminder10m" };
+  const tplKey = map[tierKey];
+  if (!tplKey) return null;
+  try {
+    const store = getStore("coach-settings");
+    const raw = await store.get("coach-settings");
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj.emailTemplates || !obj.emailTemplates[tplKey]) return null;
+    return {
+      subject: obj.emailTemplates[tplKey].subject || "",
+      body:    obj.emailTemplates[tplKey].body    || "",
+    };
+  } catch {
+    return null;
+  }
+}
+function _substituteReminder(s: string, vars: Record<string, string>): string {
+  return (s || "").replace(/\{(\w+)\}/g, (m, key) => (key in vars ? String(vars[key] ?? "") : m));
+}
+
+async function buildReminderEmail(args: {
   firstName: string;
   programLabel: string;
   sessionTime: string;
+  tierKey: string;     // "1d" | "1h" | "10m" — for template lookup
   tierLabel: string;
   zoomUrl: string;
   hubUrl: string;
   hubCode: string;
-}): { subject: string; body: string } {
-  const { firstName, programLabel, sessionTime, tierLabel, zoomUrl, hubUrl, hubCode } = args;
+}): Promise<{ subject: string; body: string }> {
+  const { firstName, programLabel, sessionTime, tierKey, tierLabel, zoomUrl, hubUrl, hubCode } = args;
+
+  // v11747: prefer Phoebe's saved template if she's edited the wording
+  // in Settings → Email templates. Falls back to the default below.
+  const saved = await _readReminderTemplate(tierKey);
+  if (saved && saved.subject && saved.body) {
+    const vars = {
+      firstName,
+      name: firstName,
+      programLabel,
+      sessionTime,
+      sessionTimeStr: sessionTime,
+      zoomUrl: zoomUrl || "",
+      hubUrl,
+      accessCode: hubCode,
+      hubCode,
+      tierLabel,
+    };
+    return {
+      subject: _substituteReminder(saved.subject, vars),
+      body:    _substituteReminder(saved.body, vars),
+    };
+  }
+
+  // ── Default wording (Phoebe hasn't overridden yet) ─────────────────
   const subject = `Reminder: ${programLabel} ${tierLabel}`;
   const lines: string[] = [
     `Hi ${firstName},`,
@@ -133,8 +182,8 @@ export default async (req: Request) => {
           const sessionTime = formatSessionTime(prog.sessionDate);
           const hubUrl = `${baseUrl}/?client=${client.clientAccess}`;
           const zoomUrl = prog.zoomJoin || "";
-          const { subject, body } = buildReminderEmail({
-            firstName, programLabel, sessionTime, tierLabel: tier.label, zoomUrl,
+          const { subject, body } = await buildReminderEmail({
+            firstName, programLabel, sessionTime, tierKey: tier.key, tierLabel: tier.label, zoomUrl,
             hubUrl, hubCode: client.clientAccess,
           });
           try {

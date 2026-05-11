@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11746">
-<link rel="stylesheet" href="styles.css?v=11746">
+<link rel="preload" as="style" href="styles.css?v=11747">
+<link rel="stylesheet" href="styles.css?v=11747">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11746 — editable email templates in Settings. Welcome, login details, session reminders (24h/1h/10min), Monday + Friday digest openers, plus add-your-own custom templates. All stored on coachSettings.emailTemplates with hardcoded defaults as fallback. Daily-digest.mts now reads + uses the saved templates with placeholder substitution ({firstName}, {hubUrl}, {accessCode}, {digestBody}, etc.). v11745: meta-tag fix + AllRoundGothic logo + AssemblyAI large-audio path + Mon+Fri digest cadence.">
+<meta name="hmh-build" content="v11747 — Friday 'what blocked you?' reflection loop fully wired. Client clicks the digest link → portal opens a focused capture form → POST /api/needs-support → coach sees a 🆘 panel on the client detail view with the task, the reason, the timestamp, and a 'Mark resolved' button. Activity log + direct email to Phoebe trigger automatically. Reminder24h / 1h / 10m email templates now feed into send-reminders.mts via the same coachSettings.emailTemplates path digests use, with placeholder substitution ({firstName}, {sessionTime}, {zoomUrl}, {hubUrl}, {accessCode}, {tierLabel}). AssemblyAI key set in Netlify so large-audio (>25MB) Zoom recordings flow through the diarised transcript path automatically.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -324,6 +324,11 @@
           <div id="detail-special-notes" style="display:none"></div>
           <!-- Social + contact links -->
           <div style="margin-bottom:12px" id="social-panel"></div>
+          <!-- v11747: 🆘 "needs support" panel — surfaces any blocked-task
+               feedback the client submitted from the Friday digest. Renders
+               above the status strip so it's impossible to miss. Empty when
+               the client has no open needsSupport entries. -->
+          <div id="client-needs-support-panel"></div>
           <!-- Status strip — where we're at + what's outstanding for this client -->
           <div id="client-status-strip"></div>
           <!-- Client quick actions (4 primary + More dropdown) -->
@@ -8566,6 +8571,15 @@ function loadClientPortal(client) {
   // them. The modal points at the three places we want them to look first.
   try { maybeShowFirstVisitWelcome(client); } catch(e) { console.warn('[Welcome modal]', e); }
 
+  // v11747: Friday-digest "what blocked you?" capture form. The Friday email
+  // includes one-tap links per unfinished task in the shape
+  //   ?client=ABC123&blocked=<taskId>
+  // When the client lands on the portal with that param present, we surface
+  // a focused modal that shows the task and asks one question: what blocked
+  // them? Submitting POSTs to /api/needs-support, which appends to the
+  // client's needsSupport[] array and pings Phoebe by email.
+  try { maybeShowBlockedTaskForm(client); } catch(e) { console.warn('[Blocked task]', e); }
+
   // v11550: show / hide the Community tab based on cohort membership.
   // Only MDC cohort members get the tab in their nav.
   try { if (typeof updateClientCommunityTabVisibility === 'function') updateClientCommunityTabVisibility(client); } catch(e) { console.warn('[Community tab]', e); }
@@ -9265,6 +9279,111 @@ function maybeShowFirstVisitWelcome(client) {
     return;
   }
   setTimeout(function() { startOnboardingFlow(client); }, 500);
+}
+
+// ────────────────────────────────────────────────────────────────────
+// v11747 — Friday "what blocked you?" reflection form
+// ────────────────────────────────────────────────────────────────────
+// Triggered from the Friday digest email. Each unfinished task gets a
+// link in the shape
+//   {hubUrl}/?client=ABC&blocked=<taskId>
+// When the client lands on the portal with that param present, we
+// surface a focused modal: title shows the task text, single textarea
+// asks "what got in the way?", submit POSTs /api/needs-support.
+// The endpoint appends to client.needsSupport[], pushes to the activity
+// log, and emails Phoebe directly so she can act on it.
+function maybeShowBlockedTaskForm(client) {
+  if (!client) return;
+  var params; try { params = new URLSearchParams(window.location.search); } catch(e) { return; }
+  var taskId = params.get('blocked');
+  if (!taskId) return;
+  // Find the matching task on the client. Fallback to an "unknown task"
+  // shape so the modal still works if Phoebe deleted/edited the task.
+  var tasks = (client.tasks || []).filter(function(t){ return t && t.id === taskId; });
+  var taskText = (tasks[0] && tasks[0].text) || 'a task from last week';
+  var firstName = (client.name || '').split(' ')[0] || 'there';
+
+  // Strip the param from the address bar straight away — if they refresh
+  // accidentally we don't want the form coming back at them.
+  try {
+    var url = new URL(window.location.href);
+    url.searchParams.delete('blocked');
+    window.history.replaceState({}, document.title, url.toString());
+  } catch(e) {}
+
+  // Render into the shared branded modal host so the styling matches.
+  var host = document.getElementById('branded-modal-host');
+  var card = document.getElementById('branded-modal-card');
+  if (!host || !card) return;
+  // Reset the standard branded-modal slots — we're using custom content.
+  document.getElementById('branded-modal-icon').textContent = '';
+  document.getElementById('branded-modal-title').textContent = '';
+  document.getElementById('branded-modal-body').textContent = '';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  document.getElementById('branded-modal-actions').innerHTML = '';
+
+  // Build the custom form. Reuses branded-modal-actions for the submit row.
+  document.getElementById('branded-modal-icon').textContent = '🌷';
+  document.getElementById('branded-modal-title').textContent = 'Hey ' + firstName + ' — what got in the way?';
+  var bodyEl = document.getElementById('branded-modal-body');
+  bodyEl.innerHTML =
+    '<div style="background:var(--paper);border:1px solid var(--border-soft);border-radius:10px;padding:10px 12px;margin-bottom:14px">' +
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--stone);margin-bottom:4px">The task</div>' +
+      '<div style="font-size:13px;color:var(--magenta);line-height:1.5">' + escapeHtml(taskText) + '</div>' +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--magenta);line-height:1.5;margin-bottom:10px">No judgement — just want to know what stopped you so Phoebe can help unblock it on Monday.</div>' +
+    '<textarea id="blocked-reason-input" rows="4" placeholder="e.g. didn\'t know where to start / ran out of time / felt overwhelmed / not sure it\'s the right move…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;min-height:90px"></textarea>';
+
+  var actionsEl = document.getElementById('branded-modal-actions');
+  actionsEl.innerHTML =
+    '<button type="button" class="btn-sm" id="blocked-skip-btn">Not now</button>' +
+    '<button type="button" class="btn-sm primary" id="blocked-send-btn">Send to Phoebe</button>';
+
+  function closeIt() {
+    host.style.display = 'none';
+    host._cancel = null;
+  }
+  host._cancel = closeIt; // Esc + corner-X route here
+
+  document.getElementById('blocked-skip-btn').onclick = closeIt;
+  document.getElementById('blocked-send-btn').onclick = async function() {
+    var ta = document.getElementById('blocked-reason-input');
+    var reason = (ta && ta.value || '').trim();
+    if (!reason) {
+      ta.style.borderColor = '#C0392B';
+      ta.focus();
+      return;
+    }
+    var sendBtn = document.getElementById('blocked-send-btn');
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending…';
+    try {
+      var resp = await fetch('/api/needs-support', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: client.id, taskId: taskId, reason: reason }),
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      closeIt();
+      if (typeof branded !== 'undefined' && branded.toast) {
+        branded.toast('Sent to Phoebe — she\'ll be in touch 💛');
+      }
+    } catch (err) {
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Send to Phoebe';
+      if (typeof branded !== 'undefined' && branded.error) {
+        branded.error('Could not send right now — check your connection and try again.\n\n' + (err && err.message || err), { title:'Hmm, that didn\'t go through' });
+      } else {
+        alert('Could not send. Try again later.');
+      }
+    }
+  };
+
+  host.style.display = 'flex';
+  setTimeout(function() {
+    var ta = document.getElementById('blocked-reason-input');
+    if (ta) ta.focus();
+  }, 120);
 }
 
 window._onboardingStep = 0;
@@ -15142,6 +15261,13 @@ openProgram = function(client, progId) {
         snEl.style.display = 'none';
         snEl.innerHTML = '';
       }
+    }
+    // v11747: 🆘 "needs support" panel — populated by the Friday-digest
+    // blocked-task form. Renders ABOVE the status strip so an unresolved
+    // entry is the first thing Phoebe sees.
+    var nsEl = document.getElementById('client-needs-support-panel');
+    if (nsEl && typeof renderClientNeedsSupportPanel === 'function') {
+      nsEl.innerHTML = renderClientNeedsSupportPanel(client);
     }
     // Status strip — "where we're at" + "what's outstanding" — first thing
     // Phoebe sees when she opens a client. Re-renders on every openClient.
@@ -23273,6 +23399,72 @@ async function markPulseSeen() {
 // / wins) and "what's outstanding" (open tasks, awaiting review,
 // awaiting your approval). One glance answers "what's the state of
 // this client right now?".
+// v11747 — "🆘 Needs support" panel on the client detail view.
+// Surfaces any unresolved entries from client.needsSupport[] (populated
+// by the Friday-digest blocked-task form). Each entry shows the task,
+// the client's reason, a timestamp, and a "Mark resolved" button.
+// Rendered above the status strip so it's the first thing Phoebe sees
+// when she opens a client who's flagged something.
+function renderClientNeedsSupportPanel(client) {
+  if (!client) return '';
+  var arr = Array.isArray(client.needsSupport) ? client.needsSupport : [];
+  var open = arr.filter(function(e){ return e && !e.resolved; });
+  if (!open.length) return '';
+  var cid = client.id.replace(/'/g, "\\'");
+  var items = open.map(function(e) {
+    var when = '';
+    try {
+      var d = new Date(e.at);
+      when = d.toLocaleDateString('en-AU', { day:'numeric', month:'short' }) +
+        ' · ' + d.toLocaleTimeString('en-AU', { hour:'numeric', minute:'2-digit', hour12:true });
+    } catch (err) {}
+    var eid = (e.id || '').replace(/'/g, "\\'");
+    return '<div style="background:white;border:1px solid rgba(192,57,43,0.25);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#C0392B;margin-bottom:4px">Task they got blocked on</div>' +
+        '<div style="font-size:13px;color:var(--magenta);font-weight:600;line-height:1.4;margin-bottom:8px">' + escapeHtml(e.taskText || '(task)') + '</div>' +
+        '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#C0392B;margin-bottom:4px">What got in the way</div>' +
+        '<div style="font-size:13px;color:var(--magenta);line-height:1.5;white-space:pre-wrap;font-style:italic">"' + escapeHtml(e.reason || '') + '"</div>' +
+        (when ? '<div style="font-size:11px;color:var(--stone);margin-top:8px">Sent ' + when + '</div>' : '') +
+      '</div>' +
+      '<button class="btn-sm" onclick="resolveNeedsSupport(\'' + cid + '\',\'' + eid + '\')" title="Mark this as handled" style="flex-shrink:0;font-size:11px">✓ Mark resolved</button>' +
+    '</div>';
+  }).join('');
+  return '<div style="background:linear-gradient(135deg,#FFF0EE,#FDEFF5);border:1.5px solid rgba(192,57,43,0.35);border-radius:14px;padding:14px 16px;margin-bottom:12px">' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+      '<div style="font-size:22px;line-height:1">🆘</div>' +
+      '<div style="font-family:var(--f-head);font-size:15px;font-weight:700;color:#C0392B">' + escapeHtml((client.name||'').split(' ')[0] || 'Client') + ' needs support · ' + open.length + ' open</div>' +
+      '<div style="font-size:11px;color:var(--stone);margin-left:auto">From the Friday "what blocked you?" reflection</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px">' + items + '</div>' +
+  '</div>';
+}
+
+// Marks a needsSupport entry as resolved. Persists to the client record
+// and re-renders the panel so the card clears immediately.
+async function resolveNeedsSupport(clientId, entryId) {
+  var client = clients.find(function(c){ return c.id === clientId; });
+  if (!client) return;
+  var arr = Array.isArray(client.needsSupport) ? client.needsSupport : [];
+  var hit = arr.find(function(e){ return e && e.id === entryId; });
+  if (!hit) return;
+  hit.resolved = true;
+  hit.resolvedAt = new Date().toISOString();
+  try {
+    if (typeof persistClient === 'function') await persistClient(client);
+  } catch (e) { console.warn('[needs-support] persist failed:', e); }
+  // Re-render the panel + the status strip (open-task counts may shift)
+  var panelEl = document.getElementById('client-needs-support-panel');
+  if (panelEl) panelEl.innerHTML = renderClientNeedsSupportPanel(client);
+  var statusEl = document.getElementById('client-status-strip');
+  if (statusEl && typeof renderClientStatusStrip === 'function') {
+    statusEl.innerHTML = renderClientStatusStrip(client);
+  }
+  if (typeof branded !== 'undefined' && branded.toast) {
+    branded.toast('Marked resolved ✓');
+  }
+}
+
 function renderClientStatusStrip(client) {
   if (!client) return '';
   // ── WHERE WE'RE AT ──
@@ -23341,7 +23533,12 @@ function renderClientStatusStrip(client) {
     pill('Open tasks', openTasksLen, openTasksLen > 0 ? '#E8A020' : 'var(--stone)', "switchTab('tasks')"),
   ].filter(Boolean).join('');
 
+  // v11747: surface open "needs support" entries as a red pill so the
+  // count is visible even when Phoebe has scrolled past the dedicated
+  // panel above. Clicking scrolls back up to the panel.
+  var openNeedsSupport = (client.needsSupport || []).filter(function(e){ return e && !e.resolved; }).length;
   var rightItems = [];
+  if (openNeedsSupport) rightItems.push('<span onclick="var el=document.getElementById(\'client-needs-support-panel\'); if (el) el.scrollIntoView({behavior:\'smooth\',block:\'start\'})" style="cursor:pointer;background:#FFF0EE;color:#C0392B;border:1px solid rgba(192,57,43,0.5);padding:5px 10px;border-radius:99px;font-size:11px;font-weight:700">🆘 ' + openNeedsSupport + ' blocked — needs support</span>');
   if (pendingReviewCount) rightItems.push('<span style="background:#FFF5D6;color:#A07030;border:1px solid #E8A020;padding:5px 10px;border-radius:99px;font-size:11px;font-weight:700">✨ ' + pendingReviewCount + ' AI summary to review</span>');
   if (reviewRequests)     rightItems.push('<span style="background:#FDEFF5;color:var(--magenta);border:1px solid var(--hot-pink);padding:5px 10px;border-radius:99px;font-size:11px;font-weight:700">🙋 ' + reviewRequests + ' asking for your eyes</span>');
   if (openTasks.length)   rightItems.push('<span style="background:white;color:var(--magenta);border:1px solid var(--border);padding:5px 10px;border-radius:99px;font-size:11px;font-weight:600">' + openTasks.length + ' open task' + (openTasks.length === 1 ? '' : 's') + '</span>');
