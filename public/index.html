@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11740">
-<link rel="stylesheet" href="styles.css?v=11740">
+<link rel="preload" as="style" href="styles.css?v=11741">
+<link rel="stylesheet" href="styles.css?v=11741">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11740 — when Zoom's text transcript isn't ready yet, fall back to transcribing the AUDIO recording via OpenAI Whisper (Phoebe asked 'when no transcript, use video'). Detects audio_only / M4A / MP3 recording files, downloads via Authorization Bearer, POSTs to /v1/audio/transcriptions with whisper-1 model, returns the text just like a Zoom transcript would. Requires OPENAI_API_KEY env var (≈$0.006/min). If env var not set, returns a clear error with the recording play URL so Phoebe can listen manually. 25MB Whisper limit is enforced — too-large files return a friendly error. v11739: full client context for all AI features + two-step plan builder + auto-grow textareas.">
+<meta name="hmh-build" content="v11741 — weekly check-in flow + performance indicators on client Summary. Four-question check-in (Where are you at? / What worked? / What blocked you? / What are you pushing?) keyed to ISO week so one per week; older answers preserved on client.weeklyCheckins array. Performance indicators card shows tasks done last 7 days, wins logged, sessions attended, days active, plus trend vs prior week. Both feed into gatherFullClientContext so all AI features pick them up as coaching signal. Phoebe gets a Pulse-feed notification when a check-in lands. v11740: Whisper audio fallback for Zoom transcripts."> — when Zoom's text transcript isn't ready yet, fall back to transcribing the AUDIO recording via OpenAI Whisper (Phoebe asked 'when no transcript, use video'). Detects audio_only / M4A / MP3 recording files, downloads via Authorization Bearer, POSTs to /v1/audio/transcriptions with whisper-1 model, returns the text just like a Zoom transcript would. Requires OPENAI_API_KEY env var (≈$0.006/min). If env var not set, returns a clear error with the recording play URL so Phoebe can listen manually. 25MB Whisper limit is enforced — too-large files return a friendly error. v11739: full client context for all AI features + two-step plan builder + auto-grow textareas.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -4725,6 +4725,18 @@ function gatherFullClientContext(client, prog, opts) {
   if (done.length) {
     parts.push('\n═══ RECENTLY COMPLETED TASKS ═══');
     done.slice(-5).forEach(function(t) { parts.push('✓ ' + (t.text || '')); });
+  }
+
+  // ── Weekly check-ins (last 4) — high coaching signal ──
+  if (Array.isArray(client.weeklyCheckins) && client.weeklyCheckins.length) {
+    parts.push('\n═══ WEEKLY CHECK-INS (last 4) ═══');
+    client.weeklyCheckins.slice(-4).reverse().forEach(function(c) {
+      parts.push('\nWeek of ' + (c.weekOf || '?') + ':');
+      if (c.where)   parts.push('  Where: '   + c.where);
+      if (c.worked)  parts.push('  Worked: '  + c.worked);
+      if (c.blocked) parts.push('  Blocked: ' + c.blocked);
+      if (c.pushing) parts.push('  Pushing: ' + c.pushing);
+    });
   }
 
   // ── Daily commits if logged today/recently ──
@@ -9540,6 +9552,229 @@ function renderClientSharedNotes(prog) {
 // Mirrors the structure of Phoebe's coach Home page but read-only and
 // without coach-only features (no AI buttons, no client list).
 // =====================================================================
+// ════════════════════════════════════════════════════════════════════
+// v11741 — WEEKLY CHECK-IN + PERFORMANCE INDICATORS
+// ════════════════════════════════════════════════════════════════════
+// Phoebe asked for a recurring weekly check-in with 4 questions:
+//   1. Where are you at?
+//   2. What worked?
+//   3. What blocked you?
+//   4. What are you pushing?
+// Plus a small "your week at a glance" stat block so clients can see
+// their own momentum. Both feed into gatherFullClientContext so the
+// AI features pick up the check-in history as coaching signal.
+// ════════════════════════════════════════════════════════════════════
+function _localMondayOfWeek(d) {
+  // Returns the Monday (ISO) of the week containing d. d is a Date.
+  var date = new Date(d.getTime());
+  var dow = date.getDay(); // 0 Sun … 6 Sat
+  var diff = (dow + 6) % 7; // shift so Mon = 0
+  date.setDate(date.getDate() - diff);
+  return date.toISOString().split('T')[0];
+}
+function _weekAgoIso() {
+  var d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d.toISOString();
+}
+function _latestCheckin(client) {
+  var list = (client && Array.isArray(client.weeklyCheckins)) ? client.weeklyCheckins : [];
+  if (!list.length) return null;
+  return list.slice().sort(function(a, b) {
+    return (b.submittedAt || '').localeCompare(a.submittedAt || '');
+  })[0];
+}
+
+function renderWeeklyCheckinCard(client) {
+  if (!client) return '';
+  var thisWeekIso = _localMondayOfWeek(new Date());
+  var latest = _latestCheckin(client);
+  // If they've already done one for this week, show a short summary
+  // and the next-available date.
+  if (latest && latest.weekOf === thisWeekIso) {
+    var when = '';
+    try { when = new Date(latest.submittedAt).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' }); } catch (e) {}
+    return '<div class="client-section weekly-checkin-card weekly-checkin-done">' +
+      '<h3>✓ Weekly check-in · submitted ' + escapeHtml(when) + '</h3>' +
+      '<div style="font-size:13px;color:var(--ink-soft);line-height:1.55">Phoebe has seen this. Next check-in opens Monday.</div>' +
+      (latest.where ? '<div style="margin-top:10px;font-size:13px;color:var(--ink)"><strong>Where you\'re at:</strong> ' + escapeHtml(latest.where.slice(0, 200)) + '</div>' : '') +
+      '<div style="margin-top:10px"><button class="btn-sm" onclick="openCheckinForce()" style="font-size:12px">Edit this week\'s answers</button></div>' +
+    '</div>';
+  }
+  // Otherwise — show the form (or the prompt to open it)
+  return _renderWeeklyCheckinForm(client, thisWeekIso, latest);
+}
+
+function _renderWeeklyCheckinForm(client, weekIso, latest) {
+  var lastNote = '';
+  if (latest && latest.weekOf) {
+    var lastDate = '';
+    try { lastDate = new Date(latest.weekOf + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); } catch (e) { lastDate = latest.weekOf; }
+    lastNote = '<div style="font-size:11px;color:var(--ink-faded);margin-top:4px">Last check-in: week of ' + escapeHtml(lastDate) + '</div>';
+  }
+  return '<div class="client-section weekly-checkin-card">' +
+    '<h3>📅 Your weekly check-in</h3>' +
+    '<div style="font-size:13px;color:var(--ink-soft);line-height:1.55;margin-bottom:14px">Quick four questions. Takes 2 minutes. Phoebe sees your answers and weaves them into your next session.</div>' +
+    lastNote +
+    '<div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">' +
+      _checkinField('checkin-where',  '1. Where are you at?',     'Big picture mood + state. One sentence is fine.') +
+      _checkinField('checkin-worked', '2. What worked this week?', 'Wins, small or big.') +
+      _checkinField('checkin-blocked', '3. What blocked you?',    'The thing that\'s eating your head.') +
+      _checkinField('checkin-pushing', '4. What are you pushing into next week?', 'Your one priority move.') +
+    '</div>' +
+    '<div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<button class="btn-sm primary" onclick="submitWeeklyCheckin()">Submit check-in</button>' +
+      '<span id="checkin-status" style="font-size:12px;color:var(--ink-soft)"></span>' +
+    '</div>' +
+  '</div>';
+}
+function _checkinField(id, label, hint) {
+  return '<div>' +
+    '<label for="' + id + '" style="display:block;font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">' + label + '</label>' +
+    '<div style="font-size:11px;color:var(--ink-faded);margin-bottom:6px">' + hint + '</div>' +
+    '<textarea id="' + id + '" rows="2" style="width:100%;border:1px solid var(--rule);border-radius:10px;padding:8px 10px;font-family:var(--f-body);font-size:14px;color:var(--ink);background:white;outline:none;line-height:1.5;resize:vertical"></textarea>' +
+  '</div>';
+}
+
+async function submitWeeklyCheckin() {
+  var client = clients.find(function(c) { return c.id === currentClientId; });
+  if (!client) return;
+  var get = function(id) { var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; };
+  var where = get('checkin-where');
+  var worked = get('checkin-worked');
+  var blocked = get('checkin-blocked');
+  var pushing = get('checkin-pushing');
+  if (!where && !worked && !blocked && !pushing) {
+    branded.alert('Answer at least one question before submitting.');
+    return;
+  }
+  var status = document.getElementById('checkin-status');
+  if (status) status.textContent = 'Saving…';
+
+  client.weeklyCheckins = Array.isArray(client.weeklyCheckins) ? client.weeklyCheckins : [];
+  // If there's already a check-in for this week, replace it (edit flow)
+  var thisWeek = _localMondayOfWeek(new Date());
+  var existingIdx = client.weeklyCheckins.findIndex(function(c) { return c.weekOf === thisWeek; });
+  var entry = {
+    id: 'wc-' + Date.now(),
+    weekOf: thisWeek,
+    submittedAt: new Date().toISOString(),
+    where: where,
+    worked: worked,
+    blocked: blocked,
+    pushing: pushing,
+  };
+  if (existingIdx >= 0) client.weeklyCheckins[existingIdx] = entry;
+  else client.weeklyCheckins.push(entry);
+
+  try {
+    if (typeof persistClient === 'function') await persistClient(client);
+  } catch (e) { console.warn('[checkin] persist failed', e); }
+
+  // Tell Phoebe via the activity feed so it surfaces in her Pulse panel
+  if (typeof logActivity === 'function') {
+    try {
+      logActivity('feedback', '📅 Weekly check-in · ' + (client.name || 'Client'), {
+        clientId: client.id,
+        clientName: client.name,
+        detail: 'Where: ' + (where || '—').slice(0, 80),
+      });
+    } catch (e) {}
+  }
+
+  if (typeof branded !== 'undefined' && branded.success) branded.success('Sent to Phoebe ✨');
+  // Re-render summary so the form swaps to the "done" state
+  if (typeof renderClientSummary === 'function') renderClientSummary(client);
+}
+
+function openCheckinForce() {
+  // Force-show the form even if this week's already submitted (for edit)
+  var client = clients.find(function(c) { return c.id === currentClientId; });
+  if (!client) return;
+  var thisWeek = _localMondayOfWeek(new Date());
+  var idx = (client.weeklyCheckins || []).findIndex(function(c) { return c.weekOf === thisWeek; });
+  if (idx >= 0) client.weeklyCheckins.splice(idx, 1);
+  if (typeof renderClientSummary === 'function') renderClientSummary(client);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// v11741 — WEEKLY PERFORMANCE INDICATORS card on Summary
+// ════════════════════════════════════════════════════════════════════
+function renderWeeklyIndicatorsCard(client) {
+  if (!client) return '';
+  var weekAgoIso = _weekAgoIso();
+  // Tasks completed in last 7 days
+  var tasks = Array.isArray(client.tasks) ? client.tasks : [];
+  var tasksDoneWeek = tasks.filter(function(t) {
+    return t && t.completed && t.completedAt && t.completedAt >= weekAgoIso;
+  }).length;
+  var tasksSetWeek = tasks.filter(function(t) {
+    return t && t.createdAt && t.createdAt >= weekAgoIso;
+  }).length;
+  var openTasks = tasks.filter(function(t) { return t && !t.completed && !t.archived && !t.deleted; }).length;
+  // Wins in last 7 days
+  var allWins = [];
+  if (Array.isArray(client.wins)) allWins = allWins.concat(client.wins);
+  (client.programs || []).forEach(function(p) {
+    if (Array.isArray(p.wins)) allWins = allWins.concat(p.wins);
+  });
+  var winsWeek = allWins.filter(function(w) { return w && w.at && w.at >= weekAgoIso; }).length;
+  // Days active (mood logs in last 7 days)
+  var moods = Array.isArray(client.moodLog) ? client.moodLog : [];
+  var daysActive = 0;
+  var seen = {};
+  moods.forEach(function(m) {
+    if (m && m.date && m.date >= weekAgoIso.slice(0, 10) && !seen[m.date]) {
+      seen[m.date] = true;
+      daysActive++;
+    }
+  });
+  if (daysActive > 7) daysActive = 7;
+  // Sessions attended in last 7 days (count sessionNotes with date in window)
+  var sessionsWeek = 0;
+  (client.programs || []).forEach(function(p) {
+    (p.sessionNotes || []).forEach(function(sn) {
+      if (sn && sn.date && sn.date >= weekAgoIso.slice(0, 10)) sessionsWeek++;
+    });
+  });
+
+  // Trend — compare to prior 7 days
+  var twoWeeksAgoIso = (function() {
+    var d = new Date(); d.setDate(d.getDate() - 14); return d.toISOString();
+  })();
+  var winsPrev = allWins.filter(function(w) { return w && w.at && w.at >= twoWeeksAgoIso && w.at < weekAgoIso; }).length;
+  var tasksDonePrev = tasks.filter(function(t) {
+    return t && t.completed && t.completedAt && t.completedAt >= twoWeeksAgoIso && t.completedAt < weekAgoIso;
+  }).length;
+  var trendDelta = (tasksDoneWeek + winsWeek) - (tasksDonePrev + winsPrev);
+  var trendLine = '';
+  if (trendDelta > 0)      trendLine = '<span style="color:var(--good);font-weight:700">↑ Stronger week than last</span>';
+  else if (trendDelta < 0) trendLine = '<span style="color:var(--ink-faded);font-weight:600">Holding steady — last week was bigger</span>';
+  else                     trendLine = '<span style="color:var(--ink-soft);font-weight:600">On par with last week</span>';
+
+  return '<div class="client-section weekly-stats-card">' +
+    '<h3>📊 Your week at a glance</h3>' +
+    '<div style="font-size:12px;color:var(--ink-faded);margin-bottom:14px">Last 7 days · auto-tracked from your activity</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:12px">' +
+      _statTile(tasksDoneWeek, (tasksSetWeek ? ' / ' + tasksSetWeek : ''), 'tasks done', '✓') +
+      _statTile(winsWeek, '', 'wins logged', '🏆') +
+      _statTile(sessionsWeek, '', sessionsWeek === 1 ? 'session attended' : 'sessions attended', '🎬') +
+      _statTile(daysActive, ' / 7', 'days active', '💛') +
+    '</div>' +
+    '<div style="font-size:13px;line-height:1.5">' + trendLine + '</div>' +
+  '</div>';
+}
+function _statTile(value, suffix, label, emoji) {
+  return '<div style="background:white;border:1px solid var(--rule);border-radius:12px;padding:14px 12px;text-align:center">' +
+    '<div style="font-size:11px;color:var(--ink-faded);margin-bottom:4px">' + emoji + '</div>' +
+    '<div style="font-family:var(--f-head);font-size:26px;font-weight:800;color:var(--ink);line-height:1">' +
+      escapeHtml(String(value)) +
+      (suffix ? '<span style="font-size:14px;color:var(--ink-faded);font-weight:500">' + escapeHtml(suffix) + '</span>' : '') +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--ink-soft);margin-top:6px">' + escapeHtml(label) + '</div>' +
+  '</div>';
+}
+
 function renderClientSummary(client) {
   var el = document.getElementById('client-summary-area');
   if (!el || !client) return;
@@ -9601,6 +9836,16 @@ function renderClientSummary(client) {
       '<div class="client-phoebe-says-mini">' + renderInlineWisdom() + '</div>' +
     '</div>' +
   '</div>';
+
+  // v11741: weekly performance indicators + weekly check-in. Both top
+  // of the page because Phoebe wants clients re-engaged with their
+  // own progress every visit.
+  if (typeof renderWeeklyIndicatorsCard === 'function') {
+    html += renderWeeklyIndicatorsCard(client);
+  }
+  if (typeof renderWeeklyCheckinCard === 'function') {
+    html += renderWeeklyCheckinCard(client);
+  }
 
   // ── THREE-CARD STORY GRID ────────────────────────────────────────────
   html += '<div class="three-card-story">';
