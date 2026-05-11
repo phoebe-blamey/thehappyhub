@@ -3389,3 +3389,264 @@ body { background: var(--cream); color: var(--ink); }
 }
 #client-new-note-msg { color: var(--ink) !important; }
 
+/* ════════════════════════════════════════════════════════════════════
+   v11732 — Phoebe's amendments on v11731.
+
+   Her list:
+   1. No gradient on the background, just block colour. Light pink.
+   2. The to-do page (no extra layer bg) is the right pattern — cards
+      sit straight on the page bg, no wrapper layer.
+   3. Gradients are "blurring into backgrounds" — remove them.
+   4. Mustard out, sunshine yellow in.
+   5. Waves return for the header — match new colour theme.
+   6. "My Why" still showing white on white — fix.
+   7. Remove "COACHING" eyebrow at top.
+   8. Tagline smaller + italic.
+   9. A little more pink pop.
+   10. Topbar styled to match the wave style we had before, but with
+       the new theme.
+   11. More complex while keeping simplicity — beautiful, feminine,
+       empowered, professional.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── (1) PAGE BACKGROUND — flat light pink, no gradient ─────────── */
+body { background: var(--marshmallow) !important; }
+#client-hub, #coach-hub { background: var(--marshmallow) !important; }
+/* Kill the body::before dot-pattern texture — that's the "blurring
+   into background" Phoebe flagged. */
+body::before { display: none !important; }
+
+/* ── (2) CONTENT AREAS — no second-layer bg, cards on the page ── */
+#client-summary-area,
+#client-content-area,
+#client-settings-area {
+  background: transparent !important;
+}
+
+/* ── (3) TOPBAR — solid light pink (matching page), wave below ── */
+#client-hub .topbar,
+#coach-hub  .topbar {
+  background: var(--marshmallow) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  border-bottom: none !important;
+  position: relative;
+  z-index: 50;
+}
+/* The wave divider below the topbar — bubblegum pink layered with
+   mint-deep, matching the new palette. Same three-layer SVG pattern
+   Phoebe loved from the previous version. */
+#client-hub .topbar::after,
+#coach-hub  .topbar::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -38px;
+  height: 40px;
+  background-repeat: no-repeat;
+  background-size: 100% 40px;
+  pointer-events: none;
+  z-index: 49;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 140' preserveAspectRatio='none'><g><path fill='%23F0A3C7' fill-opacity='.40' d='M0 51.76c36.21-2.25 77.57-3.58 126.42-3.58 320 0 320 57 640 57 271.15 0 312.58-40.91 513.58-53.4V0H0z'/><path fill='%239DC0B0' fill-opacity='.50' d='M0 24.31c43.46-5.69 94.56-9.25 158.42-9.25 320 0 320 89.24 640 89.24 256.13 0 307.28-57.16 481.58-80V0H0z'/><path fill='%23FDEFF5' d='M0 0v3.4C28.2 1.6 59.4.59 94.42.59c320 0 320 84.3 640 84.3 285 0 316.17-66.85 545.58-81.49V0z'/></g></svg>");
+}
+
+/* ── (4) HERO — mint block, wave at the bottom, more refined ─── */
+#client-hub .client-hero {
+  background: var(--mint) !important;
+  border-radius: 28px !important;
+  margin: 28px 24px 0 !important;
+  padding: 48px 48px 64px !important;
+  position: relative;
+  overflow: hidden;
+}
+/* Replace the v11731 circle pseudo-elements with wave dividers at
+   the bottom of the hero — matching the topbar wave style. */
+#client-hub .client-hero::before {
+  content: "" !important;
+  position: absolute !important;
+  right: -80px !important; top: -80px !important;
+  left: auto !important; bottom: auto !important;
+  width: 280px !important; height: 280px !important;
+  background: var(--pink-pale) !important;
+  background-image: none !important;
+  border-radius: 50% !important;
+  opacity: 0.55 !important;
+  z-index: 0 !important;
+}
+#client-hub .client-hero::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 0 !important; right: 0 !important;
+  bottom: -1px !important;
+  top: auto !important;
+  height: 56px !important;
+  width: auto !important;
+  background: none !important;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 140' preserveAspectRatio='none'><g><path fill='%239DC0B0' fill-opacity='.35' d='M0 51.76c36.21-2.25 77.57-3.58 126.42-3.58 320 0 320 57 640 57 271.15 0 312.58-40.91 513.58-53.4V0H0z'/><path fill='%23F0A3C7' fill-opacity='.55' d='M0 24.31c43.46-5.69 94.56-9.25 158.42-9.25 320 0 320 89.24 640 89.24 256.13 0 307.28-57.16 481.58-80V0H0z'/><path fill='%23FDEFF5' d='M0 0v3.4C28.2 1.6 59.4.59 94.42.59c320 0 320 84.3 640 84.3 285 0 316.17-66.85 545.58-81.49V0z'/></g></svg>") !important;
+  background-repeat: no-repeat !important;
+  background-position: bottom !important;
+  background-size: 100% 56px !important;
+  border-radius: 0 !important;
+  opacity: 1 !important;
+  z-index: 1 !important;
+}
+
+/* ── (5) HIDE "COACHING" eyebrow ──────────────────────────────── */
+#client-hub #client-hero-prog,
+#client-hub .client-hero-prog {
+  display: none !important;
+}
+
+/* ── (6) HERO TYPOGRAPHY refinements ──────────────────────────── */
+#client-hub .client-hero h2,
+#client-hub #client-hero-name {
+  font-size: 52px !important;
+  font-weight: 800 !important;
+  margin-bottom: 8px !important;
+}
+/* Tagline: smaller + italic + slight pink pop */
+#client-hub .client-hero-tagline,
+#client-hub #client-hero-tagline {
+  font-size: 15px !important;
+  font-style: italic !important;
+  font-weight: 500 !important;
+  color: var(--ink-soft) !important;
+  letter-spacing: 0.1px;
+}
+
+/* ── (7) MY WHY — fix the white-on-white ─────────────────────── */
+/* Wrapper pill */
+#client-hub #client-hero-why-wrap {
+  background: rgba(255,255,255,0.78) !important;
+  border: 1px solid var(--rule) !important;
+}
+/* The text + edit buttons inside */
+#client-hub #client-hero-why-text,
+#client-hub #client-hero-why-text span,
+#client-hub #client-hero-why-text * {
+  color: var(--ink) !important;
+}
+/* Empty-state "+ Add my why" button (inline-styled in JS) — override
+   with attribute selector so the white text/bg gets ink-on-cream */
+#client-hub #client-hero-why-text button {
+  background: white !important;
+  color: var(--ink) !important;
+  border: 1.5px solid var(--ink) !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  padding: 6px 14px !important;
+}
+/* The sunshine "Suggest one" button keeps its yellow but with ink text */
+#client-hub #client-hero-why-text button[onclick*="suggestClientWhy"] {
+  background: var(--sunshine) !important;
+  border-color: var(--sunshine) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.10);
+}
+
+/* ── (8) BUTTONS — mustard out, sunshine yellow in ───────────── */
+#client-hub .btn-sm.primary,
+#coach-hub  .btn-sm.primary {
+  background: var(--sunshine) !important;
+  color: var(--ink) !important;
+  border-color: var(--sunshine) !important;
+  font-weight: 800 !important;
+  box-shadow: 0 3px 0 #C9B30A !important;
+}
+#client-hub .btn-sm.primary:hover,
+#coach-hub  .btn-sm.primary:hover {
+  background: #FFF566 !important;
+  border-color: #C9B30A !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 0 #C9B30A !important;
+}
+/* MY HUB badge → sunshine too (was mustard) */
+#client-hub .topbar #client-topbar-prog,
+#client-hub .topbar .topbar-badge,
+#client-hub .topbar .badge-client,
+#coach-hub  .topbar .topbar-badge,
+#coach-hub  .topbar .badge-coach {
+  background: var(--sunshine) !important;
+  color: var(--ink) !important;
+}
+
+/* ── (9) PINK POP — strategic accents ─────────────────────────── */
+/* Pill-title rings — keep ink outline but add a soft pink-pale shadow
+   for the lift Phoebe wanted. */
+#client-hub .story-card-title,
+#client-summary-area .story-card-title,
+#client-content-area .story-card-title,
+#client-settings-area .story-card-title {
+  box-shadow: 0 4px 0 var(--pink-pale);
+}
+/* Eyebrow text → pink Caveat (signature handwritten moment) */
+#client-hub .client-section > div[style*="font-size:11px"][style*="uppercase"],
+#client-summary-area > div > div[style*="font-size:11px"][style*="uppercase"],
+#client-content-area > div > div[style*="font-size:11px"][style*="uppercase"],
+#client-settings-area > div > div[style*="font-size:11px"][style*="uppercase"] {
+  color: var(--hot-pink) !important;
+  font-family: "Caveat", cursive !important;
+  font-size: 22px !important;
+}
+/* Section card top-edge accent — a hairline of pink at the top of
+   each card. Subtle pop without dominating. */
+#client-hub .client-section,
+#client-summary-area .client-section,
+#client-content-area .client-section,
+#client-settings-area .client-section {
+  border-top: 3px solid var(--pink-pale) !important;
+  border-radius: 0 0 20px 20px !important;
+}
+/* Restore the rounded top under the pink edge */
+#client-hub .client-section {
+  border-radius: 20px 20px 20px 20px !important;
+}
+/* The pink top accent looks better as the FULL top with subtle
+   gradient-free border, then full radius. */
+
+/* ── (10) NO MORE GRADIENTS on cards — flat colours only ─────── */
+.client-section.ask,
+#client-hub .client-section.ask {
+  background: var(--mint-soft) !important;
+  border: 1px solid var(--mint-deep) !important;
+}
+#client-new-note-banner {
+  background: var(--cream-warm) !important;
+}
+/* Tab strip — solid cream, no gradient */
+#client-hub .client-tabs {
+  background: var(--cream-soft) !important;
+}
+
+/* ── (11) MORE COMPLEX W/ SIMPLICITY — subtle decorative details ─ */
+/* Card eyebrow: handwritten + pink already done (above).
+   Cards: subtle inner top highlight + soft shadow already done.
+   Hero: pink-pale circle echo + mint base + wave below = layered.
+   Add a hairline tick mark below "ELODIE'S HUB" name as a signature. */
+#client-hub .client-hero h2::after,
+#client-hub #client-hero-name::after {
+  content: "";
+  display: block;
+  width: 56px;
+  height: 3px;
+  background: var(--hot-pink);
+  margin-top: 8px;
+  border-radius: 2px;
+}
+
+/* ── (12) Tab strip refinements — pink active tab for pop ──── */
+#client-hub .client-tab.active {
+  background: var(--hot-pink) !important;
+  color: white !important;
+}
+
+/* ── (13) Pad the hero to clear the new wave at bottom ──────── */
+#client-hub .client-hero {
+  padding-bottom: 80px !important;
+}
+
+/* ── (14) Pad the content area so cards clear the topbar wave ── */
+#client-hub .client-content {
+  padding-top: 24px !important;
+}
+
+
