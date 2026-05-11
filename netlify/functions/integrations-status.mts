@@ -27,6 +27,9 @@ export default async () => {
     // When false, Pull-from-Zoom still works for text transcripts;
     // the audio→Whisper path returns a setup-prompt error instead.
     openaiWhisper: env("OPENAI_API_KEY"),
+    // v11743: surfaces whether daily-digest emails + one-tap completion
+    // links are configured. Both require QUICK_ACTION_SECRET.
+    dailyDigest: env("QUICK_ACTION_SECRET"),
     twilio: env("TWILIO_ACCOUNT_SID") && env("TWILIO_AUTH_TOKEN") && env("TWILIO_FROM_NUMBER"),
     stripe: env("STRIPE_SECRET_KEY") && env("STRIPE_PUBLISHABLE_KEY"),
     stripeWebhook: env("STRIPE_WEBHOOK_SECRET"),
