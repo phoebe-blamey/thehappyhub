@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11741">
-<link rel="stylesheet" href="styles.css?v=11741">
+<link rel="preload" as="style" href="styles.css?v=11742">
+<link rel="stylesheet" href="styles.css?v=11742">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11741 — weekly check-in flow + performance indicators on client Summary. Four-question check-in (Where are you at? / What worked? / What blocked you? / What are you pushing?) keyed to ISO week so one per week; older answers preserved on client.weeklyCheckins array. Performance indicators card shows tasks done last 7 days, wins logged, sessions attended, days active, plus trend vs prior week. Both feed into gatherFullClientContext so all AI features pick them up as coaching signal. Phoebe gets a Pulse-feed notification when a check-in lands. v11740: Whisper audio fallback for Zoom transcripts."> — when Zoom's text transcript isn't ready yet, fall back to transcribing the AUDIO recording via OpenAI Whisper (Phoebe asked 'when no transcript, use video'). Detects audio_only / M4A / MP3 recording files, downloads via Authorization Bearer, POSTs to /v1/audio/transcriptions with whisper-1 model, returns the text just like a Zoom transcript would. Requires OPENAI_API_KEY env var (≈$0.006/min). If env var not set, returns a clear error with the recording play URL so Phoebe can listen manually. 25MB Whisper limit is enforced — too-large files return a friendly error. v11739: full client context for all AI features + two-step plan builder + auto-grow textareas.">
+<meta name="hmh-build" content="v11742 — closed the commitment-completion loop in the weekly check-in. Driven by Phoebe's coaching insight that clients commit but don't follow through. Each new check-in now pulls forward LAST WEEK'S 'pushing' answer and asks 'did you do it?' with Yes/Partial/Not yet buttons + a detail textarea. Status saves to lastWeekStatus + lastWeekDetail on the check-in entry. gatherFullClientContext now surfaces this loop to AI features so plans/emails/briefs weight follow-through as the highest coaching signal. Plus OPENAI_API_KEY now surfaced in /api/integrations-status as openaiWhisper:true|false. v11741: weekly check-in + performance indicators."> — weekly check-in flow + performance indicators on client Summary. Four-question check-in (Where are you at? / What worked? / What blocked you? / What are you pushing?) keyed to ISO week so one per week; older answers preserved on client.weeklyCheckins array. Performance indicators card shows tasks done last 7 days, wins logged, sessions attended, days active, plus trend vs prior week. Both feed into gatherFullClientContext so all AI features pick them up as coaching signal. Phoebe gets a Pulse-feed notification when a check-in lands. v11740: Whisper audio fallback for Zoom transcripts."> — when Zoom's text transcript isn't ready yet, fall back to transcribing the AUDIO recording via OpenAI Whisper (Phoebe asked 'when no transcript, use video'). Detects audio_only / M4A / MP3 recording files, downloads via Authorization Bearer, POSTs to /v1/audio/transcriptions with whisper-1 model, returns the text just like a Zoom transcript would. Requires OPENAI_API_KEY env var (≈$0.006/min). If env var not set, returns a clear error with the recording play URL so Phoebe can listen manually. 25MB Whisper limit is enforced — too-large files return a friendly error. v11739: full client context for all AI features + two-step plan builder + auto-grow textareas.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -4730,12 +4730,21 @@ function gatherFullClientContext(client, prog, opts) {
   // ── Weekly check-ins (last 4) — high coaching signal ──
   if (Array.isArray(client.weeklyCheckins) && client.weeklyCheckins.length) {
     parts.push('\n═══ WEEKLY CHECK-INS (last 4) ═══');
+    parts.push('NOTE: follow-through on commitments is the single biggest signal. Watch the lastWeekStatus column — it tells you whether the client did what they said they\'d do the week before.');
     client.weeklyCheckins.slice(-4).reverse().forEach(function(c) {
       parts.push('\nWeek of ' + (c.weekOf || '?') + ':');
+      if (c.lastWeekStatus) {
+        var statusLabel = c.lastWeekStatus === 'yes' ? 'YES (followed through)'
+                        : c.lastWeekStatus === 'partial' ? 'PARTIAL'
+                        : c.lastWeekStatus === 'no' ? 'NO (didn\'t do it)'
+                        : c.lastWeekStatus;
+        parts.push('  Last week\'s commitment status: ' + statusLabel);
+        if (c.lastWeekDetail) parts.push('  (Why / what got in the way: ' + c.lastWeekDetail + ')');
+      }
       if (c.where)   parts.push('  Where: '   + c.where);
       if (c.worked)  parts.push('  Worked: '  + c.worked);
       if (c.blocked) parts.push('  Blocked: ' + c.blocked);
-      if (c.pushing) parts.push('  Pushing: ' + c.pushing);
+      if (c.pushing) parts.push('  Pushing (commitment for next week): ' + c.pushing);
     });
   }
 
@@ -9606,27 +9615,73 @@ function renderWeeklyCheckinCard(client) {
 }
 
 function _renderWeeklyCheckinForm(client, weekIso, latest) {
+  // v11742: carry forward LAST WEEK'S "pushing" answer + add an
+  // accountability question — "you said you were pushing X. did you
+  // do it?" This directly attacks the friction Phoebe flagged: clients
+  // commit but don't follow through. Closes the commitment-completion
+  // loop visible to them AND to Phoebe.
   var lastNote = '';
+  var carryForward = '';
   if (latest && latest.weekOf) {
     var lastDate = '';
     try { lastDate = new Date(latest.weekOf + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); } catch (e) { lastDate = latest.weekOf; }
     lastNote = '<div style="font-size:11px;color:var(--ink-faded);margin-top:4px">Last check-in: week of ' + escapeHtml(lastDate) + '</div>';
+
+    if (latest.pushing && latest.pushing.trim()) {
+      carryForward =
+        '<div style="background:var(--cream-warm);border:1px solid var(--rule);border-radius:12px;padding:14px 16px;margin-bottom:14px">' +
+          '<div style="font-size:11px;font-weight:800;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Last week you said you\'d push</div>' +
+          '<div style="font-size:14px;color:var(--ink);font-style:italic;margin-bottom:12px;line-height:1.5">"' + escapeHtml(latest.pushing) + '"</div>' +
+          '<label style="display:block;font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">Did you do it?</label>' +
+          '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">' +
+            '<button type="button" class="btn-sm" onclick="_setCarryStatus(\'yes\')" id="carry-btn-yes" data-state="off">✓ Yes, done</button>' +
+            '<button type="button" class="btn-sm" onclick="_setCarryStatus(\'partial\')" id="carry-btn-partial" data-state="off">~ Partly</button>' +
+            '<button type="button" class="btn-sm" onclick="_setCarryStatus(\'no\')" id="carry-btn-no" data-state="off">✗ Not yet</button>' +
+          '</div>' +
+          '<input type="hidden" id="carry-status" value="">' +
+          '<textarea id="carry-detail" rows="2" placeholder="What got in the way, or how did it land? (honest answers only — Phoebe will adjust the plan.)" style="width:100%;border:1px solid var(--rule);border-radius:10px;padding:8px 10px;font-family:var(--f-body);font-size:14px;color:var(--ink);background:white;outline:none;line-height:1.5;resize:vertical"></textarea>' +
+        '</div>';
+    }
   }
   return '<div class="client-section weekly-checkin-card">' +
     '<h3>📅 Your weekly check-in</h3>' +
     '<div style="font-size:13px;color:var(--ink-soft);line-height:1.55;margin-bottom:14px">Quick four questions. Takes 2 minutes. Phoebe sees your answers and weaves them into your next session.</div>' +
     lastNote +
+    carryForward +
     '<div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">' +
       _checkinField('checkin-where',  '1. Where are you at?',     'Big picture mood + state. One sentence is fine.') +
       _checkinField('checkin-worked', '2. What worked this week?', 'Wins, small or big.') +
       _checkinField('checkin-blocked', '3. What blocked you?',    'The thing that\'s eating your head.') +
-      _checkinField('checkin-pushing', '4. What are you pushing into next week?', 'Your one priority move.') +
+      _checkinField('checkin-pushing', '4. What are you pushing into next week?', 'Your one priority move — Phoebe will ask about this next Monday.') +
     '</div>' +
     '<div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
       '<button class="btn-sm primary" onclick="submitWeeklyCheckin()">Submit check-in</button>' +
       '<span id="checkin-status" style="font-size:12px;color:var(--ink-soft)"></span>' +
     '</div>' +
   '</div>';
+}
+
+// v11742: helper for the carry-forward yes/partial/no toggle.
+function _setCarryStatus(state) {
+  var inp = document.getElementById('carry-status');
+  if (inp) inp.value = state;
+  ['yes', 'partial', 'no'].forEach(function(s) {
+    var btn = document.getElementById('carry-btn-' + s);
+    if (!btn) return;
+    if (s === state) {
+      btn.dataset.state = 'on';
+      btn.style.background = (s === 'yes') ? 'var(--good)' : (s === 'partial') ? 'var(--sunshine)' : 'var(--pink-pale)';
+      btn.style.color = (s === 'partial') ? 'var(--ink)' : (s === 'yes' ? 'white' : 'var(--ink)');
+      btn.style.borderColor = 'transparent';
+      btn.style.fontWeight = '800';
+    } else {
+      btn.dataset.state = 'off';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+      btn.style.fontWeight = '';
+    }
+  });
 }
 function _checkinField(id, label, hint) {
   return '<div>' +
@@ -9655,6 +9710,12 @@ async function submitWeeklyCheckin() {
   // If there's already a check-in for this week, replace it (edit flow)
   var thisWeek = _localMondayOfWeek(new Date());
   var existingIdx = client.weeklyCheckins.findIndex(function(c) { return c.weekOf === thisWeek; });
+  // v11742: capture the carry-forward accountability answer if it was
+  // shown (i.e. last week's "pushing" exists and they answered).
+  var carryStatusEl = document.getElementById('carry-status');
+  var carryDetailEl = document.getElementById('carry-detail');
+  var carryStatus = carryStatusEl ? (carryStatusEl.value || '') : '';
+  var carryDetail = carryDetailEl ? (carryDetailEl.value || '').trim() : '';
   var entry = {
     id: 'wc-' + Date.now(),
     weekOf: thisWeek,
@@ -9663,6 +9724,8 @@ async function submitWeeklyCheckin() {
     worked: worked,
     blocked: blocked,
     pushing: pushing,
+    lastWeekStatus: carryStatus || undefined,
+    lastWeekDetail: carryDetail || undefined,
   };
   if (existingIdx >= 0) client.weeklyCheckins[existingIdx] = entry;
   else client.weeklyCheckins.push(entry);

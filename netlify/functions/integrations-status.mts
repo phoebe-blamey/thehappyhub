@@ -23,6 +23,10 @@ export default async () => {
       env("CALENDLY_WEBHOOK_KEY") ||
       env("CALENDLY_KEY"),
     anthropic: env("ANTHROPIC_API_KEY"),
+    // v11742: surfaces whether Whisper audio-fallback is wired up.
+    // When false, Pull-from-Zoom still works for text transcripts;
+    // the audio→Whisper path returns a setup-prompt error instead.
+    openaiWhisper: env("OPENAI_API_KEY"),
     twilio: env("TWILIO_ACCOUNT_SID") && env("TWILIO_AUTH_TOKEN") && env("TWILIO_FROM_NUMBER"),
     stripe: env("STRIPE_SECRET_KEY") && env("STRIPE_PUBLISHABLE_KEY"),
     stripeWebhook: env("STRIPE_WEBHOOK_SECRET"),
