@@ -17181,6 +17181,24 @@ function openEditClient(clientId) {
     '<input type="checkbox" id="edit-notifs-disabled"' + (client.notificationsDisabled ? ' checked' : '') + '>' +
     '<span><strong>Don\'t send notification emails to this client</strong>' +
     '<div style="font-size:11px;color:var(--stone);margin-top:2px">Overrides the global setting. Use for clients who\'ve asked to opt out.</div></span></label></div>' +
+    // v11749: per-client digest cadence override — overrides the default
+    // Monday + Friday schedule for clients who want a quieter rhythm or
+    // a different reflection day.
+    (function() {
+      var ds = client.digestSchedule || { mondays: true, fridays: true };
+      return '<div style="background:var(--marshmallow);border-radius:10px;padding:12px 14px;margin-bottom:10px">' +
+        '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:8px">Digest cadence</div>' +
+        '<div style="font-size:11px;color:var(--stone);margin-bottom:8px;line-height:1.5">Default: Monday + Friday. Untick either to quieten this client\'s inbox without affecting anyone else.</div>' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--magenta);margin-bottom:4px">' +
+          '<input type="checkbox" id="edit-digest-mon"' + (ds.mondays !== false ? ' checked' : '') + '>' +
+          '<span><strong>Monday digest</strong> — what\'s on this week</span>' +
+        '</label>' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--magenta)">' +
+          '<input type="checkbox" id="edit-digest-fri"' + (ds.fridays !== false ? ' checked' : '') + '>' +
+          '<span><strong>Friday digest</strong> — wins + "what blocked you?"</span>' +
+        '</label>' +
+      '</div>';
+    })() +
     '<div style="display:flex;gap:10px;align-items:center;margin-top:16px">' +
     '<button class="btn-sm" onclick="toggleArchiveClient(\''+clientId+'\');document.getElementById(\'edit-modal\').classList.remove(\'open\')" style="background:white;color:var(--stone);border-color:var(--border)">' +
       (client.archived ? '↩ Restore from archive' : '📦 Archive client') +
@@ -17222,6 +17240,18 @@ async function saveEditClient(clientId) {
   var newSpecial = document.getElementById('edit-special-notes')?.value.trim();
   if (newSpecial != null) client.specialNotes = newSpecial;
   client.notificationsDisabled = !!document.getElementById('edit-notifs-disabled')?.checked;
+  // v11749: per-client digest schedule override. Stored even when both
+  // are true so the function can tell "Phoebe explicitly confirmed" vs
+  // "never set". The server-side check in daily-digest.mts treats
+  // missing fields as `true` (default-on).
+  var dMon = document.getElementById('edit-digest-mon');
+  var dFri = document.getElementById('edit-digest-fri');
+  if (dMon || dFri) {
+    client.digestSchedule = {
+      mondays: dMon ? !!dMon.checked : true,
+      fridays: dFri ? !!dFri.checked : true,
+    };
+  }
   client.socials = client.socials||{};
   ['website','linkedin','instagram','facebook','tiktok','whatsapp'].forEach(function(f) {
     var el = document.getElementById('edit-'+f);

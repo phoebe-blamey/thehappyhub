@@ -310,6 +310,14 @@ export default async (req: Request) => {
       if (client.notificationsDisabled) { skipped++; continue; }
       if (client.archived || client.status === "complete") { skipped++; continue; }
 
+      // v11749: per-client digest cadence override. Phoebe can untick the
+      // Monday or Friday digest for individual clients via the Edit
+      // Client modal. Missing fields default to true (matches global
+      // behaviour for clients on file before v11749).
+      const ds = client.digestSchedule || {};
+      if (isMonday(now) && ds.mondays === false) { skipped++; continue; }
+      if (isFriday(now) && ds.fridays === false) { skipped++; continue; }
+
       // Dedupe — already sent today?
       const dedupeKey = `digest::${client.id}::${todayStr}`;
       const already = await remindersStore.get(dedupeKey);
