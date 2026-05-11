@@ -216,13 +216,61 @@ export default async (req: Request) => {
         }
         const audioBlob = await audioResp.blob();
         const audioSize = audioBlob.size;
-        // Whisper has a 25 MB limit per file
+        // Whisper has a 25 MB limit per file. v11745: when over the
+        // limit, hand off to AssemblyAI via the background function
+        // (5 GB limit, ~$0.37/hour, speaker diarization included).
+        // Falls through to error only if no AssemblyAI key configured.
         if (audioSize > 25 * 1024 * 1024) {
+          const aaiKey = Netlify.env.get("ASSEMBLYAI_API_KEY");
+          if (aaiKey) {
+            // Kick off the background transcription. Returns a 202-ish
+            // response so the front-end can show "queued" state and
+            // refresh later.
+            try {
+              const baseUrl = (Netlify.env.get("URL") || "https://hub.phoebeblamey.com.au").replace(/\/$/, "");
+              // Mark status on the client record so UI can read it
+              try {
+                const c2 = JSON.parse((await store.get(clientId)) || "{}");
+                c2.zoomTranscriptStatus = "queued";
+                c2.zoomTranscriptStatusMessage = `Queued via AssemblyAI (${(audioSize / 1024 / 1024).toFixed(1)}MB). Expect 2-5 min.`;
+                c2.zoomTranscriptStatusAt = new Date().toISOString();
+                if (meeting.topic) c2.zoomMeetingTopic = meeting.topic;
+                if (meeting.start_time) c2.zoomMeetingDate = meeting.start_time;
+                await store.set(clientId, JSON.stringify(c2));
+              } catch (e) { /* non-fatal */ }
+              // Fire-and-forget the background function
+              fetch(`${baseUrl}/.netlify/functions/transcribe-large-audio-background`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  clientId,
+                  accessToken,
+                  audioUrl: audioFile.download_url,
+                  fileExt: audioFile.file_extension || "m4a",
+                  meetingTopic: meeting.topic,
+                  meetingDate: meeting.start_time,
+                  sessionDate,
+                }),
+              }).catch((err) => console.error("[zoom-transcript] background trigger failed", err));
+              return new Response(JSON.stringify({
+                queued: true,
+                source: "assemblyai",
+                meetingTopic: meeting.topic,
+                meetingDate: meeting.start_time,
+                fileSizeMb: Number((audioSize / 1024 / 1024).toFixed(1)),
+                playUrl,
+                message: `Audio is ${(audioSize / 1024 / 1024).toFixed(1)}MB — too big for Whisper. AssemblyAI is transcribing in the background. Comes back in 2-5 minutes; refresh the page to pick it up.`,
+              }), { status: 202, headers: { "Content-Type": "application/json" } });
+            } catch (err) {
+              console.error("[zoom-transcript] AssemblyAI handoff failed:", err);
+              // Fall through to the same error path as no-key
+            }
+          }
           return new Response(JSON.stringify({
             error: `Audio file too large for Whisper (${(audioSize / 1024 / 1024).toFixed(1)}MB, limit is 25MB)`,
             meetingTopic: meeting.topic,
             playUrl,
-            hint: "Wait ~15 minutes for Zoom's text transcript to be ready (no size limit on that path), or shorten the recording.",
+            hint: "Add ASSEMBLYAI_API_KEY to Netlify to enable large-file transcription (free tier 100 hrs/month), OR wait ~15 minutes for Zoom's own text transcript (no size limit on that path), OR open the recording link below to listen manually.",
           }), { status: 413 });
         }
 

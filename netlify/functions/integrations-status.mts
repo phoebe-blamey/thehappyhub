@@ -30,6 +30,10 @@ export default async () => {
     // v11743: surfaces whether daily-digest emails + one-tap completion
     // links are configured. Both require QUICK_ACTION_SECRET.
     dailyDigest: env("QUICK_ACTION_SECRET"),
+    // v11745: surfaces whether large-audio fallback via AssemblyAI is
+    // wired. Without this key, audio >25MB falls back to the
+    // wait-for-Zoom-transcript error path.
+    assemblyai: env("ASSEMBLYAI_API_KEY"),
     twilio: env("TWILIO_ACCOUNT_SID") && env("TWILIO_AUTH_TOKEN") && env("TWILIO_FROM_NUMBER"),
     stripe: env("STRIPE_SECRET_KEY") && env("STRIPE_PUBLISHABLE_KEY"),
     stripeWebhook: env("STRIPE_WEBHOOK_SECRET"),

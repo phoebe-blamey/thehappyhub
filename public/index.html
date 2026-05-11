@@ -40,14 +40,50 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11744">
-<link rel="stylesheet" href="styles.css?v=11744">
+<link rel="preload" as="style" href="styles.css?v=11745">
+<link rel="stylesheet" href="styles.css?v=11745">
 
 </head>
 <body>
+<script>
+  // v11745: inline-replace <img src="/icons/peabe.svg"> with the real
+  // SVG content so the "pb" text inside the logo can use the page's
+  // AllRoundGothic @font-face. An <img>-loaded SVG runs in its own
+  // document and can't see page CSS / @font-face declarations, so the
+  // font-family chain was falling all the way to system fallback. By
+  // injecting the SVG inline, it becomes part of the live document
+  // tree and inherits AllRoundGothic properly.
+  (function inlinePeabeSvg() {
+    if (window._peabeInlined) return;
+    window._peabeInlined = true;
+    function doInline() {
+      fetch('/icons/peabe.svg').then(function(r){return r.text();}).then(function(svgText){
+        document.querySelectorAll('img[src="/icons/peabe.svg"], img[src$="peabe.svg"]').forEach(function(img){
+          var wrap = document.createElement('span');
+          wrap.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:' + (img.style.width || img.getAttribute('width') || '32px') + ';height:' + (img.style.height || img.getAttribute('height') || '32px');
+          wrap.className = img.className || '';
+          wrap.setAttribute('aria-label', img.alt || 'PeaBe');
+          wrap.innerHTML = svgText;
+          var svg = wrap.querySelector('svg');
+          if (svg) {
+            svg.setAttribute('width', '100%');
+            svg.setAttribute('height', '100%');
+            svg.style.display = 'block';
+          }
+          if (img.parentNode) img.parentNode.replaceChild(wrap, img);
+        });
+      }).catch(function(err){ console.warn('[peabe-svg-inline]', err); });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', doInline);
+    } else {
+      doInline();
+    }
+  })();
+</script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11744 — two fixes. (1) Zoom-pull errors now render as a branded modal with a real clickable '🎬 Watch the recording' button instead of a 250-char URL stuffed into an alert (Phoebe couldn't tap it on the file-too-big error). (2) Plan-builder reframed: section heading now reads 'Build the 90-day plan' with a subtitle explaining it uses ALL client info (intake / brief / session history / wins / check-ins) plus today's session as optional input — was 'Build plan from Zoom session' which made it look Zoom-only. Session notes are now optional: if blank, Phoebe gets a soft confirm to build from existing context only. v11743: daily digest emails + one-tap completion."> — email reminders + one-tap completion. Daily digest at 8am AEST emails each client (with notifications enabled) a personalised morning summary: yesterday's commit + did-you-do-it, tasks due today, overdue tasks, upcoming sessions, Monday check-in nudge. Each task / commit has a ONE-TAP completion link — clicking marks it done without logging in. Powered by HMAC-signed URLs (QUICK_ACTION_SECRET env var, generated + set via Netlify MCP). Dedupes via reminders blob store so duplicate fires are safe. Friendly branded success pages after each tap. v11742: weekly check-in carries forward last week's pushing commitment for accountability."> — closed the commitment-completion loop in the weekly check-in. Driven by Phoebe's coaching insight that clients commit but don't follow through. Each new check-in now pulls forward LAST WEEK'S 'pushing' answer and asks 'did you do it?' with Yes/Partial/Not yet buttons + a detail textarea. Status saves to lastWeekStatus + lastWeekDetail on the check-in entry. gatherFullClientContext now surfaces this loop to AI features so plans/emails/briefs weight follow-through as the highest coaching signal. Plus OPENAI_API_KEY now surfaced in /api/integrations-status as openaiWhisper:true|false. v11741: weekly check-in + performance indicators."> — weekly check-in flow + performance indicators on client Summary. Four-question check-in (Where are you at? / What worked? / What blocked you? / What are you pushing?) keyed to ISO week so one per week; older answers preserved on client.weeklyCheckins array. Performance indicators card shows tasks done last 7 days, wins logged, sessions attended, days active, plus trend vs prior week. Both feed into gatherFullClientContext so all AI features pick them up as coaching signal. Phoebe gets a Pulse-feed notification when a check-in lands. v11740: Whisper audio fallback for Zoom transcripts."> — when Zoom's text transcript isn't ready yet, fall back to transcribing the AUDIO recording via OpenAI Whisper (Phoebe asked 'when no transcript, use video'). Detects audio_only / M4A / MP3 recording files, downloads via Authorization Bearer, POSTs to /v1/audio/transcriptions with whisper-1 model, returns the text just like a Zoom transcript would. Requires OPENAI_API_KEY env var (≈$0.006/min). If env var not set, returns a clear error with the recording play URL so Phoebe can listen manually. 25MB Whisper limit is enforced — too-large files return a friendly error. v11739: full client context for all AI features + two-step plan builder + auto-grow textareas.">
+<meta name="hmh-build" content="v11745 — fix dangling meta-tag prose leak (was rendering wall-of-text above topbar), real AllRoundGothic logo font via inline-SVG render, bi-weekly digest cadence (Mon + Fri), AssemblyAI integration for large audio files (>25MB).">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -7341,6 +7377,21 @@ async function fetchZoomTranscript() {
       body: JSON.stringify({ clientId: client.id, sessionDate: prog.sessionDate })
     });
     var data = await resp.json();
+    // v11745: AssemblyAI handoff — when Zoom audio is > 25MB AND
+    // ASSEMBLYAI_API_KEY is configured, the function returns 202 with
+    // queued:true. Show a friendly "transcribing in background" state
+    // and let Phoebe carry on with other work; refresh picks it up.
+    if (data.queued) {
+      notes.value = '';
+      notes.placeholder = data.message || 'Transcribing the audio in the background. Refresh in a few minutes.';
+      status.textContent = '⏳ Queued via AssemblyAI · ~2-5 min · refresh to see the transcript';
+      branded.alert(
+        (data.message || 'Transcribing in background.') + '\n\nThe transcript will appear here automatically once it lands. Carry on with other work — you can refresh this page at any time.',
+        { title: '🎙 Transcribing in background', okLabel: 'Got it' }
+      );
+      btn.disabled = false; btn.textContent = 'Pull from Zoom';
+      return;
+    }
     if (!resp.ok || data.error) {
       // v11744: render error as a proper custom modal with a clickable
       // recording-link button rather than a long URL in an alert. Was

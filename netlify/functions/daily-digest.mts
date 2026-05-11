@@ -41,13 +41,13 @@ function yesterdayKey(d: Date) {
   const y = new Date(d.getTime() - 86400000);
   return todayKey(y);
 }
-function isMonday(d: Date) {
-  // d.getDay(): 0 Sun, 1 Mon, ... Use UTC since Netlify runs UTC.
-  // For "Monday morning AEST" we run at 22:00 UTC Sunday, so
-  // check whether the LOCAL day (Australia/Sydney) is Monday.
+function sydneyDay(d: Date) {
+  // 0 Sun … 6 Sat in Sydney time
   const sydney = new Date(d.toLocaleString("en-US", { timeZone: "Australia/Sydney" }));
-  return sydney.getDay() === 1;
+  return sydney.getDay();
 }
+function isMonday(d: Date) { return sydneyDay(d) === 1; }
+function isFriday(d: Date) { return sydneyDay(d) === 5; }
 function isoMondayOfWeek(d: Date) {
   const sydney = new Date(d.toLocaleString("en-US", { timeZone: "Australia/Sydney" }));
   const dow = sydney.getDay();
@@ -67,7 +67,7 @@ function fmtTime(iso: string) {
 }
 
 interface DigestItem {
-  kind: "task-due" | "task-overdue" | "session" | "commit-followup" | "checkin";
+  kind: "task-due" | "task-overdue" | "session" | "commit-followup" | "checkin" | "fri-unfinished";
   text: string;
   link?: string;
   meta?: string;
@@ -150,6 +150,30 @@ function buildDigestForClient(client: any, secret: string, base: string, now: Da
     }
   }
 
+  // ── Friday reflection: tasks set this week that DIDN'T get done ──
+  // Phoebe wants to know what blocked them. Each unfinished task gets a
+  // "tell Phoebe what blocked you" link that opens a portal page where
+  // the client types the reason — submission logs as "needs-support" on
+  // the client record + emails Phoebe.
+  if (isFriday(now)) {
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).toISOString();
+    const unfinishedThisWeek = tasks.filter((t: any) => {
+      if (!t || t.completed || t.archived || t.deleted) return false;
+      if (!t.clientVisible) return false;
+      if (!t.createdAt) return false;
+      return t.createdAt >= sevenDaysAgo;
+    });
+    unfinishedThisWeek.forEach((t: any) => {
+      const link = `${base}/?client=${encodeURIComponent(client.clientAccess || "")}&blocked=${encodeURIComponent(t.id)}`;
+      items.push({
+        kind: "fri-unfinished",
+        text: t.text || "Untitled task",
+        link,
+        meta: "💬 Tell Phoebe what blocked you",
+      });
+    });
+  }
+
   return items;
 }
 
@@ -207,6 +231,19 @@ function buildEmailBody(firstName: string, items: DigestItem[], hubUrl: string) 
     lines.push("");
   }
 
+  // v11745: Friday reflection — what blocked you on the unfinished tasks
+  const friBlocked = items.filter(i => i.kind === "fri-unfinished");
+  if (friBlocked.length) {
+    lines.push("── DIDN'T GET DONE THIS WEEK ──");
+    lines.push("These were on your plate but didn't get ticked off. Honest answers help — Phoebe will work them into next week's plan.");
+    lines.push("");
+    friBlocked.forEach(i => {
+      lines.push(`☐ ${i.text}`);
+      if (i.link) lines.push(`  → ${i.meta}: ${i.link}`);
+    });
+    lines.push("");
+  }
+
   lines.push("YOUR HUB");
   lines.push(hubUrl);
   lines.push("");
@@ -226,6 +263,14 @@ export default async (req: Request) => {
 
   const now = new Date();
   const todayStr = todayKey(now);
+
+  // v11745: bi-weekly cadence — only run on Monday + Friday in AEST.
+  // Manual HTTP triggers (POST /api/daily-digest from coach UI) bypass
+  // this gate via ?force=1 so Phoebe can preview/send ad hoc.
+  const force = new URL(req.url).searchParams.get("force") === "1";
+  if (!force && !isMonday(now) && !isFriday(now)) {
+    return new Response(JSON.stringify({ skipped: true, reason: "not Mon/Fri in AEST", todayStr }), { status: 200 });
+  }
 
   const clientsStore = getStore("clients");
   const remindersStore = getStore("reminders");

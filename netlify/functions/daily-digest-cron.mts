@@ -24,6 +24,10 @@ export default async (req: Request) => {
   }
 };
 
+// v11745: bi-weekly cadence per Phoebe — Monday + Friday only.
+// 22:00 UTC Sunday = 8am AEST Monday. 22:00 UTC Thursday = 8am AEST Friday.
+// daily-digest.mts itself ALSO checks AEST day, so a stray fire on a
+// non-Mon/Fri day will be a no-op.
 export const config: Config = {
-  schedule: "0 22 * * *", // 22:00 UTC daily = 8am AEST / 9am AEDT
+  schedule: "0 22 * * 0,4",
 };
