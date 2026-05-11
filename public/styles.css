@@ -3696,5 +3696,270 @@ body::before { display: none !important; }
   margin: 0 !important;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   v11734 — POLISH PASS
+   ════════════════════════════════════════════════════════════════════
+   Final designer's QA — refining the rough edges that take this from
+   "working" to "professionally polished". Every change is presentation
+   only. No JS, no markup, no copy, no IDs touched.
+
+   Pass touches:
+     A. Typography hierarchy refinement
+     B. Consistent spacing rhythm
+     C. Hover / focus affordances
+     D. Branded modal palette refresh
+     E. Form input consistency
+     F. Scrollbar styling
+     G. Loading skeleton palette refresh
+     H. FAB stacking + transitions
+     I. Empty state polish
+     J. Smooth transitions everywhere
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── A. Typography hierarchy — slightly more refined, less shouty ── */
+#client-hub .client-hero h2,
+#client-hub #client-hero-name {
+  font-size: 42px !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.4px !important;
+  margin-bottom: 4px !important;
+}
+@media (min-width: 900px) {
+  #client-hub .client-hero h2,
+  #client-hub #client-hero-name {
+    font-size: 48px !important;
+  }
+}
+@media (max-width: 640px) {
+  #client-hub .client-hero h2,
+  #client-hub #client-hero-name {
+    font-size: 34px !important;
+  }
+  #client-hub .client-hero {
+    padding: 32px 24px 32px !important;
+    margin: 18px 16px 0 !important;
+  }
+}
+/* Tighter section heading rhythm */
+#client-hub .client-section h3,
+#client-hub .client-section h4 {
+  margin-bottom: 12px !important;
+}
+/* Eyebrow text — slightly smaller so the pill-title stays the hero */
+#client-hub .client-section > div[style*="font-size:11px"][style*="uppercase"],
+#client-summary-area > div > div[style*="font-size:11px"][style*="uppercase"],
+#client-content-area > div > div[style*="font-size:11px"][style*="uppercase"],
+#client-settings-area > div > div[style*="font-size:11px"][style*="uppercase"] {
+  font-size: 19px !important;
+  margin-bottom: 0 !important;
+  line-height: 1.1 !important;
+}
+
+/* ── B. Consistent spacing rhythm — gap between cards ───────────── */
+#client-summary-area .client-section + .client-section,
+#client-content-area .client-section + .client-section,
+#client-settings-area .client-section + .client-section {
+  margin-top: 14px !important;
+}
+
+/* ── C. Hover affordances — subtle lift on every interactive card ── */
+#client-hub .client-section {
+  transition: transform 0.18s ease, box-shadow 0.22s ease !important;
+}
+#client-hub .client-section:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(92,61,41,0.06), 0 14px 30px rgba(92,61,41,0.10) !important;
+}
+/* But don't lift sections containing a focused input — feels jumpy */
+#client-hub .client-section:focus-within {
+  transform: none !important;
+}
+
+/* ── D. BRANDED MODAL — full palette refresh ──────────────────── */
+#branded-modal-host {
+  background: rgba(92,61,41,0.45) !important;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+#branded-modal-host > * {
+  background: #FFFDF7 !important;
+  border: 1px solid var(--rule) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 4px 12px rgba(92,61,41,0.10), 0 24px 60px rgba(92,61,41,0.18) !important;
+  color: var(--ink) !important;
+}
+#branded-modal-host #branded-modal-icon { color: var(--hot-pink) !important; }
+#branded-modal-host #branded-modal-title {
+  color: var(--ink) !important;
+  font-family: var(--f-head), sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 22px !important;
+  text-transform: lowercase;
+  letter-spacing: -0.01em;
+}
+#branded-modal-host #branded-modal-body {
+  color: var(--ink-soft) !important;
+}
+#branded-modal-host #branded-modal-body * {
+  color: var(--ink) !important;
+}
+#branded-modal-host #branded-modal-input {
+  background: white !important;
+  border: 1px solid var(--rule) !important;
+  color: var(--ink) !important;
+  border-radius: 999px !important;
+  padding: 10px 16px !important;
+  font-family: var(--f-body) !important;
+}
+#branded-modal-host #branded-modal-input:focus {
+  border-color: var(--ink) !important;
+  box-shadow: 0 0 0 3px var(--mustard-soft) !important;
+  outline: none !important;
+}
+#branded-modal-host #branded-modal-actions button { font-family: var(--f-body) !important; }
+#branded-modal-host #branded-modal-actions button.btn-sm.primary {
+  background: var(--sunshine) !important;
+  color: var(--ink) !important;
+  border-color: var(--sunshine) !important;
+  box-shadow: 0 3px 0 #C9B30A !important;
+}
+#branded-modal-host #branded-modal-actions button.btn-sm:not(.primary) {
+  background: transparent !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--ink) !important;
+}
+
+/* ── E. Form inputs — consistent across the platform ─────────── */
+#client-hub input[type="text"],
+#client-hub input[type="email"],
+#client-hub input[type="tel"],
+#client-hub input[type="url"],
+#client-hub input[type="number"],
+#client-hub input[type="password"],
+#client-hub input[type="search"],
+#client-hub textarea,
+#client-hub select {
+  font-family: var(--f-body) !important;
+  font-size: 14px !important;
+  border: 1px solid var(--rule) !important;
+  background: white !important;
+  color: var(--ink) !important;
+  border-radius: 12px !important;
+  padding: 10px 14px !important;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
+}
+#client-hub input:focus,
+#client-hub textarea:focus,
+#client-hub select:focus {
+  border-color: var(--ink) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px var(--mustard-soft) !important;
+}
+#client-hub input::placeholder,
+#client-hub textarea::placeholder {
+  color: var(--ink-faded) !important;
+  opacity: 1;
+}
+
+/* ── F. Custom scrollbar — refined, on-brand ────────────────── */
+#client-hub *::-webkit-scrollbar,
+#coach-hub *::-webkit-scrollbar { width: 10px; height: 10px; }
+#client-hub *::-webkit-scrollbar-track,
+#coach-hub *::-webkit-scrollbar-track { background: transparent; }
+#client-hub *::-webkit-scrollbar-thumb,
+#coach-hub *::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+#client-hub *::-webkit-scrollbar-thumb:hover,
+#coach-hub *::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-faded);
+  background-clip: padding-box;
+}
+
+/* ── G. Loading skeletons — refresh palette ────────────────── */
+.hub-skeleton {
+  background: linear-gradient(90deg,
+    var(--cream-soft) 0%,
+    rgba(255,255,255,0.7) 50%,
+    var(--cream-soft) 100%) !important;
+  background-size: 200% 100%;
+}
+
+/* ── H. FAB — consistent treatment ──────────────────────────── */
+#test-comment-fab {
+  border-radius: 999px !important;
+  font-family: var(--f-body) !important;
+  font-weight: 700 !important;
+  transition: transform 0.18s ease, box-shadow 0.22s ease !important;
+}
+#test-comment-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 rgba(0,0,0,0.18), 0 10px 24px rgba(92,61,41,0.18) !important;
+}
+
+/* ── I. Empty state polish — softer + on-brand ──────────────── */
+#client-hub .empty-state,
+#client-hub [class*="empty"] {
+  color: var(--ink-faded) !important;
+}
+
+/* ── J. Smooth transitions on all interactives ──────────────── */
+#client-hub button,
+#client-hub a,
+#client-hub .tab,
+#client-hub .client-tab {
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.15s ease, box-shadow 0.22s ease;
+}
+/* Tab inactive hover — clear affordance */
+#client-hub .client-tab:not(.active):hover {
+  color: var(--ink) !important;
+  background: rgba(0,0,0,0.04) !important;
+}
+
+/* ── K. Focus-visible — accessibility polish, sunshine ring ─── */
+#client-hub *:focus-visible,
+#coach-hub  *:focus-visible {
+  outline: 2px solid var(--sunshine) !important;
+  outline-offset: 2px !important;
+  border-radius: 4px;
+}
+
+/* ── L. Selection highlight — on-brand ─────────────────────── */
+#client-hub ::selection { background: var(--mint); color: var(--ink); }
+
+/* ── M. Cleaner notification banner ────────────────────────── */
+#client-new-note-banner {
+  background: var(--cream-warm) !important;
+  border-bottom: 1px solid var(--rule) !important;
+  color: var(--ink) !important;
+  padding: 12px 24px !important;
+}
+#client-new-note-banner * { color: var(--ink) !important; }
+#client-new-note-banner .btn-sm.primary { color: var(--ink) !important; }
+
+/* ── N. Settings cards (coach side) — match new palette ────── */
+.settings-card {
+  background: #FFFDF7;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+}
+.settings-card h4 { color: var(--ink) !important; }
+
+/* ── O. Small grace — link colour everywhere = ink not pink ─ */
+#client-hub a:not(.brand):not(.btn-sm):not(.btn-enter):not([class*="topbar"]):not([class*="tab"]):not([class*="pill"]) {
+  color: var(--ink) !important;
+  text-decoration-color: var(--rule) !important;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+#client-hub a:not(.brand):not(.btn-sm):not(.btn-enter):hover {
+  color: var(--hot-pink) !important;
+  text-decoration-color: var(--hot-pink) !important;
+}
+
+
 
 
