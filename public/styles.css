@@ -1279,6 +1279,124 @@ body[data-live-sync="synced"] .topbar-date::after {
   box-shadow: 0 2px 4px rgba(229,4,139,0.04), 0 8px 24px rgba(229,4,139,0.10) !important;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   v11729 — design pass using Phoebe's REAL brand board (Happy Money
+   Journey style guide, accessed via Canva).
+   Key findings:
+     • Tone of voice = "loud, clear, with style" / "unapologetically
+       feminist" / "sassy edge" — the platform has been getting softer.
+       Brand actually wants BOLDER. Statement-making.
+     • Three shades of teal in the palette (pale, mid, deep). Use them.
+     • Black is in the palette (was unused on the platform).
+     • Headings = All Round Gothic Bold, big and confident — current
+       16-18px section headings are too timid.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* (1) SECTION HEADINGS — bigger, bolder, more confident. The brand
+   wants statement-making typography. Section h3 jumps 16px → 22px
+   with heavier weight + a touch of letter-spacing for that All Round
+   Gothic Bold energy. */
+#client-summary-area .client-section h3,
+#client-content-area .client-section h3,
+#client-settings-area .client-section h3 {
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+  margin-bottom: 12px !important;
+  line-height: 1.2 !important;
+}
+/* Section-card divs that use inline-styled headings (the JS render
+   sprinkles "font-family:var(--f-head);font-size:15px;color:..."
+   patterns) also get the bolder treatment. */
+#client-summary-area > div > div[style*="font-family:var(--f-head)"],
+#client-content-area > div > div[style*="font-family:var(--f-head)"],
+#client-settings-area > div > div[style*="font-family:var(--f-head)"] {
+  font-size: 20px !important;
+  font-weight: 800 !important;
+}
+
+/* (2) PALETTE — use MORE teal. Phoebe said "use more of the blue
+   colours". Flip the 4-tint cycle so teal appears more often:
+   white → SOFT TEAL → white → SOFT CREAM. Pinks intentionally NOT
+   used here because page bg is already pink. */
+#client-summary-area .client-section:nth-of-type(4n+1),
+#client-content-area .client-section:nth-of-type(4n+1),
+#client-settings-area .client-section:nth-of-type(4n+1) {
+  background: #FFFFFF !important;
+}
+#client-summary-area .client-section:nth-of-type(4n+2),
+#client-content-area .client-section:nth-of-type(4n+2),
+#client-settings-area .client-section:nth-of-type(4n+2) {
+  background: #E0EDEE !important; /* soft teal — bumped saturation from v11728's #E8F2F4 */
+}
+#client-summary-area .client-section:nth-of-type(4n+3),
+#client-content-area .client-section:nth-of-type(4n+3),
+#client-settings-area .client-section:nth-of-type(4n+3) {
+  background: #FFFFFF !important;
+}
+#client-summary-area .client-section:nth-of-type(4n+4),
+#client-content-area .client-section:nth-of-type(4n+4),
+#client-settings-area .client-section:nth-of-type(4n+4) {
+  background: #FFFBE8 !important; /* soft cream/yellow */
+}
+
+/* (3) FEATURE TEAL BAND — opt-in class for ONE section per tab that
+   wants the full website-style teal-band treatment. Drop the class
+   "feature-teal" on any .client-section and it becomes a saturated
+   teal block with white text — mirroring her website's "What happens
+   with focused intention" middle band. */
+#client-hub .client-section.feature-teal {
+  background: var(--teal) !important;
+  color: white !important;
+}
+#client-hub .client-section.feature-teal h3,
+#client-hub .client-section.feature-teal h4,
+#client-hub .client-section.feature-teal p,
+#client-hub .client-section.feature-teal span,
+#client-hub .client-section.feature-teal div {
+  color: white !important;
+}
+/* Yellow accent words inside the teal feature — like her website's
+   "$5k→$20k" yellow stat pills. */
+#client-hub .client-section.feature-teal .accent-yellow,
+#client-hub .client-section.feature-teal strong {
+  color: var(--sunshine) !important;
+  font-weight: 800 !important;
+}
+
+/* (4) WIN CELEBRATION — when a win is logged, that card gets a
+   sunshine-yellow left border + soft yellow tint, on-brand and
+   immediately visible. */
+#client-hub .client-section.win-celebrate,
+#client-hub .win-celebrate {
+  border-left: 4px solid var(--sunshine) !important;
+  background: #FFFDED !important;
+  box-shadow: 0 2px 4px rgba(232,160,32,0.10), 0 8px 24px rgba(232,160,32,0.14) !important;
+}
+
+/* (5) MORE WAVE — add a wave between the tab strip and the content
+   below so the brand pattern repeats. Same triple-layer pink wave. */
+#client-hub .client-tabs::after {
+  content: "";
+  display: block;
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -32px;
+  height: 32px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 32px;
+  pointer-events: none;
+  z-index: 1;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 140' preserveAspectRatio='none'><g fill='%23F0A3C7'><path d='M0 51.76c36.21-2.25 77.57-3.58 126.42-3.58 320 0 320 57 640 57 271.15 0 312.58-40.91 513.58-53.4V0H0z' fill-opacity='.22'/><path d='M0 0v3.4C28.2 1.6 59.4.59 94.42.59c320 0 320 84.3 640 84.3 285 0 316.17-66.85 545.58-81.49V0z' fill-opacity='.55'/></g></svg>");
+}
+#client-hub .client-tabs { position: relative; }
+/* Tab content needs a touch more top-padding so it clears the wave */
+#client-hub .client-content {
+  padding-top: 38px !important;
+}
+
+
 
 
 .progress-wrap { margin-top: 16px; }
