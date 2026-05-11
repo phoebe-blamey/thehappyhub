@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11738">
-<link rel="stylesheet" href="styles.css?v=11738">
+<link rel="preload" as="style" href="styles.css?v=11739">
+<link rel="stylesheet" href="styles.css?v=11739">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11738 — Build-plan-from-Zoom bug fixes. (1) NAME-MATCH bug: zoom-transcript was matching recordings by date proximity only — pulled Sam's transcript when Phoebe was on Scott Taylor's profile. Fixed by fetching the client record first and filtering Zoom recordings whose .topic contains the client's first name (word-boundary regex so 'Sam' doesn't match 'Samira'). Falls back to date proximity only if the name match returns nothing. If no name match AND multiple recordings in the window, returns an error listing the available topics so Phoebe can use Settings → Unmatched Zoom Recordings to assign manually. (2) AUTH bug: was using ?access_token= query param which sometimes returned Zoom's HTML auth-flow page (with embedded JS cookie code) — exactly the garbage Phoebe saw in the transcript field. Switched to Authorization Bearer header + redirect:follow + Content-Type check + raw HTML/JS detection. Returns 502 with hint about cloud_recording:read:content:master scope if the response isn't VTT. (3) FRONT-END: textarea bumped from min 90px to 260px, ink colour, larger font (14px). Added '✕ Clear' button. Auto-build on pull is now manual ('⚡ Generate plan' click required) so Phoebe can review the transcript first. _transcriptLooksLikeCode() heuristic warns BEFORE sending garbage to the AI. v11737 — community + coach polish. (1) Coach search button: was white-on-pink (invisible after the topbar palette flip); now ink-on-cream with rule border. (2) Cohort manager: community feed moved to TOP of the cohort manager view, right after the cohort picker. (3) Client portal community tab renamed to 'MDC Community Hub' (top nav, bottom tab, and section heading). (4) Shoutout composer: third step asks 'Send to WhatsApp group?' with default-on confirmation; if WhatsApp env vars configured, posts to /api/send-message immediately; otherwise feed entry saves with sendToWhatsApp:true + whatsappSent:false so it can be flushed later. (5) Empty-state copy updated to read 'Community Hub' throughout. v11736 — final polish + sweep. (1) Titles render in sentence case (text-transform: lowercase + ::first-letter uppercase) so 'WHAT WE WANT TO DO' shows as 'What we want to do' — copy untouched. All headings locked to AllRoundGothic Bold. (2) READABILITY for 40-50+: body 15px / line-height 1.6, card padding 26px, tagline bumped to 16px, helper text to 13px ink-soft. (3) Login programme tags hidden — looked cluttered. (4) Note for Claude FAB removed entirely. (5) peabe.svg logo font chain leads with AllRoundGothic. (6) Defensive overrides for any lingering color:white inline styles inside the new mint hero. (7) Landing page rebuilt to match palette — cream bg, ink headings, sunshine Enter button. (8) Coach portal sidebar + page titles aligned with new palette. (9) Hot-pink signature underline retained on hero name. Cache v=11736.">
+<meta name="hmh-build" content="v11739 — every AI feature now uses the FULL client picture (intake + research brief + session history + Zoom transcripts + custom workbook + wins + moods + completed tasks). Plan builder is TWO-STEP: Claude reads everything, asks 3 specific clarifying questions, Phoebe answers, then the plan is built. Email draft upgraded to full context. Auto-grow textareas everywhere Phoebe writes. v11738: Zoom name-match + auth fixes.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -4584,6 +4584,207 @@ function phoebeVoice(prompt) {
   return PHOEBE_VOICE + '\n\n────────────\n\n' + (prompt || '');
 }
 
+// ════════════════════════════════════════════════════════════════════
+// v11739 — FULL CLIENT CONTEXT for AI features
+// Single utility every AI call uses to assemble the client's complete
+// known picture: intake + research brief + session history + Zoom
+// transcripts + coach notes + wins + custom sections + moods + tasks.
+// Phoebe's brief: "All coaching, plans etc should use ALL available
+// information — meetings via Zoom, session questions, profile notes,
+// and all data to that client."
+// ════════════════════════════════════════════════════════════════════
+function gatherFullClientContext(client, prog, opts) {
+  if (!client) return '';
+  opts = opts || {};
+  var maxChars = opts.maxChars || 12000;
+  var parts = [];
+
+  // ── Client basics ──
+  parts.push('═══ CLIENT PROFILE ═══');
+  parts.push('Name: ' + (client.name || 'Unknown'));
+  if (client.biz) parts.push('Business: ' + client.biz);
+  if (client.email) parts.push('Email: ' + client.email);
+  if (client.phone) parts.push('Phone: ' + client.phone);
+  if (client.referredBy) parts.push('Referred by: ' + client.referredBy);
+  if (client.status) parts.push('Status: ' + client.status);
+  if (client.health) parts.push('Health rating: ' + client.health);
+  if (client.socials) {
+    var s = client.socials;
+    var rows = [];
+    if (s.website) rows.push('Website: ' + s.website);
+    if (s.linkedin) rows.push('LinkedIn: ' + s.linkedin);
+    if (s.instagram) rows.push('Instagram: ' + s.instagram);
+    if (s.facebook) rows.push('Facebook: ' + s.facebook);
+    if (s.tiktok) rows.push('TikTok: ' + s.tiktok);
+    if (s.whatsapp) rows.push('WhatsApp: ' + s.whatsapp);
+    if (rows.length) parts.push(rows.join('\n'));
+  }
+  if (client.why && client.why.trim() && client.why.length < 500) {
+    parts.push('My why: ' + client.why);
+  }
+  if (client.privateNote) parts.push('Phoebe\'s private note: ' + client.privateNote);
+
+  // ── Intake answers (the entire questionnaire) ──
+  var intakeFields = (client.intake && Array.isArray(client.intake.fields)) ? client.intake.fields : [];
+  var answered = intakeFields.filter(function(f) { return f.answer && f.answer.trim(); });
+  if (answered.length) {
+    parts.push('\n═══ INTAKE ANSWERS ═══');
+    answered.forEach(function(f) {
+      parts.push('Q: ' + (f.question || '') + '\nA: ' + f.answer.trim());
+    });
+  }
+
+  // ── Active program ──
+  if (prog) {
+    parts.push('\n═══ CURRENT PROGRAM ═══');
+    parts.push('Type: ' + (prog.label || prog.program || 'Unknown'));
+    if (prog.sessionDate) parts.push('Session date: ' + prog.sessionDate);
+    if (prog.status) parts.push('Status: ' + prog.status);
+    if (prog.mdcSprint) parts.push('MDC sprint: ' + prog.mdcSprint + ' week ' + (prog.mdcWeek || 1));
+
+    var n = prog.notes || {};
+    if (n.research) {
+      parts.push('\n─── RESEARCH BRIEF ───');
+      parts.push(n.research);
+    }
+    if (n.themes) parts.push('\nThemes: ' + n.themes);
+    if (n.leaks) parts.push('Money leaks: ' + n.leaks);
+    if (n.opps) parts.push('Opportunities: ' + n.opps);
+    if (n.patterns) parts.push('Patterns: ' + n.patterns);
+    if (n.private) parts.push('Private coach notes: ' + n.private);
+
+    // Session history — last 5 sessions with whatever's richest available
+    var sessions = Array.isArray(prog.sessionNotes) ? prog.sessionNotes : [];
+    if (sessions.length) {
+      parts.push('\n─── SESSION HISTORY (last 5) ───');
+      sessions.slice(-5).forEach(function(sn, i) {
+        var blk = '\nSession ' + (i + 1) + (sn.date ? ' (' + sn.date + ')' : '') + ':';
+        if (sn.title) blk += '\nTitle: ' + sn.title;
+        if (sn.zoomTopic) blk += '\nZoom topic: ' + sn.zoomTopic;
+        if (sn.aiSummary) blk += '\nAI summary: ' + sn.aiSummary;
+        else if (sn.notes) blk += '\nNotes: ' + sn.notes;
+        else if (sn.zoomTranscript) blk += '\nTranscript excerpt: ' + sn.zoomTranscript.slice(0, 1800);
+        if (sn.actionItems && sn.actionItems.length) {
+          blk += '\nAction items: ' + sn.actionItems.map(function(a){ return '- ' + (typeof a === 'string' ? a : (a.text||'')); }).join('\n');
+        }
+        parts.push(blk);
+      });
+    }
+
+    // Coach-written custom sections (deep workbook entries)
+    var customs = Array.isArray(prog.customSections) ? prog.customSections : [];
+    var nonEmpty = customs.filter(function(s) { return (s.title || '').trim() || (s.body || '').trim(); });
+    if (nonEmpty.length) {
+      parts.push('\n─── COACH WORKBOOK SECTIONS ───');
+      nonEmpty.slice(0, 8).forEach(function(sec) {
+        parts.push('• ' + (sec.title || 'Untitled') + ': ' + (sec.body || '').slice(0, 600));
+      });
+    }
+
+    // Current plan if one exists
+    if (Array.isArray(prog.plan) && prog.plan.length) {
+      parts.push('\n─── CURRENT 90-DAY PLAN ───');
+      prog.plan.forEach(function(m) {
+        if (m && Array.isArray(m.tasks)) {
+          parts.push('Month ' + (m.month || '?') + (m.label ? ' (' + m.label + ')' : '') + ':');
+          m.tasks.forEach(function(t) { parts.push('  • ' + (typeof t === 'string' ? t : (t.text || ''))); });
+        }
+      });
+    }
+  }
+
+  // ── Wins (across all programs) ──
+  var allWins = [];
+  if (Array.isArray(client.wins)) allWins = allWins.concat(client.wins);
+  (client.programs || []).forEach(function(p) {
+    if (Array.isArray(p.wins)) allWins = allWins.concat(p.wins);
+  });
+  // Newest first
+  allWins.sort(function(a, b) { return (b.at || '').localeCompare(a.at || ''); });
+  if (allWins.length) {
+    parts.push('\n═══ WINS LOGGED ═══');
+    allWins.slice(0, 10).forEach(function(w) {
+      var line = '• ' + (w.title || w.text || 'Win');
+      if (w.metric) line += ' (' + w.metric + ')';
+      if (w.before || w.after) line += ' — before: ' + (w.before || '?') + ', after: ' + (w.after || '?');
+      if (w.at) line += ' @ ' + w.at.slice(0, 10);
+      parts.push(line);
+    });
+  }
+
+  // ── Recent moods (last 7) ──
+  if (Array.isArray(client.moodLog) && client.moodLog.length) {
+    parts.push('\n═══ RECENT MOODS (last 7) ═══');
+    client.moodLog.slice(-7).forEach(function(m) {
+      parts.push((m.date || '') + ': ' + (m.mood || '?') + (m.note ? ' — ' + m.note : ''));
+    });
+  }
+
+  // ── Recently completed tasks (signal of action / momentum) ──
+  var done = (client.tasks || []).filter(function(t) { return t && t.completed; });
+  if (done.length) {
+    parts.push('\n═══ RECENTLY COMPLETED TASKS ═══');
+    done.slice(-5).forEach(function(t) { parts.push('✓ ' + (t.text || '')); });
+  }
+
+  // ── Daily commits if logged today/recently ──
+  if (client.dailyCommits && typeof client.dailyCommits === 'object') {
+    var commitDates = Object.keys(client.dailyCommits).sort().slice(-5);
+    if (commitDates.length) {
+      parts.push('\n═══ DAILY COMMITMENTS (last 5 days) ═══');
+      commitDates.forEach(function(d) {
+        parts.push(d + ': ' + (client.dailyCommits[d] || ''));
+      });
+    }
+  }
+
+  var joined = parts.join('\n');
+  if (joined.length > maxChars) {
+    // Truncate the research brief / transcripts first since they're the
+    // biggest chunks, rather than dropping the tail (loses recency).
+    joined = joined.slice(0, maxChars) + '\n\n... (context truncated to ' + maxChars + ' chars to stay within token limits)';
+  }
+  return joined;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// v11739 — auto-grow textareas everywhere Phoebe writes
+// Phoebe asked: "For all sections phoebe writes in, make the text box
+// able to expand." Attaches a global input listener; any textarea
+// that doesn't opt out via data-no-auto-grow grows with content.
+// Hard ceiling of 800px so the page doesn't run away.
+// ────────────────────────────────────────────────────────────────────
+function _autoGrowTextarea(el) {
+  if (!el || el.tagName !== 'TEXTAREA' || el.dataset.noAutoGrow) return;
+  el.style.height = 'auto';
+  var h = Math.min(el.scrollHeight + 4, 800);
+  // Respect a configured min-height if larger than scrollHeight
+  var min = parseInt(getComputedStyle(el).minHeight, 10) || 0;
+  if (h < min) h = min;
+  el.style.height = h + 'px';
+  el.style.overflowY = (el.scrollHeight > 800) ? 'auto' : 'hidden';
+}
+(function setupAutoGrowTextareas() {
+  if (window._autoGrowWired) return;
+  window._autoGrowWired = true;
+  document.addEventListener('input', function(e) {
+    if (e.target && e.target.tagName === 'TEXTAREA') _autoGrowTextarea(e.target);
+  });
+  // Also size on focus + on first render (catch programmatically set values)
+  document.addEventListener('focusin', function(e) {
+    if (e.target && e.target.tagName === 'TEXTAREA') _autoGrowTextarea(e.target);
+  });
+  // Periodic catch-all for textareas that get content programmatically
+  // (e.g. the inline transcript area populated by fetchZoomTranscript).
+  setInterval(function() {
+    document.querySelectorAll('textarea').forEach(function(el) {
+      if (el.dataset.noAutoGrow) return;
+      if (el.offsetHeight && el.scrollHeight > el.offsetHeight + 4) _autoGrowTextarea(el);
+    });
+  }, 1500);
+})();
+
+
 // v11700: today's-date helper that uses LOCAL date components instead of
 // `toISOString().split('T')[0]` (which converts to UTC and pushes "today"
 // back a day for clients in AEST/+10/+11 zones, so yesterday's "today"
@@ -7174,11 +7375,15 @@ function _transcriptLooksLikeCode(s) {
 }
 
 // ========== INLINE PLAN BUILDER ==========
+// v11739: TWO-STEP plan builder.
+//   Step 1: AI examines all client data + session notes, returns 3
+//           clarifying questions for Phoebe to answer.
+//   Step 2: AI builds the plan using full context + Phoebe's answers.
+// Phoebe asked: "Any AI generated sections, we should be asked
+// questions to answer to better help claude to curate plans."
 async function buildPlanInline() {
   var notes = document.getElementById('inline-zoom-notes').value.trim();
   if (!notes) { branded.alert('Paste your Zoom notes first'); return; }
-  // v11738: catch garbage input (JS, HTML) before sending to AI — saves
-  // a token spend and avoids the AI refusal response Phoebe saw earlier.
   if (typeof _transcriptLooksLikeCode === 'function' && _transcriptLooksLikeCode(notes)) {
     var ok = await branded.confirm(
       'The text you\'ve pasted looks like code or page source, not session speech. The plan generator probably can\'t work with this. Continue anyway?',
@@ -7188,35 +7393,173 @@ async function buildPlanInline() {
   }
   var client = clients.find(function(c) { return c.id === currentClientId; });
   var prog   = client ? (client.programs||[]).find(function(p) { return p.id === currentProgramId; }) : null;
-  var clientName = client ? client.name : 'Client';
+  if (!client || !prog) return;
+  var btn = document.getElementById('inline-plan-btn');
+  var status = document.getElementById('inline-plan-status');
+  var outputEl = document.getElementById('inline-plan-output');
+
+  // Step 1 — ask AI for 3 clarifying questions based on ALL we know
+  btn.disabled = true; btn.textContent = '✦ Thinking…';
+  status.textContent = 'Reading the client profile, intake, brief, history…';
+  outputEl.classList.add('show');
+  outputEl.textContent = '';
+
+  var fullContext = gatherFullClientContext(client, prog, { maxChars: 10000 });
+  var qPrompt = phoebeVoice(
+    'You are about to build a 90-day plan for one of Phoebe\'s coaching clients. Before generating, you want to ask Phoebe up to 3 short clarifying questions that will materially change the plan — gaps in what you know, choices between two valid directions, or context that the data doesn\'t reveal.\n\n' +
+    '──── EVERYTHING WE KNOW ABOUT THIS CLIENT ────\n' + fullContext + '\n──── END ────\n\n' +
+    '──── TODAY\'S SESSION NOTES / TRANSCRIPT ────\n' + notes + '\n──── END ────\n\n' +
+    'Return ONLY valid JSON in this exact shape — no preamble:\n' +
+    '{"questions":[{"q":"...","why":"..."},{"q":"...","why":"..."},{"q":"...","why":"..."}]}\n\n' +
+    'Each "q" is the question itself, max 25 words, in Phoebe\'s direct voice. Each "why" is a one-line reason it would change the plan. Three questions only.'
+  );
+
+  var questions = [];
+  try {
+    var qResp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
+      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:800, messages:[{role:'user',content:qPrompt}] })
+    });
+    if (!qResp.ok) throw new Error('AI ' + qResp.status);
+    var qData = await qResp.json();
+    var qText = (qData.content && qData.content[0] && qData.content[0].text) || '';
+    qText = qText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+    var qMatch = qText.match(/\{[\s\S]*\}/);
+    if (qMatch) {
+      var parsed = JSON.parse(qMatch[0]);
+      questions = (parsed.questions || []).slice(0, 3);
+    }
+  } catch (err) {
+    console.warn('[buildPlanInline] question step failed, proceeding without:', err);
+  }
+
+  // Step 2 — render questions inline with answer textareas
+  if (questions.length) {
+    var html =
+      '<div style="background:#FFFDF7;border:1px solid var(--rule);border-radius:14px;padding:18px;margin-top:8px">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-family:var(--f-head);font-size:16px;color:var(--ink);font-weight:800">✦ Quick questions to make this plan better</div>' +
+        '<div style="font-size:12px;color:var(--ink-soft);margin-bottom:14px">Three things Claude wants to know before drafting. Answer as much or as little as you like — anything you skip, Claude works with what\'s in the file.</div>' +
+        questions.map(function(q, i) {
+          return '<div style="margin-bottom:12px">' +
+            '<label style="display:block;font-size:13px;color:var(--ink);font-weight:700;margin-bottom:4px">' + (i+1) + '. ' + escapeHtml(q.q || '') + '</label>' +
+            (q.why ? '<div style="font-size:11px;color:var(--ink-faded);margin-bottom:6px;font-style:italic">' + escapeHtml(q.why) + '</div>' : '') +
+            '<textarea id="plan-q-' + i + '" rows="2" style="width:100%;border:1px solid var(--rule);border-radius:10px;padding:8px 10px;font-family:var(--f-body);font-size:14px;color:var(--ink);background:white;outline:none;resize:vertical;line-height:1.5"></textarea>' +
+          '</div>';
+        }).join('') +
+        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+          '<button class="btn-sm primary" onclick="_buildPlanWithAnswers()">⚡ Build the plan with my answers</button>' +
+          '<button class="btn-sm" onclick="_buildPlanSkipAnswers()">Skip · build with what you have</button>' +
+        '</div>' +
+      '</div>';
+    outputEl.innerHTML = html;
+    // Stash for later
+    window._pendingPlanQuestions = questions;
+    window._pendingPlanContext = fullContext;
+    window._pendingPlanNotes = notes;
+    window._pendingPlanClientId = client.id;
+    window._pendingPlanProgId = prog.id;
+    btn.disabled = false; btn.textContent = '⚡ Generate plan';
+    status.textContent = 'Answer the questions, then click Build the plan.';
+    return;
+  }
+
+  // No questions (AI failed) → fall through to direct generation
+  _buildPlanWithAnswers(true);
+}
+
+async function _buildPlanWithAnswers(skip) {
+  var clientId = window._pendingPlanClientId;
+  var progId   = window._pendingPlanProgId;
+  var notes    = window._pendingPlanNotes || '';
+  var fullContext = window._pendingPlanContext || '';
+  var questions = window._pendingPlanQuestions || [];
+  var client = clients.find(function(c) { return c.id === clientId; });
+  var prog   = client ? (client.programs||[]).find(function(p) { return p.id === progId; }) : null;
+  if (!client || !prog) {
+    // Fresh entry path — re-resolve from current selection
+    client = clients.find(function(c) { return c.id === currentClientId; });
+    prog   = client ? (client.programs||[]).find(function(p) { return p.id === currentProgramId; }) : null;
+    if (!fullContext && client && prog) fullContext = gatherFullClientContext(client, prog, { maxChars: 10000 });
+    if (!notes) notes = (document.getElementById('inline-zoom-notes') || {}).value || '';
+  }
+  if (!client || !prog) return;
   var btn = document.getElementById('inline-plan-btn');
   var status = document.getElementById('inline-plan-status');
   var outputEl = document.getElementById('inline-plan-output');
   btn.disabled = true; btn.textContent = '⏳ Building…';
-  outputEl.classList.add('show'); outputEl.textContent = 'Generating plan…';
-  var prompt = 'You are helping Phoebe Blamey build a 90-day action plan for coaching client ' + clientName + '.\n\nSESSION NOTES:\n' + notes + '\n\nCreate a 90-Day Business Breakthrough plan. Return ONLY valid JSON, no other text:\n{"month1":{"label":"Foundation","tasks":["task1","task2","task3","task4"]},"month2":{"label":"Momentum","tasks":["task1","task2","task3","task4"]},"month3":{"label":"Breakthrough","tasks":["task1","task2","task3","task4"]}}\n\nMake tasks specific, actionable, tailored to what came up in the session.';
+  status.textContent = 'Building your plan with everything we know…';
+
+  // Collect Phoebe's answers
+  var answers = [];
+  if (!skip) {
+    questions.forEach(function(q, i) {
+      var el = document.getElementById('plan-q-' + i);
+      var a = el ? (el.value || '').trim() : '';
+      if (a) answers.push({ q: q.q, a: a });
+    });
+  }
+  var answersBlock = answers.length
+    ? ('\n──── PHOEBE\'S ANSWERS TO YOUR QUESTIONS ────\n' +
+       answers.map(function(x) { return 'Q: ' + x.q + '\nA: ' + x.a; }).join('\n\n') +
+       '\n──── END ANSWERS ────\n')
+    : '';
+
+  var prompt = phoebeVoice(
+    'Build a 90-day plan for ' + (client.name || 'this client') + ' using EVERYTHING below — the profile, intake, research brief, session history, wins, and today\'s session notes. Phoebe\'s answers (if any) weight your choices.\n\n' +
+    '──── FULL CLIENT CONTEXT ────\n' + fullContext + '\n──── END CONTEXT ────\n\n' +
+    '──── TODAY\'S SESSION NOTES / TRANSCRIPT ────\n' + notes + '\n──── END NOTES ────\n' +
+    answersBlock + '\n' +
+    'Create a 90-Day Business Breakthrough plan. Return ONLY valid JSON, no other text:\n' +
+    '{"month1":{"label":"Foundation","tasks":["task1","task2","task3","task4"]},"month2":{"label":"Momentum","tasks":["task1","task2","task3","task4"]},"month3":{"label":"Breakthrough","tasks":["task1","task2","task3","task4"]}}\n\n' +
+    'Tasks must be specific, actionable, in Phoebe\'s voice, tailored to what came up. Reference patterns from the intake or research brief where useful. No generic coaching tasks.'
+  );
+
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
-      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:800, messages:[{role:'user',content:prompt}] })
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1400, messages:[{role:'user',content:prompt}] })
     });
     var data = await resp.json();
-    var text = (data.content&&data.content[0]&&data.content[0].text)||'';
+    var text = (data.content && data.content[0] && data.content[0].text) || '';
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
     var match = text.match(/\{[\s\S]*\}/);
-    if (match && prog) {
+    if (match) {
       var plan = JSON.parse(match[0]);
-      prog.plan = [{month:1,tasks:plan.month1.tasks},{month:2,tasks:plan.month2.tasks},{month:3,tasks:plan.month3.tasks}];
+      prog.plan = [
+        { month:1, label: plan.month1.label || 'Foundation', tasks: plan.month1.tasks || [] },
+        { month:2, label: plan.month2.label || 'Momentum',   tasks: plan.month2.tasks || [] },
+        { month:3, label: plan.month3.label || 'Breakthrough', tasks: plan.month3.tasks || [] },
+      ];
       prog.taskDone = {};
+      prog.planMeta = {
+        generatedAt: new Date().toISOString(),
+        usedFullContext: true,
+        answeredQuestions: answers,
+      };
       await persistClient(client);
       renderPlanGrid(prog.plan, {}, 'plan-grid', false);
+      outputEl.innerHTML = '';
       outputEl.classList.remove('show');
-      status.textContent = '✓ Plan created and saved!';
-      document.getElementById('inline-zoom-notes').value = '';
-      logActivity('ai-plan', 'AI plan generated for ' + clientName, { clientId: client.id, clientName: clientName, progId: prog.id, detail: 'From Zoom transcript · 3 months · ' + (prog.plan.reduce(function(t,m){return t+(m.tasks||[]).length;},0)) + ' tasks' });
-      setTimeout(function() { status.textContent=''; toggleBuilder(); }, 2000);
-    } else { outputEl.textContent = text; status.textContent = 'Review above'; }
-  } catch(e) { outputEl.textContent = 'Error: ' + e.message; }
+      status.textContent = '✓ Plan created using full client context!';
+      var note = document.getElementById('inline-zoom-notes'); if (note) note.value = '';
+      window._pendingPlanQuestions = null;
+      window._pendingPlanContext = null;
+      window._pendingPlanNotes = null;
+      logActivity('ai-plan', 'AI plan generated for ' + (client.name || ''), { clientId: client.id, clientName: client.name, progId: prog.id, detail: 'Full context · ' + answers.length + ' answered questions · ' + (prog.plan.reduce(function(t,m){return t+(m.tasks||[]).length;},0)) + ' tasks' });
+      setTimeout(function() { status.textContent=''; toggleBuilder(); }, 2500);
+    } else {
+      outputEl.innerHTML = '<pre style="white-space:pre-wrap;font-size:13px;color:var(--ink)">' + escapeHtml(text) + '</pre>';
+      status.textContent = 'AI returned a non-JSON response — review above';
+    }
+  } catch(e) {
+    outputEl.textContent = 'Error: ' + e.message;
+    status.textContent = '⚠ Build failed';
+  }
   btn.disabled = false; btn.textContent = '⚡ Generate plan';
+}
+
+async function _buildPlanSkipAnswers() {
+  return _buildPlanWithAnswers(true);
 }
 
 // ========== MDC WORKBOOK ==========
@@ -13267,30 +13610,13 @@ async function aiDraftClientEmail() {
   );
   if (!intent || !intent.trim()) return;
   if (statusEl) statusEl.textContent = 'Drafting…';
-  // Build a tight context block — programme name, status, last session,
-  // the 3 most recent wins, and the most recent coach note title (if any).
+  // v11739: use the full client context utility — intake answers,
+  // research brief, full session history, wins, moods, completed
+  // tasks. Cap at 8k chars so the email-draft prompt stays compact.
   var prog = (client.programs || []).find(function(p){ return p && !p.locked && p.status !== 'complete'; }) || (client.programs || [])[0] || null;
-  var ctxLines = [];
-  ctxLines.push('Client: ' + (client.name || '') + (client.biz ? ' (' + client.biz + ')' : ''));
-  if (prog) {
-    var progLabel = (typeof PROGRAMS !== 'undefined' && PROGRAMS[prog.program]) ? (PROGRAMS[prog.program].label || prog.program) : (prog.label || prog.program || '');
-    ctxLines.push('Programme: ' + progLabel + (prog.sessionDate ? ' · started ' + prog.sessionDate : ''));
-  }
-  var allWins = (client.wins || []).concat(...(client.programs || []).map(function(p) { return p.wins || []; }));
-  if (allWins.length) {
-    ctxLines.push('Recent wins:');
-    allWins.slice(0, 3).forEach(function(w) {
-      if (!w) return;
-      ctxLines.push('  · ' + (w.title || '(no title)') + (w.metric ? ' · ' + w.metric : '') + (w.after ? ' → ' + w.after : ''));
-    });
-  }
-  // Last coach note title (if any) — gives Claude a thread to pick up
-  var notes = (prog && prog.sessionNotes) || [];
-  if (notes.length) {
-    var lastNote = notes[notes.length - 1];
-    if (lastNote && lastNote.title) ctxLines.push('Last session: ' + lastNote.title + (lastNote.date ? ' · ' + lastNote.date : ''));
-  }
-  var contextBlock = ctxLines.join('\n');
+  var contextBlock = (typeof gatherFullClientContext === 'function')
+    ? gatherFullClientContext(client, prog, { maxChars: 8000 })
+    : ('Client: ' + (client.name || '') + (client.biz ? ' (' + client.biz + ')' : ''));
   var prompt = phoebeVoice(
     'Draft an email from Phoebe Blamey to her client. Phoebe just told you what it\'s for — write it in her voice.\n\n' +
     'WHAT THIS EMAIL IS FOR:\n' + intent.trim() + '\n\n' +

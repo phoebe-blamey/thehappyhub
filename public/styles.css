@@ -4236,3 +4236,31 @@ body {
   line-height: 1.6 !important;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   v11739 — better default textarea sizing on the coach side
+   Phoebe writes a lot — bump every textarea's min-height so she
+   doesn't open with a cramped 60px box, and ensure overflow-y stays
+   sane while the auto-grow JS does its thing.
+   ════════════════════════════════════════════════════════════════════ */
+#coach-hub textarea,
+#client-hub .coach-only textarea,
+#branded-modal-body textarea {
+  min-height: 120px;
+  overflow-y: hidden;
+}
+/* Tighter for the small "log a comm" / message-body fields where 120
+   is overkill — let them grow as Phoebe types. */
+#coach-hub textarea[id="msg-body"],
+#coach-hub textarea[id="coach-note-input"] {
+  min-height: 140px !important;
+}
+/* The plan-builder note textarea wants more room out of the box */
+#inline-zoom-notes {
+  min-height: 260px !important;
+}
+/* The intake answer textareas — start at a comfortable size */
+.intake-q-answer {
+  min-height: 80px !important;
+}
+
+
