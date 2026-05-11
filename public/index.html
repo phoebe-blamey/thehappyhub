@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11736">
-<link rel="stylesheet" href="styles.css?v=11736">
+<link rel="preload" as="style" href="styles.css?v=11737">
+<link rel="stylesheet" href="styles.css?v=11737">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11736 — final polish + sweep. (1) Titles render in sentence case (text-transform: lowercase + ::first-letter uppercase) so 'WHAT WE WANT TO DO' shows as 'What we want to do' — copy untouched. All headings locked to AllRoundGothic Bold. (2) READABILITY for 40-50+: body 15px / line-height 1.6, card padding 26px, tagline bumped to 16px, helper text to 13px ink-soft. (3) Login programme tags hidden — looked cluttered. (4) Note for Claude FAB removed entirely. (5) peabe.svg logo font chain leads with AllRoundGothic. (6) Defensive overrides for any lingering color:white inline styles inside the new mint hero. (7) Landing page rebuilt to match palette — cream bg, ink headings, sunshine Enter button. (8) Coach portal sidebar + page titles aligned with new palette. (9) Hot-pink signature underline retained on hero name. Cache v=11736.">
+<meta name="hmh-build" content="v11737 — community + coach polish. (1) Coach search button: was white-on-pink (invisible after the topbar palette flip); now ink-on-cream with rule border. (2) Cohort manager: community feed moved to TOP of the cohort manager view, right after the cohort picker. (3) Client portal community tab renamed to 'MDC Community Hub' (top nav, bottom tab, and section heading). (4) Shoutout composer: third step asks 'Send to WhatsApp group?' with default-on confirmation; if WhatsApp env vars configured, posts to /api/send-message immediately; otherwise feed entry saves with sendToWhatsApp:true + whatsappSent:false so it can be flushed later. (5) Empty-state copy updated to read 'Community Hub' throughout. v11736 — final polish + sweep. (1) Titles render in sentence case (text-transform: lowercase + ::first-letter uppercase) so 'WHAT WE WANT TO DO' shows as 'What we want to do' — copy untouched. All headings locked to AllRoundGothic Bold. (2) READABILITY for 40-50+: body 15px / line-height 1.6, card padding 26px, tagline bumped to 16px, helper text to 13px ink-soft. (3) Login programme tags hidden — looked cluttered. (4) Note for Claude FAB removed entirely. (5) peabe.svg logo font chain leads with AllRoundGothic. (6) Defensive overrides for any lingering color:white inline styles inside the new mint hero. (7) Landing page rebuilt to match palette — cream bg, ink headings, sunshine Enter button. (8) Coach portal sidebar + page titles aligned with new palette. (9) Hot-pink signature underline retained on hero name. Cache v=11736.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -114,7 +114,7 @@
     </a>
     <span class="topbar-badge badge-coach topbar-tap" onclick="goHomeFromTopbar()" style="cursor:pointer" title="Home">Coach</span>
     <span class="topbar-date" id="coach-topbar-date" style="font-size:11px;color:rgba(255,255,255,0.75);font-weight:500;letter-spacing:0.01em;margin-left:4px" title="Today"></span>
-    <button id="coach-search-trigger" onclick="openCoachSearch()" title="Search clients, tasks, settings (⌘K / Ctrl+K)" style="margin-left:auto;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.95);border:1px solid rgba(255,255,255,0.25);font-size:12px;padding:5px 12px 5px 10px;border-radius:99px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--f-body)">
+    <button id="coach-search-trigger" onclick="openCoachSearch()" title="Search clients, tasks, settings (⌘K / Ctrl+K)" style="margin-left:auto;background:rgba(92,61,41,0.06);color:var(--ink);border:1px solid var(--rule);font-size:13px;padding:7px 14px 7px 12px;border-radius:99px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--f-body);font-weight:600">
       🔎 <span class="search-trigger-label">Search</span> <span style="opacity:0.7;font-size:10px;border:1px solid rgba(255,255,255,0.3);padding:1px 5px;border-radius:4px;margin-left:2px" class="search-trigger-shortcut">⌘K</span>
     </button>
     <span id="save-status-pill" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity 0.25s;background:rgba(255,255,255,0.16);color:rgba(255,255,255,0.9)" title="Save status — saves happen automatically as you type"></span>
@@ -1231,7 +1231,7 @@
       <button class="client-tab"        data-ctab="todos"    onclick="switchClientTab('todos')"    style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">✅ My to-dos <span id="client-tab-todos-count" style="display:none;font-size:10px;font-weight:700;background:var(--hot-pink);color:white;padding:1px 7px;border-radius:99px;line-height:1.4"></span></button>
       <!-- v11550: Community tab — only shown when client has an MDC program with a cohort.
            updateClientCommunityTabVisibility() un-hides this on portal load for cohort members. -->
-      <button class="client-tab" id="client-tab-community" data-ctab="community" onclick="switchClientTab('community')" style="display:none;padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;align-items:center;gap:6px">🌟 <span id="client-tab-community-label">Community</span></button>
+      <button class="client-tab" id="client-tab-community" data-ctab="community" onclick="switchClientTab('community')" style="display:none;padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;align-items:center;gap:6px">🌟 <span id="client-tab-community-label">MDC Community Hub</span></button>
       <button class="client-tab"        data-ctab="settings" onclick="switchClientTab('settings')" style="padding:14px 18px;border:none;background:none;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--stone);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;margin-left:auto">⚙️ Settings</button>
     </div>
     <!-- Sub-nav for the Programs tab — list of all programs the client is in -->
@@ -1268,7 +1268,7 @@
       <button data-ctab="programs" onclick="switchClientTab('programs')" aria-label="My Programs"><span class="bt-icon">📚</span><span>Programs</span></button>
       <button data-ctab="todos"    onclick="switchClientTab('todos')"    aria-label="My to-dos"><span class="bt-icon">✅</span><span>To-dos</span><span class="bt-badge" id="bt-todos-badge" style="display:none"></span></button>
       <!-- v11550: Community bottom-tab — mirrors the top-nav button. Hidden by default; shown for MDC cohort members only. -->
-      <button data-ctab="community" id="bt-community" onclick="switchClientTab('community')" aria-label="Community" style="display:none"><span class="bt-icon">🌟</span><span>Community</span></button>
+      <button data-ctab="community" id="bt-community" onclick="switchClientTab('community')" aria-label="MDC Community Hub" style="display:none"><span class="bt-icon">🌟</span><span>Community</span></button>
       <button data-ctab="settings" onclick="switchClientTab('settings')" aria-label="Settings"><span class="bt-icon">⚙️</span><span>Settings</span></button>
       <!-- v11210: More overflow — opens a sheet with secondary actions
            (achievements, help, theme toggle, sign out). Elodie's review §11. -->
@@ -19361,8 +19361,12 @@ function renderCohortCard(co) {
   // v11370 stub: community feed placeholder — will become full feed in subsequent batch
   var feedHtml = renderCohortFeed(co, members);
 
+  // v11737: community feed moved to the TOP of the cohort manager
+  // (right after the cohort picker header). Phoebe asked: "MDC
+  // community feed should be Section at top of cohort manager."
   return '<div style="background:white;border:1.5px solid var(--border);border-radius:14px;padding:16px 18px">' +
     head +
+    feedHtml +
     detailFields +
     goalBanner + goalEmptyCta +
     progressOverview +
@@ -19370,7 +19374,6 @@ function renderCohortCard(co) {
     insightsPanel +
     '<div style="margin-top:18px;font-size:11px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Members · ' + members.length + '</div>' +
     memberGrid + memberActions +
-    feedHtml +
     notifsHtml +
     notesBlock +
     '</div>';
@@ -19755,14 +19758,12 @@ function updateClientCommunityTabVisibility(client) {
   var btmBtn = document.getElementById('bt-community');
   if (topBtn) topBtn.style.display = hasCohort ? 'flex' : 'none';
   if (btmBtn) btmBtn.style.display = hasCohort ? '' : 'none';
-  // Label the tab with the cohort name when there's exactly one
+  // v11737: tab label always reads "MDC Community Hub" so the client
+  // identifies it as the Million Dollar Conspiracy Community Hub
+  // regardless of which round they're in. Phoebe's rename request.
   if (hasCohort) {
-    var cos = _clientCohorts(client);
     var label = document.getElementById('client-tab-community-label');
-    if (label) {
-      if (cos.length === 1 && cos[0].name) label.textContent = cos[0].name;
-      else label.textContent = 'Community';
-    }
+    if (label) label.textContent = 'MDC Community Hub';
   }
 }
 
@@ -19777,8 +19778,8 @@ function renderClientCommunityTab(client) {
   if (!_clientHasCohort(client)) {
     area.innerHTML =
       '<div class="client-section">' +
-        '<h3>🌟 Community</h3>' +
-        '<div style="font-size:13px;color:var(--magenta);line-height:1.6">The Community space is for Million Dollar Conspiracy Sprint members. You\'ll see your cohort\'s feed here once you join one.</div>' +
+        '<h3>🌟 Million Dollar Conspiracy Community Hub</h3>' +
+        '<div style="font-size:13px;color:var(--magenta);line-height:1.6">The Community Hub is for Million Dollar Conspiracy Sprint members. You\'ll see your cohort\'s feed here once you join one.</div>' +
       '</div>';
     return;
   }
@@ -19831,10 +19832,9 @@ function renderClientCommunityTab(client) {
   area.innerHTML =
     '<div class="client-section">' +
       '<h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-        '<span>🌟 Your community</span>' +
-        '<span style="font-size:11px;color:var(--stone);font-weight:500">· ' + cos.length + ' cohort' + (cos.length === 1 ? '' : 's') + '</span>' +
+        '<span>🌟 Million Dollar Conspiracy Community Hub</span>' +
       '</h3>' +
-      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">Hey ' + escapeHtml(firstName) + ' — this is private to your cohort. Wins, shoutouts and session highlights all land here. Add a shoutout when someone\'s done something brilliant. 👇</p>' +
+      '<p style="font-size:13px;color:var(--magenta);line-height:1.6;margin-bottom:14px">Hey ' + escapeHtml(firstName) + ' — this is private to your cohort. Wins, shoutouts, session highlights, resources from Phoebe, and your WhatsApp group — all in one place. Add a shoutout when someone\'s done something brilliant. 👇</p>' +
       quickLinksHtml +
     '</div>' +
     sections;
@@ -20809,24 +20809,64 @@ async function openShoutoutComposer(cohortId) {
   }
   var promptHeader = pickedName ? 'Shoutout for ' + pickedName + ' — write what they did:' : 'Write a shoutout to the cohort — celebrating someone, marking a win, sharing an insight.';
   var promptHint = pickedName ? 'e.g. just landed her first commercial brief 👏' : '';
-  var text = await branded.prompt(promptHeader, '', promptHint, { title: '👏 Shoutout', okLabel: 'Post' });
+  var text = await branded.prompt(promptHeader, '', promptHint, { title: '👏 Shoutout', okLabel: 'Next' });
   if (!text || !text.trim()) return;
+  // v11737: WhatsApp toggle. Default = on. Phoebe asked: "Cohort
+  // community feed to be sent to WhatsApp with new posts by default
+  // (can be turned off during writing)." If WhatsApp env vars
+  // aren't yet set, the feed entry still saves; the WhatsApp send
+  // step gets queued so it fires once the integration is wired up.
+  var sendToWhats = await branded.confirm(
+    'Also send this shoutout to the cohort\'s WhatsApp group? Recommended — keeps the conversation alive between sessions. Click Cancel to skip just this one.',
+    { title: '💬 Send to WhatsApp?', okLabel: 'Yes, send', cancelLabel: 'Just the feed' }
+  );
   // If a specific member was picked, the feed entry stores their id so
   // future renderers can prepend "🏆 [Name]:" or highlight their card.
   co.feedEntries = co.feedEntries || [];
   var displayText = pickedName ? (pickedName + ' — ' + text.trim()) : text.trim();
-  co.feedEntries.unshift({
+  var entry = {
     id: 'fe-' + Date.now(),
     kind: 'shoutout',
     text: displayText,
-    aboutClientId: pickedId || undefined, // who the shoutout is FOR (if anyone)
+    aboutClientId: pickedId || undefined,
     aboutClientName: pickedName || undefined,
     author: 'Phoebe',
     ts: new Date().toISOString(),
     reactions: {},
-  });
+    sendToWhatsApp: !!sendToWhats,
+    whatsappSent: false,
+  };
+  co.feedEntries.unshift(entry);
   _saveCohorts();
-  branded.success(pickedName ? ('Shoutout posted for ' + pickedName) : 'Shouted out to the cohort');
+  if (sendToWhats) {
+    try {
+      var waPayload = {
+        type: 'whatsapp',
+        cohortId: co.id,
+        cohortName: co.name || 'Cohort',
+        whatsappGroup: co.whatsapp || '',
+        body: '🌟 *Shoutout from Phoebe*\n\n' + displayText + '\n\nPhoebe x',
+      };
+      var resp = await fetch('/api/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(waPayload),
+      });
+      if (resp.ok) {
+        entry.whatsappSent = true;
+        _saveCohorts();
+      } else {
+        // Soft fail — feed entry still saved; flag for retry
+        console.warn('[whatsapp] send returned', resp.status, '— feed entry saved, queued for retry once WhatsApp env vars are configured');
+      }
+    } catch (err) {
+      console.warn('[whatsapp] send failed', err);
+    }
+  }
+  var successMsg = pickedName ? ('Shoutout posted for ' + pickedName) : 'Shouted out to the cohort';
+  if (sendToWhats && !entry.whatsappSent) successMsg += ' · WhatsApp queued (set up env vars to enable)';
+  else if (sendToWhats) successMsg += ' · sent to WhatsApp 💬';
+  branded.success(successMsg);
   if (typeof renderCohortManager === 'function') renderCohortManager();
 }
 
