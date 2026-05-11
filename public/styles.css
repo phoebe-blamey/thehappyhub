@@ -1160,6 +1160,126 @@ body[data-live-sync="synced"] .topbar-date::after {
   color: #5A4632 !important;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   v11728 — Phoebe's full design audit (round 2)
+   Issues she flagged:
+     1. "MY HUB" topbar badge — text invisible
+     2. 🔔 bell + ⚙️ settings + "How's today?" rail — blurring into bg
+     3. "+3" badge label inside the "+3 more" medallion — white on pink
+     4. "+ Add my why" placeholder text — still inheriting white
+     5. Tab strip — wave divider above it makes it look two-tone;
+        wants single very-light-pink fill
+     6. Section cards — pink-on-pink doesn't show. Move to a
+        BLUE / YELLOW / WHITE palette (cream + teal + white tints)
+        — pink page bg, white-or-warm cards, occasional teal accent.
+   Strategic direction: pink stays as the BRAND VOICE (hero, headings,
+   CTAs); cards use neutral/cool tones so brand pink reads as the
+   accent, not the background.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* (1) MY HUB badge — solid hot-pink pill with WHITE text */
+#client-hub .topbar .topbar-badge,
+#client-hub .topbar .badge-client {
+  background: var(--hot-pink) !important;
+  color: white !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  padding: 5px 14px !important;
+  box-shadow: 0 2px 8px rgba(229,4,139,0.22);
+}
+
+/* (2) Topbar icons + Sign out get matching hot-pink fills so they pop */
+#client-hub .topbar .topbar-action-btn {
+  background: var(--hot-pink) !important;
+  border: 1px solid var(--hot-pink) !important;
+  color: white !important;
+  box-shadow: 0 2px 8px rgba(229,4,139,0.22);
+}
+#client-hub .topbar .topbar-action-btn:hover {
+  background: var(--magenta) !important;
+  border-color: var(--magenta) !important;
+}
+/* Badge counter on the bell stays sunshine yellow */
+#client-hub #client-topbar-notif-badge {
+  background: var(--sunshine) !important;
+  color: var(--magenta) !important;
+}
+/* Date next to logo — was barely visible. Force magenta + bold. */
+#client-hub .topbar .topbar-date,
+#client-hub .topbar #client-topbar-date {
+  color: var(--magenta) !important;
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+
+/* "How's today?" mood rail — needs to read on the pink topbar. White
+   pill with magenta text + subtle shadow so the emojis pop. */
+#client-hub .client-hero-mood-corner {
+  background: rgba(255,255,255,0.85) !important;
+  border-radius: 99px;
+  padding: 6px 12px !important;
+  box-shadow: 0 2px 10px rgba(229,4,139,0.10);
+}
+#client-hub .hero-mood-pill,
+#client-hub .client-hero-mood-corner * {
+  color: var(--magenta) !important;
+}
+
+/* (3) "+3 more" medallion — dark text not white */
+#client-hub .hero-medallion-orb-more {
+  background: rgba(255,255,255,0.65) !important;
+  border-color: rgba(229,4,139,0.30) !important;
+  color: var(--magenta) !important;
+  box-shadow: 0 2px 6px rgba(229,4,139,0.12) !important;
+}
+
+/* (4) Why-pin placeholder text — explicit magenta + bold so the
+   empty state is unmissable. */
+#client-hub #client-hero-why-text {
+  color: var(--magenta) !important;
+  opacity: 1 !important;
+  font-weight: 600 !important;
+}
+
+/* (5) Tab nav strip — single soft pink, no two-tone gradient.
+   The wave divider above already gives the visual break. */
+#client-hub .client-tabs {
+  background: #FCE5EE !important;
+  border-bottom: 1px solid rgba(229,4,139,0.10) !important;
+}
+
+/* (6) SECTION CARDS — palette flip from pink/teal/cream cycle to a
+   clean BLUE / YELLOW / WHITE rotation. Pink stays as page background,
+   cards now read as the contrast/structure. */
+#client-summary-area .client-section:nth-of-type(4n+1),
+#client-content-area .client-section:nth-of-type(4n+1),
+#client-settings-area .client-section:nth-of-type(4n+1) {
+  background: #FFFFFF !important;
+}
+#client-summary-area .client-section:nth-of-type(4n+2),
+#client-content-area .client-section:nth-of-type(4n+2),
+#client-settings-area .client-section:nth-of-type(4n+2) {
+  background: #FFFBE8 !important; /* soft cream/yellow tint */
+}
+#client-summary-area .client-section:nth-of-type(4n+3),
+#client-content-area .client-section:nth-of-type(4n+3),
+#client-settings-area .client-section:nth-of-type(4n+3) {
+  background: #FFFFFF !important;
+}
+#client-summary-area .client-section:nth-of-type(4n+4),
+#client-content-area .client-section:nth-of-type(4n+4),
+#client-settings-area .client-section:nth-of-type(4n+4) {
+  background: #E8F2F4 !important; /* soft teal/blue tint */
+}
+/* Section card shadow gets a touch more elevation so cards visibly
+   sit ABOVE the pink page background. */
+#client-summary-area .client-section,
+#client-content-area .client-section,
+#client-settings-area .client-section {
+  box-shadow: 0 2px 4px rgba(229,4,139,0.04), 0 8px 24px rgba(229,4,139,0.10) !important;
+}
+
+
 
 .progress-wrap { margin-top: 16px; }
 .progress-bar-bg { background: rgba(255,255,255,0.2); border-radius: 99px; height: 6px; margin-bottom: 6px; }
