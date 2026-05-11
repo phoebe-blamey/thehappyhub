@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11739">
-<link rel="stylesheet" href="styles.css?v=11739">
+<link rel="preload" as="style" href="styles.css?v=11740">
+<link rel="stylesheet" href="styles.css?v=11740">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11739 — every AI feature now uses the FULL client picture (intake + research brief + session history + Zoom transcripts + custom workbook + wins + moods + completed tasks). Plan builder is TWO-STEP: Claude reads everything, asks 3 specific clarifying questions, Phoebe answers, then the plan is built. Email draft upgraded to full context. Auto-grow textareas everywhere Phoebe writes. v11738: Zoom name-match + auth fixes.">
+<meta name="hmh-build" content="v11740 — when Zoom's text transcript isn't ready yet, fall back to transcribing the AUDIO recording via OpenAI Whisper (Phoebe asked 'when no transcript, use video'). Detects audio_only / M4A / MP3 recording files, downloads via Authorization Bearer, POSTs to /v1/audio/transcriptions with whisper-1 model, returns the text just like a Zoom transcript would. Requires OPENAI_API_KEY env var (≈$0.006/min). If env var not set, returns a clear error with the recording play URL so Phoebe can listen manually. 25MB Whisper limit is enforced — too-large files return a friendly error. v11739: full client context for all AI features + two-step plan builder + auto-grow textareas.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -7327,6 +7327,15 @@ async function fetchZoomTranscript() {
       if (Array.isArray(data.availableTopics) && data.availableTopics.length) {
         msg += '\n\nRecordings in the window:\n• ' + data.availableTopics.join('\n• ');
       }
+      // v11740: if the audio is available (no text transcript yet), show
+      // a quick play link to the Zoom recording so Phoebe can take notes
+      // manually while waiting. Also makes the Whisper-fallback hint
+      // visible.
+      if (data.audioAvailable && data.playUrl) {
+        msg += '\n\nOpen the recording: ' + data.playUrl;
+      } else if (data.playUrl) {
+        msg += '\n\nWatch the recording: ' + data.playUrl;
+      }
       notes.value = '';
       notes.placeholder = msg;
       status.textContent = '⚠ ' + (data.error||'Could not fetch');
@@ -7347,8 +7356,11 @@ async function fetchZoomTranscript() {
       var nameNote = data.nameMatched
         ? ('✓ Matched on name + date for ' + (data.clientName || client.name))
         : ('⚠ Closest by date — verify the transcript belongs to ' + (data.clientName || client.name));
-      status.textContent = '✓ Transcript pulled · ' + (data.characterCount || '?') + ' chars · ' + nameNote;
-      logActivity('transcript', 'Transcript pulled from Zoom for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (data.meetingTopic||'Session') + ' · ' + (data.characterCount||'?') + ' chars · matched=' + (data.nameMatched?'name':'date-only') });
+      var sourceNote = data.source === 'whisper-audio'
+        ? ' · 🎙 Transcribed from audio via Whisper'
+        : '';
+      status.textContent = '✓ Transcript pulled · ' + (data.characterCount || '?') + ' chars · ' + nameNote + sourceNote;
+      logActivity('transcript', 'Transcript pulled from Zoom for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (data.meetingTopic||'Session') + ' · ' + (data.characterCount||'?') + ' chars · matched=' + (data.nameMatched?'name':'date-only') + (data.source ? ' · source=' + data.source : '') });
       // v11738: do NOT auto-build the plan. Phoebe asked to be able
       // to review + edit the transcript text before generating. The
       // ⚡ Generate plan button is right below and clearly labelled.

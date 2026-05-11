@@ -174,12 +174,134 @@ export default async (req: Request) => {
     f.file_type === "TRANSCRIPT" || f.file_extension === "VTT" || f.recording_type === "audio_transcript"
   );
 
+  // v11740: when Zoom's text transcript isn't ready, Phoebe asked us
+  // to "use video" — i.e. transcribe the audio recording instead. Look
+  // for an audio_only / M4A file and run it through OpenAI Whisper if
+  // OPENAI_API_KEY is configured. Falls through to a clear error
+  // (with the recording play URL) if no audio + no API key.
   if (!transcriptFile) {
+    const audioFile = (meeting.recording_files || []).find((f: any) =>
+      f.recording_type === "audio_only" ||
+      f.file_type === "M4A" ||
+      f.file_extension === "M4A" ||
+      f.file_type === "MP3"
+    );
+    const playUrl = (meeting.recording_files || []).find((f: any) => f.play_url)?.play_url || meeting.share_url || null;
+
+    if (audioFile) {
+      const whisperKey = Netlify.env.get("OPENAI_API_KEY");
+      if (!whisperKey) {
+        return new Response(JSON.stringify({
+          error: "Transcript not ready yet — Zoom hasn't processed it",
+          meetingTopic: meeting.topic,
+          meetingDate: meeting.start_time,
+          audioAvailable: true,
+          playUrl,
+          hint: "Zoom transcripts usually take 5-15 minutes. The AUDIO recording IS ready — I can transcribe it directly via OpenAI Whisper, but that needs an OPENAI_API_KEY environment variable set in Netlify. Add one (≈$0.006/minute) and try again. In the meantime, open the recording in Zoom to listen/take notes manually.",
+        }), { status: 404 });
+      }
+
+      // ── Download Zoom audio → POST to Whisper ────────────────────────
+      try {
+        const audioResp = await fetch(audioFile.download_url, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          redirect: "follow",
+        });
+        if (!audioResp.ok) {
+          return new Response(JSON.stringify({
+            error: "Couldn't download audio from Zoom",
+            status: audioResp.status,
+            hint: "Check the cloud_recording:read:content:master scope in the Zoom Marketplace app.",
+          }), { status: 502 });
+        }
+        const audioBlob = await audioResp.blob();
+        const audioSize = audioBlob.size;
+        // Whisper has a 25 MB limit per file
+        if (audioSize > 25 * 1024 * 1024) {
+          return new Response(JSON.stringify({
+            error: `Audio file too large for Whisper (${(audioSize / 1024 / 1024).toFixed(1)}MB, limit is 25MB)`,
+            meetingTopic: meeting.topic,
+            playUrl,
+            hint: "Wait ~15 minutes for Zoom's text transcript to be ready (no size limit on that path), or shorten the recording.",
+          }), { status: 413 });
+        }
+
+        const fileExt = audioFile.file_extension?.toLowerCase() || "m4a";
+        const fileName = `zoom-${meeting.id || "recording"}.${fileExt}`;
+        const form = new FormData();
+        form.append("file", audioBlob, fileName);
+        form.append("model", "whisper-1");
+        form.append("response_format", "text");
+        form.append("language", "en");
+
+        const whisperResp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${whisperKey}` },
+          body: form,
+        });
+        if (!whisperResp.ok) {
+          const errText = await whisperResp.text().catch(() => "");
+          return new Response(JSON.stringify({
+            error: "Whisper transcription failed",
+            status: whisperResp.status,
+            details: errText.slice(0, 300),
+            hint: "Check that OPENAI_API_KEY has audio transcription access (it should by default).",
+          }), { status: 502 });
+        }
+        const transcribedText = (await whisperResp.text()).trim();
+        if (!transcribedText || transcribedText.length < 50) {
+          return new Response(JSON.stringify({
+            error: "Whisper returned an empty transcription",
+            length: transcribedText.length,
+          }), { status: 422 });
+        }
+
+        // Save + return
+        try {
+          const store = getStore("clients");
+          const clientRaw = await store.get(clientId);
+          if (clientRaw) {
+            const c = JSON.parse(clientRaw);
+            c.zoomTranscript = transcribedText;
+            c.zoomMeetingTopic = meeting.topic;
+            c.zoomMeetingDate = meeting.start_time;
+            c.zoomTranscriptFetchedAt = new Date().toISOString();
+            c.zoomTranscriptSource = "whisper-audio";
+            await store.set(clientId, JSON.stringify(c));
+          }
+        } catch (err) {
+          console.error("Failed to save Whisper transcript to blob:", err);
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          transcript: transcribedText,
+          source: "whisper-audio",
+          meetingTopic: meeting.topic,
+          meetingDate: meeting.start_time,
+          duration: meeting.duration,
+          characterCount: transcribedText.length,
+          nameMatched: nameMatchedFlag,
+          clientName,
+          note: "Transcribed via OpenAI Whisper from the audio recording (Zoom's text transcript wasn't ready). Quality is good but may miss accents / overlapping speech.",
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({
+          error: "Audio transcription failed: " + String(err),
+          hint: "Try again in 5-10 minutes for Zoom's own text transcript, or open the recording in Zoom to take notes manually.",
+        }), { status: 500 });
+      }
+    }
+
     return new Response(JSON.stringify({
       error: "Recording found but no transcript yet",
       meetingTopic: meeting.topic,
       meetingDate: meeting.start_time,
-      hint: "Zoom transcripts usually take 5-15 minutes to process after recording ends. Try again shortly. Also check Zoom Settings → Recording → Audio transcript is enabled."
+      playUrl,
+      hint: "Zoom transcripts usually take 5-15 minutes to process after recording ends. Try again shortly. Also check Zoom Settings → Recording → Audio transcript is enabled. If you want to transcribe the audio directly via Whisper, ensure audio_only recording is enabled in Zoom + OPENAI_API_KEY is set in Netlify."
     }), { status: 404 });
   }
 
