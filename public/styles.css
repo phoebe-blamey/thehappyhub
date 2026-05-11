@@ -2282,43 +2282,18 @@ body.workbook-design-view #help-fab { opacity: 0.4; }
   .hub-fade-up, .hub-fade-in, [class*="badge"], [class*="anim"] { animation: none !important; }
 }
 
-/* ── 3. Decorative hero accent — gentle sunshine blob in the top-right
-   corner of the client hero. CSS-only, scales with vw so it doesn't
-   distort. Adds personality without adding payload. ── */
-/* v11210: hero is now PURE brand pink (--magenta = #C2185B), no gradient.
-   Elodie's review flagged the desktop top bar / hero colour as not matching
-   the brand pack. Solid colour matches the topbar, the buttons, the tab
-   active state — all driven from the same token. */
+/* ── 3. Hero positioning + inner z-index for the wave dividers ──
+   v11210 had a "pure magenta hero" rule + radial-blob pseudo-elements
+   here. v11722 flipped the hero to soft pink with wave dividers as
+   ::before / ::after — but the v11210 background:!important and old
+   pseudo-elements LATER in the file were overriding v11722. Removed
+   the conflicting bits; kept only the positioning + the inner z-index
+   so the wave dividers sit behind the content. */
 #client-hub .client-hero {
   position: relative;
   overflow: hidden;
-  background: var(--magenta) !important;
 }
-#client-hub .client-hero::before {
-  content: '';
-  position: absolute;
-  top: -40%;
-  right: -10%;
-  width: 60vw;
-  max-width: 420px;
-  aspect-ratio: 1;
-  background: radial-gradient(circle at 50% 50%, rgba(240,163,199,0.30) 0%, rgba(240,163,199,0.10) 45%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
-}
-#client-hub .client-hero::after {
-  content: '';
-  position: absolute;
-  bottom: -50%;
-  left: -10%;
-  width: 50vw;
-  max-width: 320px;
-  aspect-ratio: 1;
-  background: radial-gradient(circle at 50% 50%, rgba(248,200,220,0.20) 0%, rgba(248,200,220,0.08) 40%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
-}
-#client-hub .client-hero-inner { position: relative; z-index: 1; }
+#client-hub .client-hero-inner { position: relative; z-index: 2; }
 
 /* ── 4. Loading skeleton — subtle gradient sweep used while client list /
    home feed are hydrating. Drop-in via .hub-skeleton class. ── */

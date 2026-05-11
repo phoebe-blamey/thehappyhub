@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11724">
-<link rel="stylesheet" href="styles.css?v=11724">
+<link rel="preload" as="style" href="styles.css?v=11725">
+<link rel="stylesheet" href="styles.css?v=11725">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11724 — input/textarea readability fix on the client portal. Typed answers in the My answers form were rendering in pink (hard to read against the cream textareas); labels above them were dark. Flipped: labels (.intake-q-question — the 'ABOUT YOU — WHAT…' headings) now read in brand magenta as accents; typed content inside textareas + text inputs reads in dark #222. Scoped to the three content panes only. Cache-bust bumped to v=11724. v11723: section visibility (no harsh lines). v11722: hero restyled to match website. v11721: body text → #222222. v11710-v11715: notification bell, AI email draft, rename + 3-tap-logo, race fix, batch items. READY FOR CLIENT TESTING.">
+<meta name="hmh-build" content="v11725 — two fixes. (1) THE REAL hero-magenta fix. A v11210 rule lower in styles.css forced background:var(--magenta)!important on the hero, overriding v11722's soft-pink swap (same specificity but later in the file = it won). Removed the conflicting rule + its radial-blob pseudo-elements (which were also clobbering v11722's wave dividers). Hero now actually renders soft pink with the wave dividers above + below. (2) TEST-CLIENT COMMENT SYSTEM: a pink '💬 Note for Phoebe' floating button bottom-left, visible ONLY for test clients (Elodie · ELOD99 or anyone with isTest:true). Click → modal with the current location pre-filled + a textarea. Submit pushes the note to Phoebe's coach-side activity feed AND saves locally so she can browse her own flags from the modal. Cache-bust v=11725.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -1247,6 +1247,18 @@
     <!-- v11550: Community tab content area — populated by renderClientCommunityTab(). -->
     <div class="client-content" id="client-community-area" style="display:none"></div>
     <div class="client-content" id="client-settings-area" style="display:none"></div>
+    <!-- v11725: Test-client comment FAB.
+         Only renders for clients tagged as test (Elodie · ELOD99).
+         Lets Phoebe leave a note while viewing the portal as the
+         client — the note gets logged to Phoebe's coach-side
+         activity feed AND stored locally so she can review later. -->
+    <button id="test-comment-fab" onclick="openTestCommentModal()"
+      style="display:none;position:fixed;bottom:24px;left:24px;z-index:9650;background:var(--hot-pink);color:white;border:none;border-radius:99px;padding:12px 20px;font-family:var(--f-body);font-size:14px;font-weight:600;box-shadow:0 6px 18px rgba(229,4,139,0.28);cursor:pointer;display:none;align-items:center;gap:8px"
+      title="Leave a note for Phoebe about anything on this page (visible to her only)">
+      <span style="font-size:16px">💬</span>
+      <span>Note for Phoebe</span>
+      <span id="test-comment-fab-count" style="display:none;background:var(--sunshine);color:var(--magenta);font-size:10px;font-weight:800;padding:1px 7px;border-radius:99px;line-height:1.4"></span>
+    </button>
     <!-- Bottom tab bar — phone-only via CSS media query. Drives the same
          switchClientTab function as the top tabs so state stays unified. -->
     <nav class="client-bottom-tabs" id="client-bottom-tabs" aria-label="Main navigation">
@@ -7791,6 +7803,8 @@ function loadClientPortal(client) {
   // v11714: client topbar notifications bell — persistent inbox of
   // everything Phoebe has shared. Badge shows unread count.
   if (typeof refreshClientNotifBadge === 'function') refreshClientNotifBadge();
+  // v11725: show/hide the test-client comment FAB (Phoebe-on-Elodie only)
+  if (typeof refreshTestCommentFab === 'function') refreshTestCommentFab();
 }
 
 // Detects activity Phoebe has added since the client's last visit and
@@ -8697,6 +8711,8 @@ function switchClientTab(which, opts) {
   if (which === 'settings')  renderClientSettings(client);
   // v11714: keep the notifications-bell badge fresh on every tab switch
   if (typeof refreshClientNotifBadge === 'function') refreshClientNotifBadge();
+  // v11725: keep the test-comment FAB visible across tab switches
+  if (typeof refreshTestCommentFab === 'function') refreshTestCommentFab();
   if (typeof sessionSet === 'function') {
     sessionSet(HMH_SESSION.PORTAL_TAB, which);
     sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
@@ -11868,6 +11884,137 @@ function _computeClientNotifs(client) {
   // Sort newest first; cap to 50 so the inbox stays calm
   items.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
   return items.slice(0, 50);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// v11725 — TEST-CLIENT COMMENT SYSTEM
+// Phoebe asked for a way to leave notes on any section of the client
+// portal while reviewing as her test client (Elodie · ELOD99). Notes
+// flow to her coach-side activity feed AND save locally so she can
+// scroll through what she's flagged.
+// Only renders for clients tagged as a test client (isTest === true)
+// or with clientAccess === 'ELOD99'.
+// ════════════════════════════════════════════════════════════════════
+function _isTestClient(client) {
+  if (!client) return false;
+  if (client.isTest === true) return true;
+  if ((client.clientAccess || '').toUpperCase() === 'ELOD99') return true;
+  return false;
+}
+
+function _testCommentsKey(client) {
+  return 'hmh_test_comments_' + ((client && client.clientAccess) || 'anon');
+}
+
+function _loadTestComments(client) {
+  try { return JSON.parse(localStorage.getItem(_testCommentsKey(client)) || '[]'); }
+  catch (e) { return []; }
+}
+
+function refreshTestCommentFab() {
+  var fab = document.getElementById('test-comment-fab');
+  if (!fab) return;
+  var client = (clients || []).find(function(c){ return c.id === currentClientId; });
+  if (!_isTestClient(client)) { fab.style.display = 'none'; return; }
+  fab.style.display = 'flex';
+  var comments = _loadTestComments(client);
+  var badge = document.getElementById('test-comment-fab-count');
+  if (badge) {
+    if (comments.length) {
+      badge.textContent = String(comments.length);
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+async function openTestCommentModal() {
+  var client = (clients || []).find(function(c){ return c.id === currentClientId; });
+  if (!_isTestClient(client)) return;
+  // What page / tab is she on?
+  var activeTab = document.querySelector('.client-tab.active');
+  var tabName = activeTab ? (activeTab.textContent || '').trim() : 'Unknown';
+  var hash = (location.hash || '').replace('#','');
+  var locationLabel = tabName + (hash && hash !== tabName ? ' · ' + hash : '');
+  // Ask whether she wants to ADD a note or VIEW her notes (only show
+  // "View" if she has at least one). Quick two-option modal.
+  var existing = _loadTestComments(client);
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '💬';
+  document.getElementById('branded-modal-title').textContent = 'Note for Phoebe';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    '<div style="font-size:13px;color:var(--stone);margin-bottom:10px">Currently on: <strong style="color:var(--magenta)">' + escapeHtml(locationLabel) + '</strong></div>' +
+    '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">What do you want to flag?</label>' +
+    '<textarea id="test-comment-input" rows="5" placeholder="Be specific — what section, what feels off, what you\'d change. This goes straight to your coach-side activity feed plus saves locally so you can browse later." style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:14px;color:#222;background:white;outline:none;resize:vertical;line-height:1.5"></textarea>' +
+    (existing.length
+      ? '<details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--magenta)">🧾 Previously flagged · ' + existing.length + '</summary>' +
+        '<div style="margin-top:8px;max-height:30vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px">' +
+          existing.slice().reverse().map(function(c) {
+            var when = '';
+            try { when = new Date(c.at).toLocaleString('en-AU', {weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}); } catch(e) {}
+            return '<div style="background:white;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:#222;line-height:1.5">' +
+              '<div style="font-size:10px;color:var(--hot-pink);font-weight:700;margin-bottom:3px">' + escapeHtml(c.location || '') + ' · ' + escapeHtml(when) + '</div>' +
+              escapeHtml(c.note || '') +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</details>'
+      : '');
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var cancel = document.createElement('button');
+  cancel.className = 'btn-sm';
+  cancel.textContent = 'Cancel';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(cancel);
+  var send = document.createElement('button');
+  send.className = 'btn-sm primary';
+  send.textContent = 'Send to Phoebe';
+  send.onclick = async function() {
+    var noteEl = document.getElementById('test-comment-input');
+    var note = noteEl ? (noteEl.value || '').trim() : '';
+    if (!note) { branded.alert('Type a note first.'); return; }
+    // Save locally
+    try {
+      var arr = _loadTestComments(client);
+      arr.push({
+        at: new Date().toISOString(),
+        location: locationLabel,
+        url: location.href,
+        note: note,
+      });
+      localStorage.setItem(_testCommentsKey(client), JSON.stringify(arr));
+    } catch(e) { console.warn('[test-comment] localStorage save failed', e); }
+    // Push to Phoebe's coach-side activity feed (visible in her Pulse panel)
+    if (typeof logActivity === 'function') {
+      try {
+        logActivity('feedback', '💬 Test note · ' + locationLabel, {
+          clientId: client.id,
+          clientName: client.name || 'Test client',
+          detail: note,
+          location: locationLabel,
+        });
+      } catch(e) { console.warn('[test-comment] logActivity failed', e); }
+    }
+    host.style.display = 'none';
+    refreshTestCommentFab();
+    if (typeof branded !== 'undefined' && branded.success) {
+      branded.success('Sent ✨ Phoebe will see it in her activity feed.');
+    } else if (typeof branded !== 'undefined' && branded.toast) {
+      branded.toast('Sent to Phoebe');
+    }
+  };
+  actions.appendChild(send);
+  host.style.display = 'flex';
+  host._cancel = function() { host.style.display = 'none'; };
+  setTimeout(function() {
+    var el = document.getElementById('test-comment-input');
+    if (el) el.focus();
+  }, 50);
 }
 
 function refreshClientNotifBadge() {
