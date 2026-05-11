@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11747">
-<link rel="stylesheet" href="styles.css?v=11747">
+<link rel="preload" as="style" href="styles.css?v=11748">
+<link rel="stylesheet" href="styles.css?v=11748">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11747 — Friday 'what blocked you?' reflection loop fully wired. Client clicks the digest link → portal opens a focused capture form → POST /api/needs-support → coach sees a 🆘 panel on the client detail view with the task, the reason, the timestamp, and a 'Mark resolved' button. Activity log + direct email to Phoebe trigger automatically. Reminder24h / 1h / 10m email templates now feed into send-reminders.mts via the same coachSettings.emailTemplates path digests use, with placeholder substitution ({firstName}, {sessionTime}, {zoomUrl}, {hubUrl}, {accessCode}, {tierLabel}). AssemblyAI key set in Netlify so large-audio (>25MB) Zoom recordings flow through the diarised transcript path automatically.">
+<meta name="hmh-build" content="v11748 — Summary-tab Zoom transcript + AI action-item extraction. On the Intake/Summary tab Phoebe can now Pull from Zoom (same flow as the 90-Day Plan tab — works with AssemblyAI for large audio), edit the transcript, click ✦ Extract action items, and Claude returns a structured list of who-committed-to-what. Each item has an owner badge (CLIENT / YOU), priority, optional 'when', and a program picker — one click adds it as a task on any program (or as a free client task). + Add all selected for batch insertion. ASSEMBLYAI_API_KEY confirmed live on Netlify so >25MB Zoom audio flows through diarised transcription automatically. v11747 Friday-digest loop + reminder templates remain shipped.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -369,6 +369,33 @@
             <button class="btn-sm" onclick="switchTab('profitability')" style="font-size:11px">💰 Profitability</button>
           </div>
           <div id="intake-content"></div>
+
+          <!-- v11748: Summary-tab Zoom transcript + AI action-item extraction.
+               Mirrors the inline builder on the 90-Day Plan tab so Phoebe can
+               pull a transcript and turn it into actionable tasks from the
+               Intake/Summary view too. Tasks can be linked to any program
+               (default: the one currently open) or added as a free-floating
+               client task. -->
+          <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)" id="summary-zoom-actions-block">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink)">🎬 Zoom session — review notes &amp; extract action items</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn-sm primary" onclick="summaryFetchZoomTranscript()" id="summary-zoom-fetch-btn">Pull from Zoom</button>
+                <button class="btn-sm" onclick="summaryClearZoomNotes()" title="Clear and start fresh">✕ Clear</button>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--stone);margin-bottom:10px;line-height:1.5">
+              Pull the latest Zoom transcript (or paste session notes), then click <strong>✦ Extract action items</strong>. Claude reads what was said, lists what each side committed to, and lets you add them as tasks on any program in one tap.
+            </div>
+            <textarea id="summary-zoom-notes" placeholder="Paste session notes here, or click Pull from Zoom above. Edit freely before extracting." style="width:100%;min-height:160px;border:1.5px solid var(--border);border-radius:10px;padding:12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.6"></textarea>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+              <button class="btn-sm primary" onclick="summaryExtractActionItems()" id="summary-extract-btn">✦ Extract action items</button>
+              <span id="summary-zoom-status" style="font-size:11px;color:var(--teal);font-weight:500"></span>
+            </div>
+            <!-- Extracted action items render here as a checkable list with
+                 program picker + "Add to program" / "Add as client task" -->
+            <div id="summary-action-items-output" style="margin-top:12px"></div>
+          </div>
 
           <!-- SUMMARY subsection — single source of truth per client.
                Carries Save + Generate buttons and a versioned history log
@@ -18881,6 +18908,244 @@ async function generateIntakeSummary() {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✦ Generate fresh'; }
   }
+}
+
+// ────────────────────────────────────────────────────────────────────
+// v11748 — Summary-tab Zoom transcript + AI action-item extraction
+// ────────────────────────────────────────────────────────────────────
+// Mirrors the 90-day builder's pull-from-Zoom flow but on the Intake
+// /Summary side. Phoebe pulls or pastes a transcript, clicks
+// "✦ Extract action items", and Claude returns a structured list of
+// what each side committed to. Each item can be added as a task on any
+// program (or as a free client-level task) in one click.
+async function summaryFetchZoomTranscript() {
+  var client = clients.find(function(c){return c.id===currentClientId;});
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p){return p.id===currentProgramId;}) || (client.programs||[])[0];
+  if (!prog) { branded.alert('Add a program first so I know which session date to pull.'); return; }
+  var btn = document.getElementById('summary-zoom-fetch-btn');
+  var status = document.getElementById('summary-zoom-status');
+  var notes = document.getElementById('summary-zoom-notes');
+  btn.disabled = true; btn.textContent = '⏳ Fetching…'; if (status) status.textContent = '';
+  try {
+    var resp = await fetch('/api/zoom-transcript', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ clientId: client.id, sessionDate: prog.sessionDate })
+    });
+    var data = await resp.json();
+    if (data.queued) {
+      notes.value = '';
+      notes.placeholder = data.message || 'Transcribing the audio in the background. Refresh in a few minutes.';
+      if (status) status.textContent = '⏳ Queued via AssemblyAI · ~2-5 min · refresh to see the transcript';
+      branded.alert(
+        (data.message || 'Transcribing in background.') + '\n\nThe transcript will appear here automatically once it lands. Carry on with other work — you can refresh this page at any time.',
+        { title: '🎙 Transcribing in background', okLabel: 'Got it' }
+      );
+      return;
+    }
+    if (!resp.ok || data.error) {
+      var msg = (data.error || 'Could not fetch');
+      if (data.hint) msg += '\n\n' + data.hint;
+      notes.value = '';
+      notes.placeholder = msg;
+      if (status) status.textContent = '⚠ ' + (data.error||'Could not fetch');
+      if (typeof _showZoomErrorModal === 'function') _showZoomErrorModal(data, msg);
+      else branded.alert(msg, { title: '⚠ Pull from Zoom failed' });
+    } else {
+      notes.value = data.transcript || '';
+      var nameNote = data.nameMatched ? '✓ name-matched' : '⚠ matched by date — verify';
+      var sourceNote = data.source === 'whisper-audio' ? ' · 🎙 Whisper from audio' :
+                       data.source === 'assemblyai' ? ' · 🎙 AssemblyAI from audio' : '';
+      if (status) status.textContent = '✓ Transcript pulled · ' + (data.characterCount || '?') + ' chars · ' + nameNote + sourceNote;
+      if (typeof logActivity === 'function') logActivity('transcript', 'Transcript pulled (Summary tab) for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (data.meetingTopic||'Session') + ' · ' + (data.characterCount||'?') + ' chars' });
+    }
+  } catch (err) {
+    notes.placeholder = 'Could not connect — ensure site is deployed.';
+    if (status) status.textContent = '⚠ Not connected';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Pull from Zoom';
+  }
+}
+
+function summaryClearZoomNotes() {
+  var notes = document.getElementById('summary-zoom-notes');
+  var out = document.getElementById('summary-action-items-output');
+  var status = document.getElementById('summary-zoom-status');
+  if (notes) { notes.value = ''; notes.placeholder = 'Paste session notes here, or click Pull from Zoom above.'; }
+  if (out) out.innerHTML = '';
+  if (status) status.textContent = '';
+}
+
+// Asks Claude to extract concrete action items from whatever's currently
+// in the summary-zoom-notes textarea. Returns JSON; we render each item
+// with a program-picker dropdown and an "Add" button.
+async function summaryExtractActionItems() {
+  var client = clients.find(function(c){return c.id===currentClientId;});
+  if (!client) return;
+  var prog = (client.programs||[]).find(function(p){return p.id===currentProgramId;}) || (client.programs||[])[0];
+  var notesEl = document.getElementById('summary-zoom-notes');
+  var btn = document.getElementById('summary-extract-btn');
+  var status = document.getElementById('summary-zoom-status');
+  var out = document.getElementById('summary-action-items-output');
+  var text = (notesEl && notesEl.value || '').trim();
+  if (!text || text.length < 60) {
+    branded.alert('Paste session notes or pull a Zoom transcript first — Claude needs something to read.');
+    return;
+  }
+  btn.disabled = true; btn.textContent = '✦ Thinking…';
+  if (status) status.textContent = 'Reading the session…';
+  out.innerHTML = '';
+
+  var fullContext = (typeof gatherFullClientContext === 'function')
+    ? gatherFullClientContext(client, prog, { maxChars: 6000 })
+    : ('Client: ' + (client.name||'?') + ' · Business: ' + (client.biz||'?'));
+
+  var prompt = (typeof phoebeVoice === 'function' ? phoebeVoice : function(x){return x;})(
+    'Extract concrete action items from this coaching session. Be ruthless — only include things someone committed to DO, not topics that came up. Tag each item by who owns it: "client" (what Phoebe\'s client agreed to do) or "phoebe" (what the coach agreed to do for them). If a deadline was discussed, capture it as a relative date (e.g. "by Friday", "before next session"). Suggest a priority: high / medium / low.\n\n' +
+    '──── CONTEXT ────\n' + fullContext + '\n──── END CONTEXT ────\n\n' +
+    '──── SESSION NOTES / TRANSCRIPT ────\n' + text + '\n──── END SESSION ────\n\n' +
+    'Return ONLY valid JSON in this exact shape — no preamble, no markdown:\n' +
+    '{"actions":[{"text":"...","owner":"client|phoebe","priority":"high|medium|low","when":""}, ...]}\n\n' +
+    'Skip anything vague. If there are no concrete commitments, return {"actions":[]}. Australian English, Phoebe\'s direct voice. Max 12 actions.'
+  );
+
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
+      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:1200, messages:[{role:'user', content: prompt}] })
+    });
+    var data = await resp.json();
+    var txt = (data.content && data.content[0] && data.content[0].text) || '';
+    txt = txt.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+    var match = txt.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('No JSON in AI response');
+    var parsed = JSON.parse(match[0]);
+    var actions = Array.isArray(parsed.actions) ? parsed.actions : [];
+    if (!actions.length) {
+      out.innerHTML = '<div style="padding:14px;background:var(--paper);border:1px dashed var(--border);border-radius:10px;font-size:13px;color:var(--stone);line-height:1.5">No concrete commitments found in this session. That can be intentional — sometimes a session is reflection-only. Edit the text above and try again if you think Claude missed something.</div>';
+      if (status) status.textContent = 'No actions extracted';
+    } else {
+      // Store the extracted set on a global so the "Add" handlers can read it
+      window._summaryExtractedActions = actions;
+      _renderSummaryActionItems(client, actions);
+      if (status) status.textContent = '✓ ' + actions.length + ' action item' + (actions.length===1?'':'s') + ' extracted · pick a program for each';
+      if (typeof logActivity === 'function') logActivity('ai-actions', 'Action items extracted (Summary) for ' + client.name, { clientId: client.id, clientName: client.name, detail: actions.length + ' items' });
+    }
+  } catch (err) {
+    branded.error('Extraction failed: ' + (err && err.message || err));
+    if (status) status.textContent = '⚠ Extraction failed';
+  } finally {
+    btn.disabled = false; btn.textContent = '✦ Extract action items';
+  }
+}
+
+// Renders the extracted action items as a checklist with a per-row
+// program picker. Each row has an "Add as task" button that calls
+// _summaryAddActionAsTask. There's also a "Add all selected" footer.
+function _renderSummaryActionItems(client, actions) {
+  var out = document.getElementById('summary-action-items-output');
+  if (!out) return;
+  var progs = (client.programs || []).filter(function(p){ return p.workbook !== 'none' && p.workbook !== 'inquiry' && !p.locked; });
+  function progOptions(idx) {
+    var opts = '<option value="">— Add as client task (no program) —</option>';
+    progs.forEach(function(p) {
+      var label = ((PROGRAMS[p.program]||{}).short || p.program) + (p.sessionDate ? ' · ' + new Date(p.sessionDate).toLocaleDateString('en-AU',{day:'numeric',month:'short'}) : '');
+      var sel = (currentProgramId && p.id === currentProgramId) ? ' selected' : '';
+      opts += '<option value="' + p.id + '"' + sel + '>' + escapeHtml(label) + '</option>';
+    });
+    return opts;
+  }
+  function ownerBadge(owner) {
+    if (owner === 'phoebe') return '<span style="font-size:10px;background:#FFE0EE;color:var(--hot-pink);padding:2px 7px;border-radius:99px;font-weight:700">YOU</span>';
+    return '<span style="font-size:10px;background:#E0F4F0;color:var(--teal);padding:2px 7px;border-radius:99px;font-weight:700">CLIENT</span>';
+  }
+  function priorityBadge(p) {
+    var color = p === 'high' ? '#C0392B' : p === 'low' ? 'var(--stone)' : '#E8A020';
+    return '<span style="font-size:10px;color:' + color + ';font-weight:700;text-transform:uppercase;letter-spacing:0.06em">' + (p || 'medium') + '</span>';
+  }
+  var rows = actions.map(function(a, i) {
+    return '<div class="summary-action-row" data-idx="' + i + '" style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start">' +
+      '<input type="checkbox" class="summary-action-check" data-idx="' + i + '" checked style="margin-top:6px;flex-shrink:0;accent-color:var(--magenta);width:16px;height:16px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px">' +
+          ownerBadge(a.owner) + priorityBadge(a.priority) +
+          (a.when ? '<span style="font-size:11px;color:var(--stone)">· ' + escapeHtml(a.when) + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--magenta);line-height:1.5;margin-bottom:8px">' + escapeHtml(a.text || '') + '</div>' +
+        '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+          '<label style="font-size:10px;color:var(--stone);font-weight:700;text-transform:uppercase;letter-spacing:0.06em">Link to:</label>' +
+          '<select data-idx="' + i + '" class="summary-action-prog" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:white">' + progOptions(i) + '</select>' +
+          '<button class="btn-sm" data-idx="' + i + '" onclick="_summaryAddActionAsTask(' + i + ')" style="font-size:11px">+ Add this</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  out.innerHTML =
+    '<div style="background:linear-gradient(135deg,#FFFDFA,#FDEFF5);border:1.5px solid var(--border);border-radius:14px;padding:14px 16px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+        '<div style="font-family:var(--f-head);font-size:14px;font-weight:700;color:var(--magenta)">✦ Action items from this session</div>' +
+        '<button class="btn-sm primary" onclick="_summaryAddAllSelected()" style="font-size:11px">+ Add all selected</button>' +
+      '</div>' +
+      rows +
+      '<div style="font-size:11px;color:var(--stone);margin-top:6px">Untick anything you don\'t want · pick a program (or leave blank for a free client task) · click + Add</div>' +
+    '</div>';
+}
+
+// Add a single extracted action as a task on the chosen program (or as
+// a free client-level task if no program picked). client.tasks is the
+// existing shared task list — same shape the Tasks tab + dashboard read.
+async function _summaryAddActionAsTask(idx) {
+  var client = clients.find(function(c){return c.id===currentClientId;});
+  if (!client) return;
+  var actions = window._summaryExtractedActions || [];
+  var action = actions[idx];
+  if (!action) return;
+  var sel = document.querySelector('select.summary-action-prog[data-idx="' + idx + '"]');
+  var progId = sel ? sel.value : '';
+  var row = document.querySelector('.summary-action-row[data-idx="' + idx + '"]');
+  // Build the task object — re-use the existing schema in client.tasks
+  client.tasks = Array.isArray(client.tasks) ? client.tasks : [];
+  var task = {
+    id: 't-' + Date.now() + '-' + Math.floor(Math.random()*1000),
+    text: action.text,
+    done: false,
+    createdAt: new Date().toISOString(),
+    progId: progId || undefined,
+    clientVisible: action.owner === 'client',
+    priority: action.priority || 'medium',
+    source: 'summary-zoom-extract',
+    suggestedWhen: action.when || '',
+  };
+  client.tasks.push(task);
+  try { await persistClient(client); } catch (e) { console.warn('[summary-add-task] persist failed', e); }
+  if (row) {
+    row.style.background = '#E0F4F0';
+    row.style.borderColor = 'var(--teal)';
+    row.querySelector('button.btn-sm').textContent = '✓ Added';
+    row.querySelector('button.btn-sm').disabled = true;
+  }
+  if (typeof logActivity === 'function') logActivity('task', 'Task added from session extract for ' + client.name, { clientId: client.id, clientName: client.name, progId: progId || null, detail: action.text });
+  branded.toast('Added · ' + (action.text||'').slice(0, 60));
+  // Refresh other panels so the new task appears immediately
+  if (typeof renderTasksPanel === 'function' && progId) {
+    try { renderTasksPanel(client, progId); } catch (e) {}
+  }
+  if (typeof renderClientStatusStrip === 'function') {
+    var statusEl = document.getElementById('client-status-strip');
+    if (statusEl) statusEl.innerHTML = renderClientStatusStrip(client);
+  }
+}
+
+// Add every checked action in one batch.
+async function _summaryAddAllSelected() {
+  var checks = Array.prototype.slice.call(document.querySelectorAll('input.summary-action-check'));
+  var picked = checks.filter(function(c){ return c.checked; }).map(function(c){ return parseInt(c.dataset.idx, 10); });
+  if (!picked.length) { branded.alert('Tick at least one action to add.'); return; }
+  for (var i = 0; i < picked.length; i++) {
+    // sequential so persistClient doesn't trample itself
+    await _summaryAddActionAsTask(picked[i]);
+  }
+  branded.toast('Added ' + picked.length + ' task' + (picked.length===1?'':'s'));
 }
 
 function renderSummaryHistory(prog) {
