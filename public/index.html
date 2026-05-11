@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11735">
-<link rel="stylesheet" href="styles.css?v=11735">
+<link rel="preload" as="style" href="styles.css?v=11736">
+<link rel="stylesheet" href="styles.css?v=11736">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11735 — fix broken meta tag (was leaking build-stamp text as visible page content) + remove hero bottom wave + restore hero rounded bottom corners. Designer's call: the topbar wave is plenty of brand pattern; two waves in close proximity was over-decorated.">
+<meta name="hmh-build" content="v11736 — final polish + sweep. (1) Titles render in sentence case (text-transform: lowercase + ::first-letter uppercase) so 'WHAT WE WANT TO DO' shows as 'What we want to do' — copy untouched. All headings locked to AllRoundGothic Bold. (2) READABILITY for 40-50+: body 15px / line-height 1.6, card padding 26px, tagline bumped to 16px, helper text to 13px ink-soft. (3) Login programme tags hidden — looked cluttered. (4) Note for Claude FAB removed entirely. (5) peabe.svg logo font chain leads with AllRoundGothic. (6) Defensive overrides for any lingering color:white inline styles inside the new mint hero. (7) Landing page rebuilt to match palette — cream bg, ink headings, sunshine Enter button. (8) Coach portal sidebar + page titles aligned with new palette. (9) Hot-pink signature underline retained on hero name. Cache v=11736.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========

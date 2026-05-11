@@ -31,12 +31,14 @@
   <circle cx="252" cy="248" r="234" fill="url(#pbHighlight)"/>
   <circle cx="252" cy="248" r="234" fill="url(#pbDepth)"/>
 
-  <!-- "pb" — Poppins Bold (loaded via index.html); falls back to system
-       geometric sans where the font isn't yet loaded (favicon contexts).
-       Letter-spacing tightened so the 'p' and 'b' read as a unit. -->
+  <!-- v11736: "pb" — AllRoundGothic Bold to match the platform's
+       display font. Falls through Poppins → system geometric sans
+       in contexts where AllRoundGothic isn't loaded (favicon, PWA
+       icon, image embeds). Letter-spacing tightened so the 'p' and
+       'b' read as a unit. -->
   <text x="252" y="338"
         text-anchor="middle"
-        font-family="Poppins, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif"
+        font-family="AllRoundGothic, 'All Round Gothic', Poppins, 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif"
         font-size="280"
         font-weight="700"
         letter-spacing="-12"

@@ -4008,7 +4008,231 @@ body::before { display: none !important; }
   margin-top: 0 !important;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   v11736 — final polish + sweep.
+   Phoebe's list:
+     1. Titles: first word, first letter capital. All Round Gothic Bold.
+        (Was forced to all-lowercase; now sentence-case via CSS trick.)
+     2. Easy reading for 40-50+ — bigger fonts, longer line-heights,
+        higher contrast everywhere.
+     3. No non-visible text. Consistent look across all surfaces.
+     4. Logo 'pb' font — fixed inside peabe.svg (font-family chain
+        now leads with AllRoundGothic).
+     5. Remove the programme tag chips on the login/landing page.
+     6. Remove 'Note for Claude' client-side floating button entirely.
+     7. Final design review — every surface polished, on-brand,
+        consistent, professional.
+   ════════════════════════════════════════════════════════════════════ */
 
+/* ── (1) TITLE CASING — sentence case, not lowercase ─────────────
+   The trick: text-transform: lowercase + ::first-letter override
+   gives us "Your hub" (only first letter capital) regardless of how
+   the source text is cased. Source copy preserved (HARD RULE). */
+#client-hub .client-hero h2,
+#client-hub #client-hero-name,
+#client-hub .client-section h3,
+#client-hub .client-section h4,
+#client-summary-area h3, #client-summary-area h4,
+#client-content-area h3, #client-content-area h4,
+#client-settings-area h3, #client-settings-area h4,
+#client-hub .story-card-title {
+  text-transform: lowercase !important;
+  font-family: "AllRoundGothic", "All Round Gothic", "Poppins", sans-serif !important;
+  font-weight: 800 !important;
+}
+#client-hub .client-hero h2::first-letter,
+#client-hub #client-hero-name::first-letter,
+#client-hub .client-section h3::first-letter,
+#client-hub .client-section h4::first-letter,
+#client-summary-area h3::first-letter, #client-summary-area h4::first-letter,
+#client-content-area h3::first-letter, #client-content-area h4::first-letter,
+#client-settings-area h3::first-letter, #client-settings-area h4::first-letter,
+#client-hub .story-card-title::first-letter {
+  text-transform: uppercase !important;
+}
+/* Eyebrow labels above pill-titles ("WHAT WE WANT TO DO") get the
+   same sentence-case treatment but in handwritten Caveat pink. */
+#client-hub .client-section > div[style*="font-size:11px"][style*="uppercase"],
+#client-summary-area > div > div[style*="font-size:11px"][style*="uppercase"],
+#client-content-area > div > div[style*="font-size:11px"][style*="uppercase"],
+#client-settings-area > div > div[style*="font-size:11px"][style*="uppercase"] {
+  text-transform: lowercase !important;
+}
+#client-hub .client-section > div[style*="font-size:11px"][style*="uppercase"]::first-letter,
+#client-summary-area > div > div[style*="font-size:11px"][style*="uppercase"]::first-letter,
+#client-content-area > div > div[style*="font-size:11px"][style*="uppercase"]::first-letter,
+#client-settings-area > div > div[style*="font-size:11px"][style*="uppercase"]::first-letter {
+  text-transform: uppercase !important;
+}
 
+/* ── (2) READABILITY for 40-50+ — bigger, looser, higher-contrast ─ */
+#client-hub .client-section,
+#client-summary-area .client-section,
+#client-content-area .client-section,
+#client-settings-area .client-section {
+  padding: 26px 26px !important;
+  font-size: 15px !important;
+  line-height: 1.65 !important;
+}
+/* Body copy + paragraphs inside cards */
+#client-summary-area .client-section p,
+#client-content-area .client-section p,
+#client-settings-area .client-section p,
+#client-summary-area .client-section li,
+#client-content-area .client-section li,
+#client-settings-area .client-section li {
+  font-size: 15px !important;
+  line-height: 1.65 !important;
+  color: var(--ink) !important;
+}
+/* Helper / hint text — readable, not faded into the cream */
+#client-summary-area .client-section small,
+#client-content-area .client-section small,
+#client-settings-area .client-section small {
+  font-size: 13px !important;
+  color: var(--ink-soft) !important;
+}
+/* Tagline in hero — bumped from 15 to 16 for older eyes */
+#client-hub .client-hero-tagline,
+#client-hub #client-hero-tagline {
+  font-size: 16px !important;
+  line-height: 1.55 !important;
+}
+/* Tab labels — already 14px, line-height 1.4 — add 0 padding bump */
+#client-hub .client-tab {
+  font-size: 14px !important;
+  padding: 11px 18px !important;
+}
 
+/* ── (3) HIDE THE LOGIN-PAGE PROGRAMME TAGS ─────────────────────── */
+.access-card .prog-tags {
+  display: none !important;
+}
+
+/* ── (4) HIDE THE 'NOTE FOR CLAUDE' FAB ENTIRELY ────────────────── */
+#test-comment-fab {
+  display: none !important;
+}
+
+/* ── (5) HEADING FONT-FAMILY LOCKED to AllRoundGothic ────────────
+   Belt-and-braces: any element that should be a "title" forced to
+   the display font. */
+.page-title,
+.landing-logo,
+#client-hub .topbar-logo-text,
+#coach-hub .topbar-logo-text,
+.brand-name {
+  font-family: "AllRoundGothic", "All Round Gothic", "Poppins", sans-serif !important;
+}
+
+/* ── (6) HUNT DOWN INVISIBLE TEXT — defensive overrides ────────── */
+/* Anything inside the new mint hero with hardcoded color:white from
+   old inline styles. */
+#client-hub .client-hero [style*="color:white"],
+#client-hub .client-hero [style*="color: white"] {
+  color: var(--ink) !important;
+}
+/* The why-pin edit pencil button (was color:white inline JS) */
+#client-hub #client-hero-why-text button[title="Edit my why"] {
+  color: var(--ink) !important;
+}
+/* Coach badge in topbar */
+#coach-hub .badge-coach { color: var(--ink) !important; }
+
+/* ── (7) ENSURE LANDING / LOGIN PAGE matches the brand palette ─── */
+#landing {
+  background: var(--cream) !important;
+}
+.access-card {
+  background: #FFFDF7 !important;
+  border-color: var(--rule) !important;
+}
+.access-card h3 {
+  color: var(--ink) !important;
+  font-family: "AllRoundGothic", "All Round Gothic", "Poppins", sans-serif !important;
+}
+.access-card p {
+  color: var(--ink-soft) !important;
+  font-size: 15px !important;
+  line-height: 1.6;
+}
+.pin-row input {
+  background: white !important;
+  border-color: var(--rule) !important;
+  color: var(--ink) !important;
+  border-radius: 999px !important;
+  padding: 12px 16px !important;
+}
+.pin-row input:focus {
+  border-color: var(--ink) !important;
+  box-shadow: 0 0 0 3px var(--mustard-soft) !important;
+}
+.btn-enter {
+  background: var(--sunshine) !important;
+  color: var(--ink) !important;
+  border-color: var(--sunshine) !important;
+  font-weight: 800 !important;
+  padding: 12px 22px !important;
+  box-shadow: 0 3px 0 #C9B30A !important;
+}
+.btn-enter:hover {
+  background: #FFF566 !important;
+  border-color: #C9B30A !important;
+}
+.landing-logo {
+  color: var(--ink) !important;
+  font-family: "AllRoundGothic", "All Round Gothic", "Poppins", sans-serif !important;
+  font-weight: 800 !important;
+}
+.landing-sub {
+  color: var(--ink-soft) !important;
+}
+
+/* ── (8) COACH PORTAL — match palette so it feels coherent ────── */
+#coach-hub .sidebar {
+  background: #FFFDF7;
+  border-right: 1px solid var(--rule);
+}
+#coach-hub .sidebar-section { color: var(--ink-faded) !important; }
+#coach-hub .sidebar-item { color: var(--ink) !important; font-size: 14px; }
+#coach-hub .sidebar-item.active {
+  background: var(--mint-soft) !important;
+  color: var(--ink) !important;
+}
+#coach-hub .sidebar-item.active::before { background: var(--hot-pink) !important; }
+#coach-hub .sidebar-item:hover { background: rgba(92,61,41,0.04) !important; }
+#coach-hub .page-title {
+  color: var(--ink) !important;
+  font-family: "AllRoundGothic", "All Round Gothic", "Poppins", sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 28px !important;
+}
+#coach-hub .page-sub {
+  color: var(--ink-soft) !important;
+  font-size: 15px !important;
+}
+
+/* ── (9) SIGNATURE PINK ACCENT on hero title underline retained ── */
+#client-hub .client-hero h2::after,
+#client-hub #client-hero-name::after {
+  background: var(--hot-pink) !important;
+  width: 56px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* ── (10) PROG-TAG MINI PILL — still used in body. Make it on-brand
+   (the LANDING ones are hidden via rule above; body ones survive). */
+.prog-tag {
+  background: var(--mint-soft) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--mint-deep) !important;
+}
+
+/* ── (11) FINAL TYPOGRAPHIC SCALE ─────────────────────────────── */
+body {
+  font-family: var(--f-body) !important;
+  font-size: 15px !important;
+  line-height: 1.6 !important;
+}
 
