@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11745">
-<link rel="stylesheet" href="styles.css?v=11745">
+<link rel="preload" as="style" href="styles.css?v=11746">
+<link rel="stylesheet" href="styles.css?v=11746">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11745 — fix dangling meta-tag prose leak (was rendering wall-of-text above topbar), real AllRoundGothic logo font via inline-SVG render, bi-weekly digest cadence (Mon + Fri), AssemblyAI integration for large audio files (>25MB).">
+<meta name="hmh-build" content="v11746 — editable email templates in Settings. Welcome, login details, session reminders (24h/1h/10min), Monday + Friday digest openers, plus add-your-own custom templates. All stored on coachSettings.emailTemplates with hardcoded defaults as fallback. Daily-digest.mts now reads + uses the saved templates with placeholder substitution ({firstName}, {hubUrl}, {accessCode}, {digestBody}, etc.). v11745: meta-tag fix + AllRoundGothic logo + AssemblyAI large-audio path + Mon+Fri digest cadence.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -751,6 +751,17 @@
           <p>Built-in programs (90-Day, MDC, Audit, Happy Hour, etc.) plus your own custom types. Custom types appear in the "Add program" dropdown for every client. Each gets its own tab with a fillable sections panel.</p>
           <div id="custom-program-types-list" style="margin-top:12px"></div>
           <button class="btn-sm primary" style="margin-top:10px" onclick="addCustomProgramType()">+ Add a custom program type</button>
+        </div>
+
+        <!-- v11746: Email templates — Phoebe edits the wording of any
+             email the platform sends (welcome, login details, session
+             reminders, weekly digests). Custom templates can be added
+             for ad-hoc use. Stored on coachSettings.emailTemplates. -->
+        <div class="settings-card" id="email-templates-card">
+          <h4>📧 Email templates</h4>
+          <p>Edit the wording of every email the platform sends. Use placeholders like <code>{firstName}</code>, <code>{clientName}</code>, <code>{hubUrl}</code>, <code>{accessCode}</code>, <code>{sessionTime}</code>, <code>{zoomUrl}</code> — they're replaced per-client at send time.</p>
+          <div id="email-templates-list" style="margin-top:12px"></div>
+          <button class="btn-sm primary" style="margin-top:10px" onclick="addCustomEmailTemplate()">+ Add a custom template</button>
         </div>
 
         <!-- v11300: recommendable products — appears on the program-recommendation
@@ -2805,6 +2816,279 @@ function applyCustomProgramTypes() {
 }
 
 // Settings UI — list / add / edit / delete custom program types.
+// ════════════════════════════════════════════════════════════════════
+// v11746 — EMAIL TEMPLATES (Phoebe-editable)
+// ════════════════════════════════════════════════════════════════════
+// Every email the platform sends is editable from Settings.
+// Stored on window._coachSettings.emailTemplates.
+// Functions read templates from the same coach-settings blob at send
+// time (with hardcoded defaults as fallback so the system works even
+// before Phoebe touches them).
+// ════════════════════════════════════════════════════════════════════
+var DEFAULT_EMAIL_TEMPLATES = {
+  welcome: {
+    label: "👋 Welcome (new client)",
+    description: "Sent the first time a client signs in or when Phoebe manually invites them.",
+    subject: "Welcome to your hub, {firstName}",
+    body:
+      "Hi {firstName},\n\n" +
+      "You're in. This is your space to track everything we work on together — your plan, your wins, your weekly check-ins, and the notes from each session.\n\n" +
+      "Your hub: {hubUrl}\n" +
+      "Your access code: {accessCode}\n\n" +
+      "Have a look around when you've got 10 minutes. Drop me a note via the message tab if anything's confusing.\n\n" +
+      "Looking forward to it.\n\n" +
+      "Phoebe x",
+  },
+  loginDetails: {
+    label: "🔑 Login details / portal access",
+    description: "Sent when a client needs their access code resent or after a session books.",
+    subject: "Your hub access — {firstName}",
+    body:
+      "Hi {firstName},\n\n" +
+      "Quick one — here are your hub details.\n\n" +
+      "Hub: {hubUrl}\n" +
+      "Access code: {accessCode}\n\n" +
+      "Bookmark the link or save the code. You'll log in here for your plan, session notes, and the weekly check-in.\n\n" +
+      "Phoebe x",
+  },
+  reminder24h: {
+    label: "📅 Session reminder — 24 hours before",
+    description: "Auto-sent the day before each session.",
+    subject: "Tomorrow: {programLabel}",
+    body:
+      "Hi {firstName},\n\n" +
+      "Quick reminder — your {programLabel} is tomorrow.\n\n" +
+      "When: {sessionTime}\n" +
+      "Zoom: {zoomUrl}\n\n" +
+      "Have a quick look at your portal beforehand — it's where your plan, tasks and notes live.\n\n" +
+      "Hub: {hubUrl}\n\n" +
+      "See you then.\n\n" +
+      "Phoebe x",
+  },
+  reminder1h: {
+    label: "⏰ Session reminder — 1 hour before",
+    description: "Auto-sent one hour before each session.",
+    subject: "In an hour: {programLabel}",
+    body:
+      "Hi {firstName},\n\n" +
+      "{programLabel} starts in an hour.\n\n" +
+      "When: {sessionTime}\n" +
+      "Zoom: {zoomUrl}\n\n" +
+      "Grab a cuppa, find a quiet spot. See you soon.\n\n" +
+      "Phoebe x",
+  },
+  reminder10m: {
+    label: "🎬 Session reminder — 10 minutes before",
+    description: "Auto-sent 10 minutes before each session.",
+    subject: "Starting in 10 — {programLabel}",
+    body:
+      "Hi {firstName},\n\n" +
+      "10 minutes. Join when you're ready.\n\n" +
+      "Zoom: {zoomUrl}\n\n" +
+      "Phoebe x",
+  },
+  digestMon: {
+    label: "📅 Monday digest opener",
+    description: "The opening + signature for the Monday morning digest. The middle (tasks / sessions / check-in nudge) is auto-built.",
+    subject: "Your week on the hub",
+    body:
+      "Hi {firstName},\n\n" +
+      "Fresh week. Here's what's on your plate.\n\n" +
+      "{digestBody}\n\n" +
+      "Small moves, big consequences.\n\n" +
+      "Phoebe x",
+  },
+  digestFri: {
+    label: "✨ Friday digest opener",
+    description: "The opening + signature for the Friday digest. Middle is auto-built and includes the 'what blocked you' reflection.",
+    subject: "How was your week, {firstName}?",
+    body:
+      "Hi {firstName},\n\n" +
+      "Friday check-in time. Here's what we set out this week — and what didn't quite land. Honest answers help me support you better next week.\n\n" +
+      "{digestBody}\n\n" +
+      "Whatever didn't get done, tell me why — no judgement.\n\n" +
+      "Phoebe x",
+  },
+};
+
+function _getEmailTemplate(key) {
+  var saved = (window._coachSettings && window._coachSettings.emailTemplates && window._coachSettings.emailTemplates[key]) || null;
+  var def = DEFAULT_EMAIL_TEMPLATES[key] || null;
+  if (!def) return saved;
+  return {
+    subject: (saved && saved.subject) || def.subject,
+    body:    (saved && saved.body)    || def.body,
+    label:   def.label,
+    description: def.description,
+  };
+}
+
+function renderEmailTemplatesList() {
+  var el = document.getElementById('email-templates-list');
+  if (!el) return;
+  var keys = Object.keys(DEFAULT_EMAIL_TEMPLATES);
+  var customs = (window._coachSettings && window._coachSettings.emailTemplates && Array.isArray(window._coachSettings.emailTemplates.customs)) ? window._coachSettings.emailTemplates.customs : [];
+
+  var builtIn = keys.map(function(k) {
+    var tpl = _getEmailTemplate(k);
+    var saved = window._coachSettings && window._coachSettings.emailTemplates && window._coachSettings.emailTemplates[k];
+    var customised = !!saved;
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1px solid var(--rule);border-radius:10px;margin-bottom:6px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-weight:700;color:var(--ink);font-size:13px">' + escapeHtml(tpl.label) + '</div>' +
+        '<div style="font-size:11px;color:var(--ink-faded);margin-top:2px">' + escapeHtml(tpl.description) + '</div>' +
+      '</div>' +
+      (customised ? '<span style="font-size:10px;background:var(--mint-soft);color:var(--ink);padding:3px 8px;border-radius:99px;font-weight:700">Custom</span>' : '<span style="font-size:10px;background:var(--cream);color:var(--ink-faded);padding:3px 8px;border-radius:99px;font-weight:600">Default</span>') +
+      '<button class="btn-sm" style="font-size:11px;padding:5px 12px" onclick="editEmailTemplate(\'' + k + '\')">✏️ Edit</button>' +
+      (customised ? '<button class="btn-sm" style="font-size:11px;padding:5px 10px;background:transparent;color:#C0392B;border:1px solid rgba(192,57,43,0.3)" onclick="resetEmailTemplate(\'' + k + '\')" title="Reset to default wording">↺</button>' : '') +
+    '</div>';
+  }).join('');
+
+  var customHtml = customs.length
+    ? customs.map(function(c) {
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1.5px solid var(--hot-pink);border-radius:10px;margin-bottom:6px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-weight:700;color:var(--ink);font-size:13px">📝 ' + escapeHtml(c.label || c.name || 'Custom template') + '</div>' +
+            '<div style="font-size:11px;color:var(--ink-faded);margin-top:2px">Subject: ' + escapeHtml((c.subject || '').slice(0, 60)) + '</div>' +
+          '</div>' +
+          '<button class="btn-sm" style="font-size:11px;padding:5px 12px" onclick="editCustomEmailTemplate(\'' + c.id + '\')">✏️ Edit</button>' +
+          '<button class="btn-sm" style="font-size:11px;padding:5px 10px;background:transparent;color:#C0392B;border:1px solid rgba(192,57,43,0.3)" onclick="deleteCustomEmailTemplate(\'' + c.id + '\')">Delete</button>' +
+        '</div>';
+      }).join('')
+    : '';
+
+  el.innerHTML =
+    '<div style="font-size:11px;font-weight:700;color:var(--ink-faded);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Core templates</div>' +
+    builtIn +
+    (customs.length
+      ? '<div style="font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">My custom templates</div>' + customHtml
+      : '');
+}
+
+function _openEmailTemplateModal(opts) {
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '📧';
+  document.getElementById('branded-modal-title').textContent = opts.title || 'Edit email template';
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML =
+    (opts.description ? '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;line-height:1.5">' + escapeHtml(opts.description) + '</div>' : '') +
+    '<label style="display:block;font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Subject</label>' +
+    '<input id="email-tpl-subject" type="text" value="' + escapeHtml(opts.subject || '') + '" style="width:100%;border:1px solid var(--rule);border-radius:10px;padding:9px 12px;font-family:var(--f-body);font-size:14px;color:var(--ink);background:white;outline:none;margin-bottom:10px">' +
+    '<label style="display:block;font-size:11px;font-weight:700;color:var(--hot-pink);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Body</label>' +
+    '<textarea id="email-tpl-body" rows="14" style="width:100%;border:1px solid var(--rule);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:14px;color:var(--ink);background:white;outline:none;line-height:1.55;resize:vertical">' + escapeHtml(opts.body || '') + '</textarea>' +
+    '<div style="margin-top:10px;background:var(--cream-warm);border:1px solid var(--rule);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--ink-soft);line-height:1.55">' +
+      '<strong style="color:var(--ink)">Placeholders</strong> — replaced when the email is sent:<br>' +
+      '<code>{firstName}</code> · <code>{name}</code> · <code>{clientName}</code> · <code>{hubUrl}</code> · <code>{accessCode}</code> · <code>{sessionTime}</code> · <code>{zoomUrl}</code> · <code>{programLabel}</code> · <code>{digestBody}</code>' +
+    '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  var cancel = document.createElement('button');
+  cancel.className = 'btn-sm';
+  cancel.textContent = 'Cancel';
+  cancel.onclick = function() { host.style.display = 'none'; };
+  var save = document.createElement('button');
+  save.className = 'btn-sm primary';
+  save.textContent = 'Save template';
+  save.onclick = async function() {
+    var subj = document.getElementById('email-tpl-subject').value.trim();
+    var bdy = document.getElementById('email-tpl-body').value.trim();
+    if (!subj || !bdy) { branded.alert('Subject and body are both required.'); return; }
+    await opts.onSave({ subject: subj, body: bdy });
+    host.style.display = 'none';
+    renderEmailTemplatesList();
+    branded.success('Template saved ✨');
+  };
+  actions.appendChild(cancel);
+  actions.appendChild(save);
+  host.style.display = 'flex';
+}
+
+function editEmailTemplate(key) {
+  var tpl = _getEmailTemplate(key);
+  if (!tpl) return;
+  _openEmailTemplateModal({
+    title: tpl.label,
+    description: tpl.description,
+    subject: tpl.subject,
+    body: tpl.body,
+    onSave: async function(v) {
+      window._coachSettings = window._coachSettings || {};
+      window._coachSettings.emailTemplates = window._coachSettings.emailTemplates || {};
+      window._coachSettings.emailTemplates[key] = v;
+      if (typeof flushCoachSettings === 'function') {
+        try { await flushCoachSettings(); } catch (e) {}
+      }
+    },
+  });
+}
+
+async function resetEmailTemplate(key) {
+  var ok = await branded.confirm('Reset this template to the default wording?', { title: 'Reset template?', okLabel: 'Reset', cancelLabel: 'Cancel' });
+  if (!ok) return;
+  if (window._coachSettings && window._coachSettings.emailTemplates) {
+    delete window._coachSettings.emailTemplates[key];
+    if (typeof flushCoachSettings === 'function') { try { await flushCoachSettings(); } catch (e) {} }
+  }
+  renderEmailTemplatesList();
+  branded.toast('Reset to default');
+}
+
+async function addCustomEmailTemplate() {
+  var name = await branded.prompt('What\'s this template called? (e.g. "Pricing follow-up", "Speaking enquiry reply")', '', '', { title: 'New email template', okLabel: 'Next' });
+  if (!name || !name.trim()) return;
+  _openEmailTemplateModal({
+    title: '📝 ' + name.trim(),
+    description: 'A custom template you can pull from when composing messages. Use placeholders as needed.',
+    subject: '',
+    body: '',
+    onSave: async function(v) {
+      window._coachSettings = window._coachSettings || {};
+      window._coachSettings.emailTemplates = window._coachSettings.emailTemplates || {};
+      window._coachSettings.emailTemplates.customs = window._coachSettings.emailTemplates.customs || [];
+      window._coachSettings.emailTemplates.customs.push({
+        id: 'etpl-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        label: name.trim(),
+        subject: v.subject,
+        body: v.body,
+        createdAt: new Date().toISOString(),
+      });
+      if (typeof flushCoachSettings === 'function') { try { await flushCoachSettings(); } catch (e) {} }
+    },
+  });
+}
+
+function editCustomEmailTemplate(id) {
+  var list = (window._coachSettings && window._coachSettings.emailTemplates && window._coachSettings.emailTemplates.customs) || [];
+  var t = list.find(function(x) { return x.id === id; });
+  if (!t) return;
+  _openEmailTemplateModal({
+    title: '📝 ' + (t.label || 'Custom template'),
+    description: 'Custom template.',
+    subject: t.subject,
+    body: t.body,
+    onSave: async function(v) {
+      t.subject = v.subject;
+      t.body = v.body;
+      t.updatedAt = new Date().toISOString();
+      if (typeof flushCoachSettings === 'function') { try { await flushCoachSettings(); } catch (e) {} }
+    },
+  });
+}
+
+async function deleteCustomEmailTemplate(id) {
+  var ok = await branded.confirm('Delete this custom template?', { title: 'Delete template?', okLabel: 'Delete', danger: true });
+  if (!ok) return;
+  var et = window._coachSettings && window._coachSettings.emailTemplates;
+  if (et && Array.isArray(et.customs)) {
+    et.customs = et.customs.filter(function(x){ return x.id !== id; });
+    if (typeof flushCoachSettings === 'function') { try { await flushCoachSettings(); } catch (e) {} }
+  }
+  renderEmailTemplatesList();
+  branded.toast('Deleted');
+}
+
 function renderCustomProgramTypesList() {
   var el = document.getElementById('custom-program-types-list');
   if (!el) return;
@@ -6013,6 +6297,7 @@ function showPage(id) {
         if (typeof renderCustomBadgeList==='function') renderCustomBadgeList();
         if (typeof renderZoomTemplatesList==='function') renderZoomTemplatesList();
         if (typeof renderCustomProgramTypesList==='function') renderCustomProgramTypesList();
+        if (typeof renderEmailTemplatesList==='function') renderEmailTemplatesList();
         if (typeof renderRecommendableProductsList==='function') renderRecommendableProductsList();
         if (typeof refreshIntegrationStatusPills==='function') refreshIntegrationStatusPills();
         if (typeof renderIntakeDefaultsEditor==='function') renderIntakeDefaultsEditor();
@@ -6025,7 +6310,10 @@ function showPage(id) {
         }
       }
       else if (id === 'tasks')      { if (typeof renderAllTasks==='function') renderAllTasks(); }
-      else if (id === 'settings')   { if (typeof initNotificationsToggle==='function') initNotificationsToggle(); }
+      else if (id === 'settings')   {
+        if (typeof initNotificationsToggle==='function') initNotificationsToggle();
+        if (typeof renderEmailTemplatesList==='function') renderEmailTemplatesList();
+      }
     } catch(e) { console.error('Page render error:', id, e); }
   }, 50);
 }

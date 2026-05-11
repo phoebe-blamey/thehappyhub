@@ -177,6 +177,28 @@ function buildDigestForClient(client: any, secret: string, base: string, now: Da
   return items;
 }
 
+// v11746: helper — pull saved email templates from coach-settings blob,
+// fall back to default. Phoebe edits these in Settings → Email templates.
+async function _readEmailTemplate(key: string): Promise<{ subject: string; body: string } | null> {
+  try {
+    const store = getStore("coach-settings");
+    const raw = await store.get("coach-settings");
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj.emailTemplates || !obj.emailTemplates[key]) return null;
+    return {
+      subject: obj.emailTemplates[key].subject || "",
+      body:    obj.emailTemplates[key].body    || "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function _substitute(s: string, vars: Record<string, string>): string {
+  return (s || "").replace(/\{(\w+)\}/g, (m, key) => (key in vars ? String(vars[key] ?? "") : m));
+}
+
 function buildEmailBody(firstName: string, items: DigestItem[], hubUrl: string) {
   const lines: string[] = [];
   lines.push(`Hi ${firstName},`);
@@ -298,16 +320,32 @@ export default async (req: Request) => {
 
       const firstName = (client.name || "").split(" ")[0] || "there";
       const hubUrl = `${base}/?client=${encodeURIComponent(client.clientAccess || "")}`;
-      const body = buildEmailBody(firstName, items, hubUrl);
+      const innerBody = buildEmailBody(firstName, items, hubUrl);
 
+      // v11746: render via Phoebe-editable template if she's saved one.
+      // The digest-* templates use {digestBody} as the dynamic middle
+      // section; everything else is her wording.
+      const templateKey = isFriday(now) ? "digestFri" : "digestMon";
+      const tpl = await _readEmailTemplate(templateKey);
+      const vars = {
+        firstName,
+        name: firstName,
+        clientName: client.name || firstName,
+        hubUrl,
+        accessCode: client.clientAccess || "",
+        digestBody: innerBody.replace(/^Hi [^\n]+,\n*/i, "").replace(/\n\nPhoebe x\s*$/i, "").trim(),
+      };
       // Subject — keep it personal + count-aware
       const counts: string[] = [];
       if (items.some(i => i.kind === "task-due" || i.kind === "task-overdue")) counts.push(`${items.filter(i => i.kind === "task-due" || i.kind === "task-overdue").length} task${items.filter(i => i.kind === "task-due" || i.kind === "task-overdue").length === 1 ? "" : "s"}`);
       if (items.some(i => i.kind === "session")) counts.push("session");
       if (items.some(i => i.kind === "checkin")) counts.push("check-in");
-      const subject = counts.length
+      const defaultSubject = counts.length
         ? `Today on your hub — ${counts.join(", ")}`
         : "Today on your hub";
+
+      const subject = tpl ? _substitute(tpl.subject, vars) : defaultSubject;
+      const body    = tpl ? _substitute(tpl.body, vars)    : innerBody;
 
       const sendResp = await fetch(`${base}/api/send-message`, {
         method: "POST",
