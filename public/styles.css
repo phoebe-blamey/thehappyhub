@@ -955,6 +955,93 @@ body[data-live-sync="synced"] .topbar-date::after {
 .client-hero { background: var(--magenta); color: white; padding: 32px 24px 28px; }
 .client-hero h2 { font-family: var(--f-head); font-size: 26px; margin-bottom: 4px; }
 .client-hero p { font-size: 13px; opacity: 0.75; }
+
+/* ════════════════════════════════════════════════════════════════════
+   v11722 — CLIENT-PORTAL HEADER restyle to match phoebeblamey.com.au
+   Hero flipped from solid magenta to soft pink with dark text, and the
+   topbar moved to a pale pink gradient so it visually flows into the
+   wave divider sitting between the bar and the hero. Two wave dividers
+   bracket the hero band (top + bottom), matching the website pattern.
+   SCOPED to #client-hub only — coach portal topbar and hero are
+   unchanged. !important is used because the .topbar and .client-hero
+   rules above + the inline style attributes win otherwise.
+   ════════════════════════════════════════════════════════════════════ */
+/* Topbar — soft pink so it blends into the wave below */
+#client-hub .topbar {
+  background: linear-gradient(180deg, #FCE5EE 0%, #FBD9E7 100%) !important;
+  color: var(--magenta) !important;
+  border-bottom: none;
+}
+#client-hub .topbar .topbar-logo,
+#client-hub .topbar .topbar-logo-text,
+#client-hub .topbar #client-topbar-prog,
+#client-hub .topbar .topbar-date {
+  color: var(--magenta) !important;
+}
+#client-hub .topbar .topbar-action-btn {
+  background: rgba(229,4,139,0.10);
+  border: 1px solid rgba(229,4,139,0.22);
+  color: var(--magenta);
+}
+#client-hub .topbar .topbar-action-btn:hover { background: rgba(229,4,139,0.18); }
+#client-hub .topbar .btn-logout {
+  background: rgba(229,4,139,0.10);
+  color: var(--magenta);
+}
+#client-hub .topbar .btn-logout:hover { background: rgba(229,4,139,0.18); }
+
+/* Hero — pale pink band with dark bold text + magenta accent */
+#client-hub .client-hero {
+  background: linear-gradient(180deg, #FBD9E7 0%, #FCE9F2 55%, #FFF5FA 100%) !important;
+  color: #222 !important;
+  padding: 56px 24px 64px !important;
+}
+#client-hub .client-hero h2,
+#client-hub .client-hero #client-hero-name,
+#client-hub .client-hero .client-hero-prog,
+#client-hub #client-hero-prog {
+  color: #222 !important;
+  opacity: 1 !important;
+}
+#client-hub .client-hero p,
+#client-hub .client-hero .client-hero-tagline,
+#client-hub #client-hero-tagline {
+  color: var(--hot-pink) !important;
+  opacity: 1 !important;
+  font-weight: 600;
+}
+/* "My why" pin — soft white pill that still reads on the pink */
+#client-hub #client-hero-why-wrap {
+  background: rgba(255,255,255,0.62) !important;
+  border: 1px solid rgba(229,4,139,0.18) !important;
+  backdrop-filter: blur(2px);
+}
+#client-hub #client-hero-why-text { color: #222 !important; opacity: 1 !important; }
+
+/* Wave dividers — flipped wave at the TOP of the hero (joins the topbar)
+   and a normal wave at the BOTTOM (separates hero from content). Triple-
+   layer pink wave SVG lifted from phoebeblamey.com.au section dividers. */
+#client-hub .client-hero::before,
+#client-hub .client-hero::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  height: 44px;
+  background-repeat: no-repeat;
+  background-size: 100% 44px;
+  pointer-events: none;
+  z-index: 1;
+}
+#client-hub .client-hero::before {
+  top: -1px;
+  transform: scaleY(-1);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 140' preserveAspectRatio='none'><g fill='%23F0A3C7'><path d='M0 51.76c36.21-2.25 77.57-3.58 126.42-3.58 320 0 320 57 640 57 271.15 0 312.58-40.91 513.58-53.4V0H0z' fill-opacity='.3'/><path d='M0 24.31c43.46-5.69 94.56-9.25 158.42-9.25 320 0 320 89.24 640 89.24 256.13 0 307.28-57.16 481.58-80V0H0z' fill-opacity='.5'/><path d='M0 0v3.4C28.2 1.6 59.4.59 94.42.59c320 0 320 84.3 640 84.3 285 0 316.17-66.85 545.58-81.49V0z'/></g></svg>");
+}
+#client-hub .client-hero::after {
+  bottom: -1px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 140' preserveAspectRatio='none'><g fill='%23F0A3C7'><path d='M0 51.76c36.21-2.25 77.57-3.58 126.42-3.58 320 0 320 57 640 57 271.15 0 312.58-40.91 513.58-53.4V0H0z' fill-opacity='.3'/><path d='M0 24.31c43.46-5.69 94.56-9.25 158.42-9.25 320 0 320 89.24 640 89.24 256.13 0 307.28-57.16 481.58-80V0H0z' fill-opacity='.5'/><path d='M0 0v3.4C28.2 1.6 59.4.59 94.42.59c320 0 320 84.3 640 84.3 285 0 316.17-66.85 545.58-81.49V0z'/></g></svg>");
+}
+
 .progress-wrap { margin-top: 16px; }
 .progress-bar-bg { background: rgba(255,255,255,0.2); border-radius: 99px; height: 6px; margin-bottom: 6px; }
 .progress-bar-fill { background: var(--sunshine); height: 100%; border-radius: 99px; transition: width 0.5s; }
