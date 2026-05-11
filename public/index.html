@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11725">
-<link rel="stylesheet" href="styles.css?v=11725">
+<link rel="preload" as="style" href="styles.css?v=11726">
+<link rel="stylesheet" href="styles.css?v=11726">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11725 — two fixes. (1) THE REAL hero-magenta fix. A v11210 rule lower in styles.css forced background:var(--magenta)!important on the hero, overriding v11722's soft-pink swap (same specificity but later in the file = it won). Removed the conflicting rule + its radial-blob pseudo-elements (which were also clobbering v11722's wave dividers). Hero now actually renders soft pink with the wave dividers above + below. (2) TEST-CLIENT COMMENT SYSTEM: a pink '💬 Note for Phoebe' floating button bottom-left, visible ONLY for test clients (Elodie · ELOD99 or anyone with isTest:true). Click → modal with the current location pre-filled + a textarea. Submit pushes the note to Phoebe's coach-side activity feed AND saves locally so she can browse her own flags from the modal. Cache-bust v=11725.">
+<meta name="hmh-build" content="v11726 — notes-for-Claude system. Repurposed the v11725 test-comment FAB: notes are now FOR Claude (not for Phoebe-the-coach). Each note saves to client.claudeNotes (persisted to Netlify Blobs via persistClient) so Claude can fetch them via GET /api/get-clients in chat when Phoebe says 'check my notes'. Modal title: 'Tell Claude what to change'. Each note has a 'mark done' toggle so Phoebe can tick items off as Claude addresses them. FAB badge shows the open-notes count. v11725: real hero-magenta fix. v11724: input/textarea readability. v11723: section visibility. v11722: hero soft pink. v11721: body text dark. READY FOR CLIENT TESTING.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -1247,16 +1247,18 @@
     <!-- v11550: Community tab content area — populated by renderClientCommunityTab(). -->
     <div class="client-content" id="client-community-area" style="display:none"></div>
     <div class="client-content" id="client-settings-area" style="display:none"></div>
-    <!-- v11725: Test-client comment FAB.
-         Only renders for clients tagged as test (Elodie · ELOD99).
-         Lets Phoebe leave a note while viewing the portal as the
-         client — the note gets logged to Phoebe's coach-side
-         activity feed AND stored locally so she can review later. -->
+    <!-- v11726: Notes-for-Claude FAB.
+         Only renders for test clients (Elodie · ELOD99 / isTest:true).
+         Phoebe writes design feedback per section ("change this text
+         colour", "move this", "this is wrong"). Each note saves to
+         client.claudeNotes (persisted to Netlify Blobs via the normal
+         save path), so Claude can fetch the list via /api/get-clients
+         when Phoebe says "check my notes" in chat. -->
     <button id="test-comment-fab" onclick="openTestCommentModal()"
       style="display:none;position:fixed;bottom:24px;left:24px;z-index:9650;background:var(--hot-pink);color:white;border:none;border-radius:99px;padding:12px 20px;font-family:var(--f-body);font-size:14px;font-weight:600;box-shadow:0 6px 18px rgba(229,4,139,0.28);cursor:pointer;display:none;align-items:center;gap:8px"
-      title="Leave a note for Phoebe about anything on this page (visible to her only)">
+      title="Tell Claude what to change on this page. He'll read these and make the edits.">
       <span style="font-size:16px">💬</span>
-      <span>Note for Phoebe</span>
+      <span>Note for Claude</span>
       <span id="test-comment-fab-count" style="display:none;background:var(--sunshine);color:var(--magenta);font-size:10px;font-weight:800;padding:1px 7px;border-radius:99px;line-height:1.4"></span>
     </button>
     <!-- Bottom tab bar — phone-only via CSS media query. Drives the same
@@ -11887,13 +11889,15 @@ function _computeClientNotifs(client) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// v11725 — TEST-CLIENT COMMENT SYSTEM
-// Phoebe asked for a way to leave notes on any section of the client
-// portal while reviewing as her test client (Elodie · ELOD99). Notes
-// flow to her coach-side activity feed AND save locally so she can
-// scroll through what she's flagged.
-// Only renders for clients tagged as a test client (isTest === true)
-// or with clientAccess === 'ELOD99'.
+// v11726 — NOTES-FOR-CLAUDE on the client portal
+// Phoebe wanted to leave design feedback per section while viewing
+// the portal as her test client. Each note is stored on
+// client.claudeNotes (persisted to Netlify Blobs via persistClient)
+// so Claude can fetch the list via GET /api/get-clients in chat and
+// then make the requested edits.
+// Only renders for test clients (isTest === true / clientAccess
+// === 'ELOD99'). Notes are also mirrored to localStorage so the
+// FAB count stays accurate even before the save round-trip lands.
 // ════════════════════════════════════════════════════════════════════
 function _isTestClient(client) {
   if (!client) return false;
@@ -11902,13 +11906,10 @@ function _isTestClient(client) {
   return false;
 }
 
-function _testCommentsKey(client) {
-  return 'hmh_test_comments_' + ((client && client.clientAccess) || 'anon');
-}
-
-function _loadTestComments(client) {
-  try { return JSON.parse(localStorage.getItem(_testCommentsKey(client)) || '[]'); }
-  catch (e) { return []; }
+function _claudeNotes(client) {
+  if (!client) return [];
+  if (Array.isArray(client.claudeNotes)) return client.claudeNotes;
+  return [];
 }
 
 function refreshTestCommentFab() {
@@ -11917,11 +11918,11 @@ function refreshTestCommentFab() {
   var client = (clients || []).find(function(c){ return c.id === currentClientId; });
   if (!_isTestClient(client)) { fab.style.display = 'none'; return; }
   fab.style.display = 'flex';
-  var comments = _loadTestComments(client);
+  var notes = _claudeNotes(client).filter(function(n){ return !n.done; });
   var badge = document.getElementById('test-comment-fab-count');
   if (badge) {
-    if (comments.length) {
-      badge.textContent = String(comments.length);
+    if (notes.length) {
+      badge.textContent = String(notes.length);
       badge.style.display = 'inline-block';
     } else {
       badge.style.display = 'none';
@@ -11932,32 +11933,36 @@ function refreshTestCommentFab() {
 async function openTestCommentModal() {
   var client = (clients || []).find(function(c){ return c.id === currentClientId; });
   if (!_isTestClient(client)) return;
-  // What page / tab is she on?
+  // Where are we — which tab + section is currently open?
   var activeTab = document.querySelector('.client-tab.active');
   var tabName = activeTab ? (activeTab.textContent || '').trim() : 'Unknown';
   var hash = (location.hash || '').replace('#','');
   var locationLabel = tabName + (hash && hash !== tabName ? ' · ' + hash : '');
-  // Ask whether she wants to ADD a note or VIEW her notes (only show
-  // "View" if she has at least one). Quick two-option modal.
-  var existing = _loadTestComments(client);
+  var existing = _claudeNotes(client);
+  var open = existing.filter(function(n){ return !n.done; });
   var host = document.getElementById('branded-modal-host');
   if (!host) return;
   document.getElementById('branded-modal-icon').textContent = '💬';
-  document.getElementById('branded-modal-title').textContent = 'Note for Phoebe';
+  document.getElementById('branded-modal-title').textContent = 'Tell Claude what to change';
   var body = document.getElementById('branded-modal-body');
   body.innerHTML =
-    '<div style="font-size:13px;color:var(--stone);margin-bottom:10px">Currently on: <strong style="color:var(--magenta)">' + escapeHtml(locationLabel) + '</strong></div>' +
-    '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">What do you want to flag?</label>' +
-    '<textarea id="test-comment-input" rows="5" placeholder="Be specific — what section, what feels off, what you\'d change. This goes straight to your coach-side activity feed plus saves locally so you can browse later." style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:14px;color:#222;background:white;outline:none;resize:vertical;line-height:1.5"></textarea>' +
+    '<div style="font-size:13px;color:#222;margin-bottom:4px">Claude reads these in chat and makes the edits. Be specific — what section, what to change, what to change it to.</div>' +
+    '<div style="font-size:12px;color:var(--stone);margin-bottom:10px">Currently on: <strong style="color:var(--magenta)">' + escapeHtml(locationLabel) + '</strong></div>' +
+    '<label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--hot-pink);margin-bottom:5px">What to change</label>' +
+    '<textarea id="test-comment-input" rows="5" placeholder="e.g. &quot;Make the hero pink softer — looks too saturated&quot; · &quot;The teal section is too dark, lighten by 20%&quot; · &quot;Move the wins card above the next-session card&quot;" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:14px;color:#222;background:white;outline:none;resize:vertical;line-height:1.5"></textarea>' +
     (existing.length
-      ? '<details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--magenta)">🧾 Previously flagged · ' + existing.length + '</summary>' +
-        '<div style="margin-top:8px;max-height:30vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px">' +
-          existing.slice().reverse().map(function(c) {
+      ? '<details style="margin-top:14px"' + (open.length ? ' open' : '') + '><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--magenta)">🧾 Notes so far · ' + existing.length + (open.length && open.length < existing.length ? ' (' + open.length + ' still open)' : '') + '</summary>' +
+        '<div style="margin-top:8px;max-height:32vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px">' +
+          existing.slice().reverse().map(function(c, i) {
             var when = '';
             try { when = new Date(c.at).toLocaleString('en-AU', {weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}); } catch(e) {}
-            return '<div style="background:white;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:#222;line-height:1.5">' +
-              '<div style="font-size:10px;color:var(--hot-pink);font-weight:700;margin-bottom:3px">' + escapeHtml(c.location || '') + ' · ' + escapeHtml(when) + '</div>' +
-              escapeHtml(c.note || '') +
+            var origIdx = existing.length - 1 - i;
+            return '<div style="background:white;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;color:#222;line-height:1.5;' + (c.done ? 'opacity:0.55' : '') + '">' +
+              '<div style="font-size:10px;color:var(--hot-pink);font-weight:700;margin-bottom:3px;display:flex;align-items:center;gap:8px;justify-content:space-between">' +
+                '<span>' + escapeHtml(c.location || '') + ' · ' + escapeHtml(when) + '</span>' +
+                '<button onclick="toggleClaudeNoteDone(' + origIdx + ')" style="background:none;border:none;color:' + (c.done ? 'var(--teal)' : 'var(--stone)') + ';cursor:pointer;font-size:11px;padding:0">' + (c.done ? '✓ done' : 'mark done') + '</button>' +
+              '</div>' +
+              (c.done ? '<s>' : '') + escapeHtml(c.note || '') + (c.done ? '</s>' : '') +
             '</div>';
           }).join('') +
         '</div>' +
@@ -11973,39 +11978,31 @@ async function openTestCommentModal() {
   actions.appendChild(cancel);
   var send = document.createElement('button');
   send.className = 'btn-sm primary';
-  send.textContent = 'Send to Phoebe';
+  send.textContent = 'Send to Claude';
   send.onclick = async function() {
     var noteEl = document.getElementById('test-comment-input');
     var note = noteEl ? (noteEl.value || '').trim() : '';
     if (!note) { branded.alert('Type a note first.'); return; }
-    // Save locally
+    // Append to client.claudeNotes and persist to the server. Claude
+    // will read these via GET /api/get-clients when Phoebe says
+    // "check my notes" in chat.
+    client.claudeNotes = Array.isArray(client.claudeNotes) ? client.claudeNotes : [];
+    client.claudeNotes.push({
+      at: new Date().toISOString(),
+      location: locationLabel,
+      url: location.href,
+      note: note,
+      done: false,
+    });
     try {
-      var arr = _loadTestComments(client);
-      arr.push({
-        at: new Date().toISOString(),
-        location: locationLabel,
-        url: location.href,
-        note: note,
-      });
-      localStorage.setItem(_testCommentsKey(client), JSON.stringify(arr));
-    } catch(e) { console.warn('[test-comment] localStorage save failed', e); }
-    // Push to Phoebe's coach-side activity feed (visible in her Pulse panel)
-    if (typeof logActivity === 'function') {
-      try {
-        logActivity('feedback', '💬 Test note · ' + locationLabel, {
-          clientId: client.id,
-          clientName: client.name || 'Test client',
-          detail: note,
-          location: locationLabel,
-        });
-      } catch(e) { console.warn('[test-comment] logActivity failed', e); }
-    }
+      if (typeof persistClient === 'function') await persistClient(client);
+    } catch(e) { console.warn('[claude-note] persist failed', e); }
     host.style.display = 'none';
     refreshTestCommentFab();
     if (typeof branded !== 'undefined' && branded.success) {
-      branded.success('Sent ✨ Phoebe will see it in her activity feed.');
+      branded.success('Saved ✨ Tell Claude "check my notes" in chat and he\'ll pick it up.');
     } else if (typeof branded !== 'undefined' && branded.toast) {
-      branded.toast('Sent to Phoebe');
+      branded.toast('Saved');
     }
   };
   actions.appendChild(send);
@@ -12015,6 +12012,19 @@ async function openTestCommentModal() {
     var el = document.getElementById('test-comment-input');
     if (el) el.focus();
   }, 50);
+}
+
+// Toggle a Claude-note's done flag from inside the list — used by the
+// "mark done" / "✓ done" buttons in the modal accordion.
+async function toggleClaudeNoteDone(idx) {
+  var client = (clients || []).find(function(c){ return c.id === currentClientId; });
+  if (!client || !Array.isArray(client.claudeNotes)) return;
+  if (idx < 0 || idx >= client.claudeNotes.length) return;
+  client.claudeNotes[idx].done = !client.claudeNotes[idx].done;
+  client.claudeNotes[idx].doneAt = client.claudeNotes[idx].done ? new Date().toISOString() : null;
+  try { if (typeof persistClient === 'function') await persistClient(client); } catch(e) {}
+  refreshTestCommentFab();
+  openTestCommentModal(); // re-render the modal with updated state
 }
 
 function refreshClientNotifBadge() {
