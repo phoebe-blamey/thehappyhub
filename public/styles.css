@@ -1042,6 +1042,125 @@ body[data-live-sync="synced"] .topbar-date::after {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 140' preserveAspectRatio='none'><g fill='%23F0A3C7'><path d='M0 51.76c36.21-2.25 77.57-3.58 126.42-3.58 320 0 320 57 640 57 271.15 0 312.58-40.91 513.58-53.4V0H0z' fill-opacity='.3'/><path d='M0 24.31c43.46-5.69 94.56-9.25 158.42-9.25 320 0 320 89.24 640 89.24 256.13 0 307.28-57.16 481.58-80V0H0z' fill-opacity='.5'/><path d='M0 0v3.4C28.2 1.6 59.4.59 94.42.59c320 0 320 84.3 640 84.3 285 0 316.17-66.85 545.58-81.49V0z'/></g></svg>");
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   v11727 — full hero contrast pass.
+   When the hero was solid magenta every text element was styled white.
+   v11722 flipped the hero to soft pink without revisiting all the
+   white-text descendants — badge labels, "Add my why" / "Suggest one"
+   buttons, Sign out, "How's today?" — all became white-on-pink and
+   effectively disappeared. This block fixes every visible element in
+   the hero region one by one, keeping the brand pinks/teal/yellow as
+   accents.
+   ════════════════════════════════════════════════════════════════════ */
+/* Badge medallion labels — were white, now dark on pink */
+#client-hub .hero-medallion-label {
+  color: #222 !important;
+  opacity: 0.85 !important;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+}
+
+/* "+ Add my why" + "+ Suggest one" buttons inside the why pin —
+   .story-card-action was hot-pink-on-pink (low contrast), .story-card-edit
+   text was teal-on-cream. Both forced to clear brand styles. */
+#client-hub .client-hero .story-card-edit,
+#client-hub #client-hero-why-wrap .story-card-edit {
+  background: white !important;
+  color: var(--magenta) !important;
+  border: 1.5px solid rgba(229,4,139,0.30) !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  padding: 7px 14px !important;
+  box-shadow: 0 1px 4px rgba(229,4,139,0.10);
+}
+#client-hub .client-hero .story-card-edit:hover,
+#client-hub #client-hero-why-wrap .story-card-edit:hover {
+  background: var(--marshmallow) !important;
+  border-color: var(--hot-pink) !important;
+}
+/* The yellow "Suggest one" gets the brand sunshine fill so it reads as
+   "AI assist" — bright but with dark magenta text for contrast. */
+#client-hub .client-hero .story-card-edit[onclick*="suggestClientWhy"],
+#client-hub #client-hero-why-wrap .story-card-edit[onclick*="suggestClientWhy"] {
+  background: var(--sunshine) !important;
+  color: var(--magenta) !important;
+  border-color: rgba(229,4,139,0.30) !important;
+}
+/* The hot-pink "Add my why" primary action — keeps brand pink fill but
+   forces white text + a faint border so it pops against pink hero. */
+#client-hub .client-hero .story-card-action,
+#client-hub #client-hero-why-wrap .story-card-action {
+  background: var(--hot-pink) !important;
+  color: white !important;
+  border-color: var(--hot-pink) !important;
+  box-shadow: 0 3px 10px rgba(229,4,139,0.22);
+}
+
+/* Why-pin empty state text "+ Add my why" — was inheriting white;
+   now reads in dark magenta italic. */
+#client-hub #client-hero-why-text {
+  color: var(--magenta) !important;
+  opacity: 1 !important;
+}
+/* The pin container itself — was rgba(255,255,255,0.13) (designed for
+   the old magenta hero). On the new pink hero that becomes nearly
+   invisible. Switch to a clean white pill with a magenta border. */
+#client-hub #client-hero-why-wrap {
+  background: rgba(255,255,255,0.85) !important;
+  border: 1.5px solid rgba(229,4,139,0.18) !important;
+  box-shadow: 0 2px 8px rgba(229,4,139,0.06);
+}
+
+/* Sign-out button in the topbar — was barely visible (pink on pink).
+   Now a proper saturated pink pill with white text. */
+#client-hub .topbar .btn-logout {
+  background: var(--hot-pink) !important;
+  color: white !important;
+  border: 1px solid var(--hot-pink) !important;
+  font-weight: 700 !important;
+  padding: 5px 14px !important;
+  box-shadow: 0 2px 8px rgba(229,4,139,0.22);
+}
+#client-hub .topbar .btn-logout:hover {
+  background: var(--magenta) !important;
+  border-color: var(--magenta) !important;
+}
+
+/* Action buttons in topbar (notification bell, theme, settings) —
+   currently low-contrast pink-on-pink. Bump fill saturation + magenta
+   icons. */
+#client-hub .topbar .topbar-action-btn {
+  background: rgba(229,4,139,0.14) !important;
+  border: 1px solid rgba(229,4,139,0.28) !important;
+  color: var(--magenta) !important;
+}
+#client-hub .topbar .topbar-action-btn:hover {
+  background: rgba(229,4,139,0.24) !important;
+}
+
+/* "How's today?" mood pill rail — keep the yellow but ensure the
+   "How's today?" label inside reads in dark magenta, not white. */
+#client-hub .hero-mood-pill,
+#client-hub .client-hero-mood-corner .hero-mood-pill {
+  color: var(--magenta) !important;
+}
+
+/* COACHING / MY HUB / etc small caps badge labels in the hero —
+   any element styled with the .client-hero-prog pattern was set
+   white. Force dark. */
+#client-hub #client-hero-prog,
+#client-hub .client-hero-prog {
+  color: #5A3B4A !important; /* dark mauve — readable AND brand-aligned */
+  opacity: 0.85 !important;
+}
+
+/* The next-session yellow pill in the topbar stays yellow with dark
+   text — already worked, just lock the value so future restyles
+   don't accidentally clobber it. */
+#client-hub #client-next-session-pill {
+  color: #5A4632 !important;
+}
+
+
 .progress-wrap { margin-top: 16px; }
 .progress-bar-bg { background: rgba(255,255,255,0.2); border-radius: 99px; height: 6px; margin-bottom: 6px; }
 .progress-bar-fill { background: var(--sunshine); height: 100%; border-radius: 99px; transition: width 0.5s; }
