@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11748">
-<link rel="stylesheet" href="styles.css?v=11748">
+<link rel="preload" as="style" href="styles.css?v=11749">
+<link rel="stylesheet" href="styles.css?v=11749">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11748 — Summary-tab Zoom transcript + AI action-item extraction. On the Intake/Summary tab Phoebe can now Pull from Zoom (same flow as the 90-Day Plan tab — works with AssemblyAI for large audio), edit the transcript, click ✦ Extract action items, and Claude returns a structured list of who-committed-to-what. Each item has an owner badge (CLIENT / YOU), priority, optional 'when', and a program picker — one click adds it as a task on any program (or as a free client task). + Add all selected for batch insertion. ASSEMBLYAI_API_KEY confirmed live on Netlify so >25MB Zoom audio flows through diarised transcription automatically. v11747 Friday-digest loop + reminder templates remain shipped.">
+<meta name="hmh-build" content="v11749 — Scott-Taylor-quality 90-day plans. The plan builder now produces a full transformation document: honest diagnosis (assets + blocks + current-vs-target table), north-star goal with the maths working backwards to a daily anchor, 2-3 strategic pillars (name + why + mechanics), 12-week breakdown with ~2 actions per week (24 total, digestible — not 12 chunky monthly tasks), default Mon-Fri weekly rhythm, KPI scorecards (weekly + monthly), 2-4 ready-to-send templates, and a 3-5 entry risk register. EVERY section editable inline — Phoebe rewrites anything, autosaves on blur. Empty plans get + Add buttons so Phoebe can build from scratch too. Existing plans render alongside (backward-compatible). v11748 Summary-tab Zoom + action-items remain shipped.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -518,6 +518,11 @@
               <button class="btn-sm" onclick="saveCurrentPlanAsTemplate()" title="Save the current plan structure as a reusable template for other clients">💾 Save as template</button>
             </div>
           </div>
+          <!-- v11749: rich plan-extended sections (diagnosis, pillars, rhythm,
+               KPIs, templates, risks). Rendered above the weekly grid by
+               renderPlanExtended() whenever prog.planExtended is present.
+               Every section is editable inline — Phoebe can rewrite anything. -->
+          <div id="plan-extended-host" style="margin-bottom:18px"></div>
           <div class="plan-grid" id="plan-grid">
             <!-- Transient skeleton — replaced by renderPlanGrid as soon as a
                  client is opened. Stops the slot looking like an empty void
@@ -7072,6 +7077,11 @@ function openProgram(client, progId) {
     (prog.websiteSocial ? '<div class="intake-answer"><div class="intake-q">Social</div><div class="intake-a">' + prog.websiteSocial + '</div></div>' : '');
 
   // Plan + saved templates strip
+  // v11749: render the rich plan-extended sections (diagnosis, pillars,
+  // weekly rhythm, KPIs, templates, risks) above the weekly action grid.
+  if (typeof renderPlanExtended === 'function') {
+    try { renderPlanExtended(client, prog); } catch (e) { console.warn('[planExtended] render failed', e); }
+  }
   renderPlanGrid(prog.plan, prog.taskDone, 'plan-grid', false);
   if (typeof renderPlanTemplateChips === 'function') renderPlanTemplateChips();
   // Summary history (versioned archive of past summaries)
@@ -7437,6 +7447,297 @@ function renderPlanGrid(plan, taskDone, containerId, readonly) {
       '</div></div>';
   }).join('');
 }
+
+// ────────────────────────────────────────────────────────────────────
+// v11749 — Rich plan-extended renderer
+// ────────────────────────────────────────────────────────────────────
+// Renders prog.planExtended (diagnosis / pillars / weekly rhythm / KPIs /
+// templates / risks) above the weekly action grid. Every block is
+// editable in place — Phoebe can rewrite anything and it auto-saves on
+// blur. Empty / missing sections collapse to a discreet "+ Add" button
+// so plans built before v11749 don't show empty placeholders.
+//
+// Storage path: client.programs[].planExtended = {
+//   diagnosis: { assets, blocks, currentVsTarget: [{metric,current,target}] },
+//   northStar: { headline, maths },
+//   pillars: [{ name, why, mechanics }],
+//   weeklyRhythm: { mon, tue, wed, thu, fri },
+//   kpisWeekly: [{metric,target}],
+//   kpisMonthly: [{metric,target}],
+//   templates: [{name, subject, body}],
+//   risks: [{risk, mitigation}],
+// }
+function renderPlanExtended(client, prog) {
+  var host = document.getElementById('plan-extended-host');
+  if (!host) return;
+  var ext = (prog && prog.planExtended) || null;
+  if (!ext) {
+    host.innerHTML = '<div style="background:var(--paper);border:1px dashed var(--border);border-radius:12px;padding:14px 16px;font-size:12px;color:var(--stone);line-height:1.5">No transformation context yet — click <strong>⚡ Generate plan</strong> above to build the full diagnosis, pillars, weekly rhythm, KPIs, templates and risks. Or click <strong>+ Add diagnosis</strong> / <strong>+ Add pillar</strong> below to start from scratch.<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn-sm" onclick="planExtAddDiagnosis()">+ Add diagnosis</button><button class="btn-sm" onclick="planExtAddPillar()">+ Add pillar</button><button class="btn-sm" onclick="planExtAddRhythm()">+ Add weekly rhythm</button><button class="btn-sm" onclick="planExtAddKpis()">+ Add KPIs</button><button class="btn-sm" onclick="planExtAddTemplate()">+ Add template</button><button class="btn-sm" onclick="planExtAddRisk()">+ Add risk</button></div></div>';
+    return;
+  }
+  var html = '';
+
+  // ── Diagnosis ───────────────────────────────────────────────────
+  if (ext.diagnosis) {
+    var d = ext.diagnosis;
+    html += _peSection('🔍', 'Where you are now — honest diagnosis', 'diagnosis',
+      '<div style="margin-bottom:12px"><div class="pe-sublabel">What you\'ve got going for you</div>' +
+        _peEditable('diagnosis.assets', d.assets || '', 'Name what this client actually has — concrete, specific.', 80) + '</div>' +
+      '<div style="margin-bottom:12px"><div class="pe-sublabel">What\'s costing you right now</div>' +
+        _peEditable('diagnosis.blocks', d.blocks || '', 'The blocks that are eating revenue/momentum.', 80) + '</div>' +
+      _peCurrentVsTarget(d.currentVsTarget || [])
+    );
+  } else {
+    html += _peAddRow('+ Add diagnosis', 'planExtAddDiagnosis()');
+  }
+
+  // ── North Star ──────────────────────────────────────────────────
+  if (ext.northStar) {
+    var n = ext.northStar;
+    html += _peSection('🎯', 'The 90-day target', 'northStar',
+      '<div style="margin-bottom:10px"><div class="pe-sublabel">Headline goal</div>' +
+        _peEditable('northStar.headline', n.headline || '', 'One sentence. Concrete number.', 50) + '</div>' +
+      '<div><div class="pe-sublabel">Working the maths backwards</div>' +
+        _peEditable('northStar.maths', n.maths || '', 'Break it down to a daily anchor activity.', 140) + '</div>'
+    );
+  }
+
+  // ── Pillars ─────────────────────────────────────────────────────
+  if (ext.pillars && ext.pillars.length) {
+    var pillarsHtml = ext.pillars.map(function(p, i) {
+      return '<div class="pe-pillar">' +
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">' +
+          '<span class="pe-pillar-num">' + (i + 1) + '</span>' +
+          _peEditable('pillars.' + i + '.name', p.name || '', 'Pillar name', 32, true) +
+          '<button class="pe-del" onclick="planExtRemove(\'pillars\',' + i + ')" title="Remove pillar">×</button>' +
+        '</div>' +
+        '<div class="pe-sublabel">Why this pillar matters</div>' +
+        _peEditable('pillars.' + i + '.why', p.why || '', 'One line — why this is the right pillar for them.', 50) +
+        '<div class="pe-sublabel" style="margin-top:10px">How it actually works</div>' +
+        _peEditable('pillars.' + i + '.mechanics', p.mechanics || '', 'The mechanics — what they do, when, with whom.', 100) +
+      '</div>';
+    }).join('');
+    html += _peSection('🏛', 'Strategic pillars', 'pillars',
+      pillarsHtml +
+      '<button class="btn-sm" style="font-size:11px;margin-top:6px" onclick="planExtAddPillar()">+ Add pillar</button>'
+    );
+  } else {
+    html += _peAddRow('+ Add strategic pillars', 'planExtAddPillar()');
+  }
+
+  // ── Weekly Rhythm ───────────────────────────────────────────────
+  if (ext.weeklyRhythm) {
+    var r = ext.weeklyRhythm;
+    var days = ['mon','tue','wed','thu','fri'];
+    var labels = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday' };
+    var rhythmHtml = '<div class="pe-rhythm-grid">' + days.map(function(d) {
+      return '<div class="pe-rhythm-day">' +
+        '<div class="pe-rhythm-label">' + labels[d] + '</div>' +
+        _peEditable('weeklyRhythm.' + d, r[d] || '', '', 60) +
+      '</div>';
+    }).join('') + '</div>';
+    html += _peSection('🗓', 'Default weekly rhythm', 'weeklyRhythm', rhythmHtml);
+  } else {
+    html += _peAddRow('+ Add weekly rhythm', 'planExtAddRhythm()');
+  }
+
+  // ── KPIs ────────────────────────────────────────────────────────
+  var hasKpis = (ext.kpisWeekly && ext.kpisWeekly.length) || (ext.kpisMonthly && ext.kpisMonthly.length);
+  if (hasKpis) {
+    html += _peSection('📊', 'KPI scorecards', 'kpis',
+      '<div class="pe-sublabel">Weekly (send to Phoebe every Friday)</div>' +
+      _peKpiTable('kpisWeekly', ext.kpisWeekly || []) +
+      '<div class="pe-sublabel" style="margin-top:14px">Monthly (review session)</div>' +
+      _peKpiTable('kpisMonthly', ext.kpisMonthly || [])
+    );
+  } else {
+    html += _peAddRow('+ Add KPIs', 'planExtAddKpis()');
+  }
+
+  // ── Templates ───────────────────────────────────────────────────
+  if (ext.templates && ext.templates.length) {
+    var tplHtml = ext.templates.map(function(t, i) {
+      return '<details class="pe-template" open>' +
+        '<summary style="cursor:pointer;display:flex;gap:8px;align-items:center;list-style:none">' +
+          '<span style="font-size:14px">📝</span>' +
+          _peEditable('templates.' + i + '.name', t.name || '', 'Template name', 30, true) +
+          '<button class="pe-del" onclick="planExtRemove(\'templates\',' + i + ');event.stopPropagation()" title="Remove template">×</button>' +
+        '</summary>' +
+        (t.subject !== undefined ? '<div class="pe-sublabel" style="margin-top:10px">Subject (email only)</div>' + _peEditable('templates.' + i + '.subject', t.subject || '', '', 30) : '') +
+        '<div class="pe-sublabel" style="margin-top:10px">Body</div>' +
+        _peEditable('templates.' + i + '.body', t.body || '', 'The full copy — ready to send.', 160) +
+      '</details>';
+    }).join('');
+    html += _peSection('✉️', 'Ready-to-use templates', 'templates',
+      tplHtml +
+      '<button class="btn-sm" style="font-size:11px;margin-top:6px" onclick="planExtAddTemplate()">+ Add template</button>'
+    );
+  } else {
+    html += _peAddRow('+ Add templates', 'planExtAddTemplate()');
+  }
+
+  // ── Risks ───────────────────────────────────────────────────────
+  if (ext.risks && ext.risks.length) {
+    var riskHtml = '<div style="display:flex;flex-direction:column;gap:8px">' + ext.risks.map(function(rk, i) {
+      return '<div class="pe-risk">' +
+        '<div style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start">' +
+          '<div style="flex:1"><div class="pe-sublabel">Risk</div>' +
+            _peEditable('risks.' + i + '.risk', rk.risk || '', 'What could derail it', 50) + '</div>' +
+          '<button class="pe-del" onclick="planExtRemove(\'risks\',' + i + ')" title="Remove risk">×</button>' +
+        '</div>' +
+        '<div class="pe-sublabel" style="margin-top:8px">Mitigation</div>' +
+        _peEditable('risks.' + i + '.mitigation', rk.mitigation || '', 'What you\'ll do to keep it small', 60) +
+      '</div>';
+    }).join('') + '</div>';
+    html += _peSection('⚠️', 'Risk register', 'risks',
+      riskHtml +
+      '<button class="btn-sm" style="font-size:11px;margin-top:8px" onclick="planExtAddRisk()">+ Add risk</button>'
+    );
+  } else {
+    html += _peAddRow('+ Add risk register', 'planExtAddRisk()');
+  }
+
+  // ── Footer note about editability ───────────────────────────────
+  html += '<div style="font-size:11px;color:var(--stone);font-style:italic;margin-top:10px;padding:8px 0">Everything above is editable — click any section to rewrite it. Changes save automatically.</div>';
+
+  host.innerHTML =
+    '<style>' +
+      '.pe-section{background:white;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}' +
+      '.pe-section-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}' +
+      '.pe-section-head h4{font-family:var(--f-head);font-size:14px;font-weight:700;color:var(--magenta);margin:0;flex:1}' +
+      '.pe-sublabel{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--stone);margin-bottom:4px}' +
+      '.pe-editable{display:block;width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none;resize:vertical;line-height:1.55;transition:border-color 0.15s}' +
+      '.pe-editable:focus{border-color:var(--hot-pink);background:white}' +
+      '.pe-editable.inline{display:inline-block;width:auto;min-width:160px;padding:4px 8px;font-weight:600;background:transparent;border-color:transparent}' +
+      '.pe-editable.inline:focus{border-color:var(--hot-pink);background:white}' +
+      '.pe-pillar{background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}' +
+      '.pe-pillar-num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--magenta);color:white;font-size:11px;font-weight:700;flex-shrink:0}' +
+      '.pe-rhythm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}' +
+      '.pe-rhythm-day{background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:8px 10px}' +
+      '.pe-rhythm-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--hot-pink);margin-bottom:4px}' +
+      '.pe-kpi-table{width:100%;border-collapse:collapse}' +
+      '.pe-kpi-table td{padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:top}' +
+      '.pe-kpi-table td:last-child{text-align:right;color:var(--hot-pink);font-weight:600}' +
+      '.pe-template{background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}' +
+      '.pe-template summary::-webkit-details-marker{display:none}' +
+      '.pe-risk{background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:10px 12px}' +
+      '.pe-del{background:none;border:none;color:var(--stone);cursor:pointer;font-size:18px;line-height:1;padding:0 4px;opacity:0.4}' +
+      '.pe-del:hover{opacity:1;color:#C0392B}' +
+      '.pe-cvt-table{width:100%;border-collapse:collapse;margin-top:6px;background:var(--paper);border-radius:8px;overflow:hidden}' +
+      '.pe-cvt-table th{font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--stone);font-weight:700;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border)}' +
+      '.pe-cvt-table td{padding:6px 10px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:top}' +
+      '.pe-cvt-table td:nth-child(2){color:#C0392B}' +
+      '.pe-cvt-table td:nth-child(3){color:var(--teal);font-weight:600}' +
+    '</style>' +
+    html;
+}
+
+function _peSection(icon, title, key, body) {
+  return '<div class="pe-section">' +
+    '<div class="pe-section-head"><span style="font-size:18px">' + icon + '</span><h4>' + escapeHtml(title) + '</h4></div>' +
+    body +
+  '</div>';
+}
+
+function _peAddRow(label, onclickStr) {
+  return '<div style="margin-bottom:8px"><button class="btn-sm" onclick="' + onclickStr + '" style="font-size:11px;width:100%;background:transparent;border:1px dashed var(--border);color:var(--stone);padding:8px">' + label + '</button></div>';
+}
+
+function _peEditable(path, value, placeholder, minHeight, inline) {
+  var rows = Math.max(1, Math.ceil((value || '').length / 80));
+  var cls = inline ? 'pe-editable inline' : 'pe-editable';
+  if (inline) {
+    return '<input type="text" class="' + cls + '" data-pe-path="' + path + '" value="' + escapeHtml(value || '') + '" placeholder="' + escapeHtml(placeholder || '') + '" onblur="planExtSave(this)" oninput="markDirty()">';
+  }
+  return '<textarea class="' + cls + '" data-pe-path="' + path + '" placeholder="' + escapeHtml(placeholder || '') + '" rows="' + rows + '" style="min-height:' + (minHeight || 60) + 'px" onblur="planExtSave(this)" oninput="markDirty();this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'">' + escapeHtml(value || '') + '</textarea>';
+}
+
+function _peCurrentVsTarget(rows) {
+  if (!rows || !rows.length) return '<button class="btn-sm" style="font-size:11px;margin-top:6px" onclick="planExtAddCvtRow()">+ Add row to current-vs-target table</button>';
+  var trs = rows.map(function(r, i) {
+    return '<tr>' +
+      '<td><input type="text" class="pe-editable inline" data-pe-path="diagnosis.currentVsTarget.' + i + '.metric" value="' + escapeHtml(r.metric || '') + '" onblur="planExtSave(this)" placeholder="Metric"></td>' +
+      '<td><input type="text" class="pe-editable inline" data-pe-path="diagnosis.currentVsTarget.' + i + '.current" value="' + escapeHtml(r.current || '') + '" onblur="planExtSave(this)" placeholder="Now"></td>' +
+      '<td><input type="text" class="pe-editable inline" data-pe-path="diagnosis.currentVsTarget.' + i + '.target" value="' + escapeHtml(r.target || '') + '" onblur="planExtSave(this)" placeholder="90-day target"></td>' +
+      '<td style="width:1%"><button class="pe-del" onclick="planExtRemoveCvtRow(' + i + ')" title="Remove row">×</button></td>' +
+    '</tr>';
+  }).join('');
+  return '<div class="pe-sublabel" style="margin-top:14px">Where you are vs where you\'re going</div>' +
+    '<table class="pe-cvt-table"><thead><tr><th>Metric</th><th>Current</th><th>90-day target</th><th></th></tr></thead><tbody>' + trs + '</tbody></table>' +
+    '<button class="btn-sm" style="font-size:11px;margin-top:6px" onclick="planExtAddCvtRow()">+ Add row</button>';
+}
+
+function _peKpiTable(key, rows) {
+  if (!rows || !rows.length) {
+    return '<button class="btn-sm" style="font-size:11px" onclick="planExtAddKpiRow(\'' + key + '\')">+ Add ' + (key === 'kpisWeekly' ? 'weekly' : 'monthly') + ' KPI row</button>';
+  }
+  var trs = rows.map(function(r, i) {
+    return '<tr>' +
+      '<td><input type="text" class="pe-editable inline" data-pe-path="' + key + '.' + i + '.metric" value="' + escapeHtml(r.metric || '') + '" onblur="planExtSave(this)" placeholder="Metric"></td>' +
+      '<td><input type="text" class="pe-editable inline" data-pe-path="' + key + '.' + i + '.target" value="' + escapeHtml(r.target || '') + '" onblur="planExtSave(this)" placeholder="Target"></td>' +
+      '<td style="width:1%"><button class="pe-del" onclick="planExtRemoveKpiRow(\'' + key + '\',' + i + ')" title="Remove row">×</button></td>' +
+    '</tr>';
+  }).join('');
+  return '<table class="pe-kpi-table"><tbody>' + trs + '</tbody></table>' +
+    '<button class="btn-sm" style="font-size:11px;margin-top:6px" onclick="planExtAddKpiRow(\'' + key + '\')">+ Add row</button>';
+}
+
+// ── Save / add / remove handlers for the extended plan ──────────────
+function _peGetProg() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  var prog = client ? (client.programs||[]).find(function(p){ return p.id === currentProgramId; }) : null;
+  return { client: client, prog: prog };
+}
+
+async function planExtSave(el) {
+  var path = el && el.dataset && el.dataset.pePath;
+  if (!path) return;
+  var ctx = _peGetProg();
+  if (!ctx.prog) return;
+  ctx.prog.planExtended = ctx.prog.planExtended || {};
+  // Walk the path (e.g. "pillars.0.name" or "diagnosis.assets") and assign
+  var parts = path.split('.');
+  var node = ctx.prog.planExtended;
+  for (var i = 0; i < parts.length - 1; i++) {
+    var k = parts[i];
+    // numeric index → ensure array exists
+    if (/^\d+$/.test(parts[i+1])) {
+      if (!Array.isArray(node[k])) node[k] = [];
+    } else if (typeof node[k] !== 'object' || node[k] === null) {
+      node[k] = {};
+    }
+    node = node[k];
+  }
+  var lastKey = parts[parts.length - 1];
+  if (/^\d+$/.test(lastKey)) {
+    // assigning into an array slot — rare, would mean direct array element
+    node[parseInt(lastKey, 10)] = el.value;
+  } else {
+    node[lastKey] = el.value;
+  }
+  try { await persistClient(ctx.client); } catch (e) { console.warn('[planExtSave] persist failed', e); }
+}
+
+async function _peEnsureAndRerender(mut) {
+  var ctx = _peGetProg();
+  if (!ctx.prog) return;
+  ctx.prog.planExtended = ctx.prog.planExtended || {};
+  mut(ctx.prog.planExtended);
+  try { await persistClient(ctx.client); } catch (e) { console.warn('[planExt mut] persist failed', e); }
+  renderPlanExtended(ctx.client, ctx.prog);
+}
+
+function planExtAddDiagnosis() { _peEnsureAndRerender(function(e) { e.diagnosis = e.diagnosis || { assets:'', blocks:'', currentVsTarget: [] }; }); }
+function planExtAddRhythm()    { _peEnsureAndRerender(function(e) { e.weeklyRhythm = e.weeklyRhythm || { mon:'', tue:'', wed:'', thu:'', fri:'' }; }); }
+function planExtAddKpis()      { _peEnsureAndRerender(function(e) { e.kpisWeekly  = e.kpisWeekly  || [{metric:'',target:''}]; e.kpisMonthly = e.kpisMonthly || [{metric:'',target:''}]; }); }
+function planExtAddPillar()    { _peEnsureAndRerender(function(e) { e.pillars = Array.isArray(e.pillars) ? e.pillars : []; e.pillars.push({ name:'New pillar', why:'', mechanics:'' }); }); }
+function planExtAddTemplate()  { _peEnsureAndRerender(function(e) { e.templates = Array.isArray(e.templates) ? e.templates : []; e.templates.push({ name:'New template', subject:'', body:'' }); }); }
+function planExtAddRisk()      { _peEnsureAndRerender(function(e) { e.risks = Array.isArray(e.risks) ? e.risks : []; e.risks.push({ risk:'', mitigation:'' }); }); }
+function planExtAddCvtRow()    { _peEnsureAndRerender(function(e) { e.diagnosis = e.diagnosis || { assets:'', blocks:'', currentVsTarget: [] }; e.diagnosis.currentVsTarget = e.diagnosis.currentVsTarget || []; e.diagnosis.currentVsTarget.push({ metric:'', current:'', target:'' }); }); }
+function planExtAddKpiRow(key) { _peEnsureAndRerender(function(e) { e[key] = Array.isArray(e[key]) ? e[key] : []; e[key].push({metric:'',target:''}); }); }
+function planExtRemoveCvtRow(i) { _peEnsureAndRerender(function(e) { if (e.diagnosis && Array.isArray(e.diagnosis.currentVsTarget)) e.diagnosis.currentVsTarget.splice(i, 1); }); }
+function planExtRemoveKpiRow(key, i) { _peEnsureAndRerender(function(e) { if (Array.isArray(e[key])) e[key].splice(i, 1); }); }
+function planExtRemove(arrKey, i) { _peEnsureAndRerender(function(e) { if (Array.isArray(e[arrKey])) e[arrKey].splice(i, 1); }); }
 
 // Helper: find a plan section by sectionId (which is either the legacy month
 // number as a string "1"/"2"/"3", or a synthetic "s0"/"s1"/... for newer
@@ -7957,48 +8258,123 @@ async function _buildPlanWithAnswers(skip) {
        '\n──── END ANSWERS ────\n')
     : '';
 
+  // v11749: full Scott-Taylor-style transformation plan.
+  //   - Honest diagnosis (assets + blocks + current-vs-target table)
+  //   - North-star goal with the maths working backwards to a daily action
+  //   - 2-3 strategic pillars (each substantive, not a slogan)
+  //   - 12-week breakdown: ~2 actions PER WEEK (24 total), not chunky monthly buckets
+  //   - Default weekly rhythm (Mon-Fri morning + afternoon anchors)
+  //   - KPI scorecard (weekly + monthly)
+  //   - Ready-to-use templates Phoebe can hand over (email / SMS / outreach scripts)
+  //   - Risk register so blind spots are visible
+  // Every section is editable inline; the AI is just the first draft.
   var prompt = phoebeVoice(
-    'Build a 90-day plan for ' + (client.name || 'this client') + ' using EVERYTHING below — the profile, intake, research brief, session history, wins, and today\'s session notes. Phoebe\'s answers (if any) weight your choices.\n\n' +
+    'Build a Phoebe Blamey 90-Day Business Breakthrough plan for ' + (client.name || 'this client') + '. The plan must feel like a transformation document — substantive, specific, anchored in their actual context — NOT a generic checklist. Quality bar: read like a senior coach handing notes to a colleague, not a productivity app.\n\n' +
     '──── FULL CLIENT CONTEXT ────\n' + fullContext + '\n──── END CONTEXT ────\n\n' +
     '──── TODAY\'S SESSION NOTES / TRANSCRIPT ────\n' + notes + '\n──── END NOTES ────\n' +
     answersBlock + '\n' +
-    'Create a 90-Day Business Breakthrough plan. Return ONLY valid JSON, no other text:\n' +
-    '{"month1":{"label":"Foundation","tasks":["task1","task2","task3","task4"]},"month2":{"label":"Momentum","tasks":["task1","task2","task3","task4"]},"month3":{"label":"Breakthrough","tasks":["task1","task2","task3","task4"]}}\n\n' +
-    'Tasks must be specific, actionable, in Phoebe\'s voice, tailored to what came up. Reference patterns from the intake or research brief where useful. No generic coaching tasks.'
+    'STRUCTURE — return ONLY valid JSON in this exact shape, no preamble, no markdown wrapper:\n\n' +
+    '{\n' +
+    '  "diagnosis": {\n' +
+    '    "assets": "2-4 sentences naming what this client actually has going for them — concrete things, not platitudes. Reference specific items from the transcript / intake / brief.",\n' +
+    '    "blocks": "2-4 sentences naming the real things costing them money/momentum right now. Be direct. Mention specific patterns from what was said.",\n' +
+    '    "currentVsTarget": [ { "metric": "...", "current": "...", "target": "..." }, ... 3-6 rows tailored to their business model ]\n' +
+    '  },\n' +
+    '  "northStar": {\n' +
+    '    "headline": "One sentence — the headline target for 90 days. Concrete number where possible.",\n' +
+    '    "maths": "Work the maths BACKWARDS in 4-6 short lines. End on a single daily anchor activity (e.g. \\"One outreach a day.\\")."\n' +
+    '  },\n' +
+    '  "pillars": [\n' +
+    '    { "name": "Pillar name", "why": "One sentence — why this pillar matters for THIS client", "mechanics": "3-5 lines on how it actually works in practice. Specific, not abstract." },\n' +
+    '    ... 2 or 3 pillars total\n' +
+    '  ],\n' +
+    '  "weeklyPlan": [\n' +
+    '    { "week": 1, "theme": "Foundation — short label", "actions": ["Action 1 — specific, doable in this week", "Action 2 — specific, doable in this week"] },\n' +
+    '    ... continue through week 12. EACH WEEK gets 2-3 actions max (occasionally 1 if it\'s a heavy single action). Total across 12 weeks should be roughly 24-30 actions. Front-load infrastructure in weeks 1-4, push for activity in weeks 5-8, convert + plan-next in weeks 9-12.\n' +
+    '  ],\n' +
+    '  "weeklyRhythm": {\n' +
+    '    "mon": "What anchors Monday (morning + afternoon in one sentence)",\n' +
+    '    "tue": "...",\n' +
+    '    "wed": "...",\n' +
+    '    "thu": "...",\n' +
+    '    "fri": "..."\n' +
+    '  },\n' +
+    '  "kpisWeekly": [ { "metric": "...", "target": "..." }, ... 4-7 rows ],\n' +
+    '  "kpisMonthly": [ { "metric": "...", "target": "..." }, ... 4-7 rows ],\n' +
+    '  "templates": [\n' +
+    '    { "name": "Template name (e.g. Win-back email #1)", "subject": "If email, the subject line — else leave empty string", "body": "Full ready-to-use copy in Phoebe\'s voice. Australian English, warm, direct. 6-12 lines. Use [First name] / [their business] placeholders where personalised." },\n' +
+    '    ... 2-4 templates that THIS client could send THIS WEEK\n' +
+    '  ],\n' +
+    '  "risks": [\n' +
+    '    { "risk": "What could derail the 90 days for this specific client — a real risk, not generic", "mitigation": "What Phoebe + client will do to keep it from sinking the plan" },\n' +
+    '    ... 3-5 risks\n' +
+    '  ]\n' +
+    '}\n\n' +
+    'TONE: Australian English, no jargon, no "leverage / synergy / robust". Phoebe\'s voice — warm but direct, like one coach to another. Reference SPECIFIC details from the transcript or intake whenever you can — the more specific, the better. Avoid generic coaching tasks ("set goals", "build network") — those are insulting at this depth.\n\n' +
+    'WEEKLY ACTIONS: 2-3 per week, never more than 3. Each action is small enough to do this week. If something is big, break it into stages across consecutive weeks. The plan should feel doable, not crushing.'
   );
 
   try {
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
-      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1400, messages:[{role:'user',content:prompt}] })
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:6000, messages:[{role:'user',content:prompt}] })
     });
     var data = await resp.json();
     var text = (data.content && data.content[0] && data.content[0].text) || '';
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
     var match = text.match(/\{[\s\S]*\}/);
     if (match) {
-      var plan = JSON.parse(match[0]);
-      prog.plan = [
-        { month:1, label: plan.month1.label || 'Foundation', tasks: plan.month1.tasks || [] },
-        { month:2, label: plan.month2.label || 'Momentum',   tasks: plan.month2.tasks || [] },
-        { month:3, label: plan.month3.label || 'Breakthrough', tasks: plan.month3.tasks || [] },
-      ];
+      var plan;
+      try { plan = JSON.parse(match[0]); }
+      catch (parseErr) {
+        outputEl.innerHTML = '<div style="color:#C0392B;font-size:13px;margin-bottom:8px">⚠ Couldn\'t parse the AI response as JSON. Raw output below — you can copy what\'s useful and try regenerating.</div>' +
+          '<pre style="white-space:pre-wrap;font-size:12px;color:var(--ink);max-height:400px;overflow:auto;background:var(--paper);padding:12px;border-radius:8px">' + escapeHtml(text) + '</pre>';
+        status.textContent = '⚠ AI returned malformed JSON';
+        btn.disabled = false; btn.textContent = '⚡ Generate plan';
+        return;
+      }
+      // Build the weekly plan array (the existing plan-grid renders this as
+      // editable sections). Each entry is { week, label, tasks } so the
+      // existing renderPlanGrid keeps working without modification.
+      var weekly = Array.isArray(plan.weeklyPlan) ? plan.weeklyPlan : [];
+      prog.plan = weekly.map(function(w, i) {
+        var weekNum = (typeof w.week === 'number' && w.week > 0) ? w.week : (i + 1);
+        var theme = (w.theme || '').trim();
+        var label = 'Week ' + weekNum + (theme ? ' — ' + theme : '');
+        return { week: weekNum, label: label, tasks: Array.isArray(w.actions) ? w.actions : [] };
+      });
       prog.taskDone = {};
+      // v11749: store the full rich plan separately. renderPlanExtended uses it.
+      prog.planExtended = {
+        diagnosis: plan.diagnosis || null,
+        northStar: plan.northStar || null,
+        pillars: Array.isArray(plan.pillars) ? plan.pillars : [],
+        weeklyRhythm: plan.weeklyRhythm || null,
+        kpisWeekly: Array.isArray(plan.kpisWeekly) ? plan.kpisWeekly : [],
+        kpisMonthly: Array.isArray(plan.kpisMonthly) ? plan.kpisMonthly : [],
+        templates: Array.isArray(plan.templates) ? plan.templates : [],
+        risks: Array.isArray(plan.risks) ? plan.risks : [],
+        generatedAt: new Date().toISOString(),
+        answeredQuestions: answers,
+      };
       prog.planMeta = {
         generatedAt: new Date().toISOString(),
         usedFullContext: true,
         answeredQuestions: answers,
+        version: 'v11749-rich',
       };
       await persistClient(client);
       renderPlanGrid(prog.plan, {}, 'plan-grid', false);
+      if (typeof renderPlanExtended === 'function') renderPlanExtended(client, prog);
       outputEl.innerHTML = '';
       outputEl.classList.remove('show');
-      status.textContent = '✓ Plan created using full client context!';
+      var totalActions = prog.plan.reduce(function(t, w){ return t + (w.tasks||[]).length; }, 0);
+      status.textContent = '✓ Plan created · ' + prog.plan.length + ' weeks · ' + totalActions + ' actions';
       var note = document.getElementById('inline-zoom-notes'); if (note) note.value = '';
       window._pendingPlanQuestions = null;
       window._pendingPlanContext = null;
       window._pendingPlanNotes = null;
-      logActivity('ai-plan', 'AI plan generated for ' + (client.name || ''), { clientId: client.id, clientName: client.name, progId: prog.id, detail: 'Full context · ' + answers.length + ' answered questions · ' + (prog.plan.reduce(function(t,m){return t+(m.tasks||[]).length;},0)) + ' tasks' });
+      logActivity('ai-plan', 'AI plan generated for ' + (client.name || ''), { clientId: client.id, clientName: client.name, progId: prog.id, detail: 'Rich plan · ' + prog.plan.length + ' weeks · ' + totalActions + ' actions · ' + (prog.planExtended.pillars.length) + ' pillars · ' + (prog.planExtended.templates.length) + ' templates' });
       setTimeout(function() { status.textContent=''; toggleBuilder(); }, 2500);
     } else {
       outputEl.innerHTML = '<pre style="white-space:pre-wrap;font-size:13px;color:var(--ink)">' + escapeHtml(text) + '</pre>';
