@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11743">
-<link rel="stylesheet" href="styles.css?v=11743">
+<link rel="preload" as="style" href="styles.css?v=11744">
+<link rel="stylesheet" href="styles.css?v=11744">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11743 — email reminders + one-tap completion. Daily digest at 8am AEST emails each client (with notifications enabled) a personalised morning summary: yesterday's commit + did-you-do-it, tasks due today, overdue tasks, upcoming sessions, Monday check-in nudge. Each task / commit has a ONE-TAP completion link — clicking marks it done without logging in. Powered by HMAC-signed URLs (QUICK_ACTION_SECRET env var, generated + set via Netlify MCP). Dedupes via reminders blob store so duplicate fires are safe. Friendly branded success pages after each tap. v11742: weekly check-in carries forward last week's pushing commitment for accountability."> — closed the commitment-completion loop in the weekly check-in. Driven by Phoebe's coaching insight that clients commit but don't follow through. Each new check-in now pulls forward LAST WEEK'S 'pushing' answer and asks 'did you do it?' with Yes/Partial/Not yet buttons + a detail textarea. Status saves to lastWeekStatus + lastWeekDetail on the check-in entry. gatherFullClientContext now surfaces this loop to AI features so plans/emails/briefs weight follow-through as the highest coaching signal. Plus OPENAI_API_KEY now surfaced in /api/integrations-status as openaiWhisper:true|false. v11741: weekly check-in + performance indicators."> — weekly check-in flow + performance indicators on client Summary. Four-question check-in (Where are you at? / What worked? / What blocked you? / What are you pushing?) keyed to ISO week so one per week; older answers preserved on client.weeklyCheckins array. Performance indicators card shows tasks done last 7 days, wins logged, sessions attended, days active, plus trend vs prior week. Both feed into gatherFullClientContext so all AI features pick them up as coaching signal. Phoebe gets a Pulse-feed notification when a check-in lands. v11740: Whisper audio fallback for Zoom transcripts."> — when Zoom's text transcript isn't ready yet, fall back to transcribing the AUDIO recording via OpenAI Whisper (Phoebe asked 'when no transcript, use video'). Detects audio_only / M4A / MP3 recording files, downloads via Authorization Bearer, POSTs to /v1/audio/transcriptions with whisper-1 model, returns the text just like a Zoom transcript would. Requires OPENAI_API_KEY env var (≈$0.006/min). If env var not set, returns a clear error with the recording play URL so Phoebe can listen manually. 25MB Whisper limit is enforced — too-large files return a friendly error. v11739: full client context for all AI features + two-step plan builder + auto-grow textareas.">
+<meta name="hmh-build" content="v11744 — two fixes. (1) Zoom-pull errors now render as a branded modal with a real clickable '🎬 Watch the recording' button instead of a 250-char URL stuffed into an alert (Phoebe couldn't tap it on the file-too-big error). (2) Plan-builder reframed: section heading now reads 'Build the 90-day plan' with a subtitle explaining it uses ALL client info (intake / brief / session history / wins / check-ins) plus today's session as optional input — was 'Build plan from Zoom session' which made it look Zoom-only. Session notes are now optional: if blank, Phoebe gets a soft confirm to build from existing context only. v11743: daily digest emails + one-tap completion."> — email reminders + one-tap completion. Daily digest at 8am AEST emails each client (with notifications enabled) a personalised morning summary: yesterday's commit + did-you-do-it, tasks due today, overdue tasks, upcoming sessions, Monday check-in nudge. Each task / commit has a ONE-TAP completion link — clicking marks it done without logging in. Powered by HMAC-signed URLs (QUICK_ACTION_SECRET env var, generated + set via Netlify MCP). Dedupes via reminders blob store so duplicate fires are safe. Friendly branded success pages after each tap. v11742: weekly check-in carries forward last week's pushing commitment for accountability."> — closed the commitment-completion loop in the weekly check-in. Driven by Phoebe's coaching insight that clients commit but don't follow through. Each new check-in now pulls forward LAST WEEK'S 'pushing' answer and asks 'did you do it?' with Yes/Partial/Not yet buttons + a detail textarea. Status saves to lastWeekStatus + lastWeekDetail on the check-in entry. gatherFullClientContext now surfaces this loop to AI features so plans/emails/briefs weight follow-through as the highest coaching signal. Plus OPENAI_API_KEY now surfaced in /api/integrations-status as openaiWhisper:true|false. v11741: weekly check-in + performance indicators."> — weekly check-in flow + performance indicators on client Summary. Four-question check-in (Where are you at? / What worked? / What blocked you? / What are you pushing?) keyed to ISO week so one per week; older answers preserved on client.weeklyCheckins array. Performance indicators card shows tasks done last 7 days, wins logged, sessions attended, days active, plus trend vs prior week. Both feed into gatherFullClientContext so all AI features pick them up as coaching signal. Phoebe gets a Pulse-feed notification when a check-in lands. v11740: Whisper audio fallback for Zoom transcripts."> — when Zoom's text transcript isn't ready yet, fall back to transcribing the AUDIO recording via OpenAI Whisper (Phoebe asked 'when no transcript, use video'). Detects audio_only / M4A / MP3 recording files, downloads via Authorization Bearer, POSTs to /v1/audio/transcriptions with whisper-1 model, returns the text just like a Zoom transcript would. Requires OPENAI_API_KEY env var (≈$0.006/min). If env var not set, returns a clear error with the recording play URL so Phoebe can listen manually. 25MB Whisper limit is enforced — too-large files return a friendly error. v11739: full client context for all AI features + two-step plan builder + auto-grow textareas.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -420,15 +420,16 @@
         <div class="tab-pane" id="tab-plan">
           <div class="vis-bar vis-cf"><span>✅ Client facing</span> — visible in the client workbook</div>
           <div class="inline-builder" id="inline-builder">
-            <div style="font-family:var(--f-head);font-size:15px;color:var(--magenta);margin-bottom:12px">⚡ Build plan from Zoom session</div>
+            <div style="font-family:var(--f-head);font-size:18px;color:var(--ink);font-weight:800;margin-bottom:4px">⚡ Build the 90-day plan</div>
+            <div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;line-height:1.5">Uses everything Claude has on this client — intake answers, research brief, session history, wins, weekly check-ins, plus today's session below. After you click <strong>Generate plan</strong>, Claude will ask a few clarifying questions tailored to this client before drafting.</div>
             <div class="zoom-fetch-row">
               <div class="zoom-fetch-info">
-                <strong>🎬 Pull transcript from Zoom recording</strong>
-                <small>Fetches AI transcript from your Zoom cloud recording automatically</small>
+                <strong>🎬 Optional: pull the Zoom transcript</strong>
+                <small>If you've had a Zoom session, pull the transcript automatically (or paste session notes below instead).</small>
               </div>
               <button class="btn-sm primary" onclick="fetchZoomTranscript()" id="zoom-fetch-btn">Pull from Zoom</button>
             </div>
-            <div class="divider-or">— or paste manually —</div>
+            <div class="divider-or">— or paste session notes / Zoom transcript here —</div>
             <textarea id="inline-zoom-notes" placeholder="Paste your Zoom AI transcript or session notes here, OR pull from Zoom above. The full editable transcript appears here — edit anything before generating the plan."
               style="width:100%;min-height:260px;border:1.5px solid var(--border);border-radius:8px;padding:12px;
               font-family:var(--f-body);font-size:14px;color:var(--ink);background:white;outline:none;
@@ -7341,26 +7342,19 @@ async function fetchZoomTranscript() {
     });
     var data = await resp.json();
     if (!resp.ok || data.error) {
-      // v11738: surface available topics if the name-match failed, so
-      // Phoebe knows which Zoom recording was actually in the window.
+      // v11744: render error as a proper custom modal with a clickable
+      // recording-link button rather than a long URL in an alert. Was
+      // unreadable when Zoom returned a "file too big for Whisper"
+      // error with a 250-char recording URL — Phoebe couldn't tap it.
       var msg = (data.error || 'Could not fetch');
-      if (data.hint) msg += '\n\nHint: ' + data.hint;
+      if (data.hint) msg += '\n\n' + data.hint;
       if (Array.isArray(data.availableTopics) && data.availableTopics.length) {
         msg += '\n\nRecordings in the window:\n• ' + data.availableTopics.join('\n• ');
-      }
-      // v11740: if the audio is available (no text transcript yet), show
-      // a quick play link to the Zoom recording so Phoebe can take notes
-      // manually while waiting. Also makes the Whisper-fallback hint
-      // visible.
-      if (data.audioAvailable && data.playUrl) {
-        msg += '\n\nOpen the recording: ' + data.playUrl;
-      } else if (data.playUrl) {
-        msg += '\n\nWatch the recording: ' + data.playUrl;
       }
       notes.value = '';
       notes.placeholder = msg;
       status.textContent = '⚠ ' + (data.error||'Could not fetch');
-      branded.alert(msg, { title: '⚠ ' + (data.error || 'Pull from Zoom failed') });
+      _showZoomErrorModal(data, msg);
     } else {
       // v11738: validate the transcript looks like text not code. Even
       // with the server-side HTML check, defensive client-side check
@@ -7393,6 +7387,50 @@ async function fetchZoomTranscript() {
   btn.disabled = false; btn.textContent = 'Pull from Zoom';
 }
 
+// v11744: branded modal for Zoom-pull failures — replaces the long
+// URL-in-alert pattern. Shows the error / hint as readable copy, then
+// a real "🎬 Watch the recording" button so Phoebe can tap straight
+// through. Falls back to a plain alert if the branded modal host
+// isn't available.
+function _showZoomErrorModal(data, fallbackMsg) {
+  var host = document.getElementById('branded-modal-host');
+  if (!host) { branded.alert(fallbackMsg, { title: '⚠ ' + (data.error || 'Pull from Zoom failed') }); return; }
+  document.getElementById('branded-modal-icon').textContent = '🎬';
+  document.getElementById('branded-modal-title').textContent = data.error || 'Pull from Zoom failed';
+  var body = document.getElementById('branded-modal-body');
+  var html = '';
+  if (data.hint) {
+    html += '<div style="font-size:14px;color:var(--ink);line-height:1.55;margin-bottom:14px">' + escapeHtml(data.hint) + '</div>';
+  }
+  if (Array.isArray(data.availableTopics) && data.availableTopics.length) {
+    html += '<div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px;font-weight:700">Recordings in the window:</div>';
+    html += '<ul style="margin:0 0 14px 18px;padding:0;font-size:13px;color:var(--ink-soft);line-height:1.55">';
+    data.availableTopics.forEach(function(t) { html += '<li>' + escapeHtml(t) + '</li>'; });
+    html += '</ul>';
+  }
+  body.innerHTML = html;
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '';
+  if (data.playUrl) {
+    var openBtn = document.createElement('a');
+    openBtn.className = 'btn-sm primary';
+    openBtn.href = data.playUrl;
+    openBtn.target = '_blank';
+    openBtn.rel = 'noopener';
+    openBtn.textContent = '🎬 Watch the recording';
+    openBtn.style.textDecoration = 'none';
+    openBtn.onclick = function() { setTimeout(function() { host.style.display = 'none'; }, 200); };
+    actions.appendChild(openBtn);
+  }
+  var close = document.createElement('button');
+  close.className = 'btn-sm';
+  close.textContent = data.playUrl ? 'Close' : 'OK';
+  close.onclick = function() { host.style.display = 'none'; };
+  actions.appendChild(close);
+  host.style.display = 'flex';
+}
+
 // v11738: detect when "transcript" content is actually code / page
 // source. Heuristic — speech transcripts don't have function declarations,
 // curly braces, or HTML tags clustered together.
@@ -7416,7 +7454,18 @@ function _transcriptLooksLikeCode(s) {
 // questions to answer to better help claude to curate plans."
 async function buildPlanInline() {
   var notes = document.getElementById('inline-zoom-notes').value.trim();
-  if (!notes) { branded.alert('Paste your Zoom notes first'); return; }
+  // v11744: notes are now OPTIONAL — the plan builder uses full client
+  // context (intake / brief / sessions / wins / check-ins). If there's
+  // no fresh session notes, just generate from what's on file. Soft
+  // confirm so Phoebe knows that's what she's doing.
+  if (!notes) {
+    var skip = await branded.confirm(
+      'No session notes pasted. Claude can still build the plan using the client\'s intake, research brief, session history, and check-ins. Continue?',
+      { title: 'Build plan from existing context?', okLabel: 'Build it', cancelLabel: 'Let me paste notes first' }
+    );
+    if (!skip) return;
+    notes = '(No new session notes provided — use the full client context only.)';
+  }
   if (typeof _transcriptLooksLikeCode === 'function' && _transcriptLooksLikeCode(notes)) {
     var ok = await branded.confirm(
       'The text you\'ve pasted looks like code or page source, not session speech. The plan generator probably can\'t work with this. Continue anyway?',
