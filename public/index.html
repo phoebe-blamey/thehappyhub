@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11730">
-<link rel="stylesheet" href="styles.css?v=11730">
+<link rel="preload" as="style" href="styles.css?v=11729">
+<link rel="stylesheet" href="styles.css?v=11729">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11730 — strategic redirection: 'less pink overall'. Phoebe flagged that the platform is still too pink + the page background was two-tone. Pivot: pink stays as the BRAND VOICE (hero + accents + headings + CTAs); everything else moves to a CREAM page background. Five fixes: (1) PAGE BG #FFFCF6 cream — no more pink wash, one consistent surface tone. (2) MY HUB badge specificity bug fixed — was being overridden by an earlier #client-topbar-prog rule; now wins back with hot-pink fill + WHITE text. (3) '+ Add my why' empty-state buttons re-coloured (were white-on-magenta from old solid hero, invisible on new pink hero) — now magenta-on-white pill + sunshine 'Suggest one'. (4) WAVE DIVIDERS deepened from 44px → 78px so the curves are dramatic, not a near-straight cut. (5) TYPOGRAPHY UNIFIED: every section heading + small-caps eyebrow label reads in magenta; every body in #222. No more mixed pink/dark headings. v11729: brand-board-driven design pass. v11728: round-2 audit. READY FOR CLIENT TESTING.">
+<meta name="hmh-build" content="v11729 — design pass against Phoebe's actual Canva brand board (Happy Money Journey style guide). Key insight from her tone-of-voice doc: 'loud, clear, with style' + 'unapologetically feminist' + 'sassy edge'. The platform had been getting softer; brand wants bolder. Changes: (1) SECTION HEADINGS bigger + heavier — 16px→22px, weight 700→800, tighter letter-spacing for that All Round Gothic Bold energy. (2) TEAL more prominent in the section-card palette — 4-tint cycle now white/teal/white/cream (soft teal #E0EDEE bumped from the v11728 muted #E8F2F4). (3) FEATURE TEAL BAND class .feature-teal — opt-in class that turns ANY section into a saturated teal block with white text + sunshine accents, mirroring her website's middle band. (4) WIN CELEBRATION class .win-celebrate — yellow left border + soft cream fill + drop shadow for log-a-win cards. (5) ANOTHER WAVE divider between tab strip and content so the brand pattern repeats down the page. v11728: round-2 design audit. v11727: hero contrast pass. READY FOR CLIENT TESTING.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -12297,8 +12297,8 @@ function updateClientHeroWhy(client) {
     // editing AI-drafted content isn't visually obvious. The whole pin is
     // still clickable; the pencil makes the edit path discoverable.
     textEl.innerHTML =
-      '<span style="opacity:1;color:#222">"' + escapeHtml(displayed) + '"</span>' +
-      ' <button onclick="event.stopPropagation();editClientWhyFromHero()" title="Edit my why" style="background:transparent;border:none;color:var(--magenta);opacity:0.7;cursor:pointer;font-size:13px;padding:2px 6px;margin-left:4px;border-radius:6px;transition:opacity 0.15s,background 0.15s" onmouseover="this.style.opacity=\'1\';this.style.background=\'rgba(229,4,139,0.08)\'" onmouseout="this.style.opacity=\'0.7\';this.style.background=\'transparent\'">✏️</button>';
+      '<span style="opacity:1">"' + escapeHtml(displayed) + '"</span>' +
+      ' <button onclick="event.stopPropagation();editClientWhyFromHero()" title="Edit my why" style="background:transparent;border:none;color:white;opacity:0.7;cursor:pointer;font-size:13px;padding:2px 6px;margin-left:4px;border-radius:6px;transition:opacity 0.15s,background 0.15s" onmouseover="this.style.opacity=\'1\';this.style.background=\'rgba(255,255,255,0.18)\'" onmouseout="this.style.opacity=\'0.7\';this.style.background=\'transparent\'">✏️</button>';
     textEl.style.cursor = 'default';
     textEl.style.opacity = '1';
     textEl.onclick = null;
@@ -12319,9 +12319,9 @@ function updateClientHeroWhy(client) {
   }
   if (suggested) {
     textEl.innerHTML =
-      '<span style="opacity:0.85;color:#222">"' + escapeHtml(suggested) + '"</span> ' +
-      '<button onclick="event.stopPropagation();useSuggestedWhy()" style="margin-left:6px;background:var(--sunshine);color:var(--magenta);border:none;border-radius:99px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--f-body)">Use this →</button>' +
-      '<button onclick="event.stopPropagation();editClientWhyFromHero()" style="margin-left:4px;background:white;color:var(--magenta);border:1.5px solid rgba(229,4,139,0.30);border-radius:99px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--f-body)">Edit</button>';
+      '<span style="opacity:0.85">"' + escapeHtml(suggested) + '"</span> ' +
+      '<button onclick="event.stopPropagation();useSuggestedWhy()" style="margin-left:6px;background:var(--sunshine);color:var(--magenta);border:none;border-radius:99px;padding:3px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--f-body)">Use this →</button>' +
+      '<button onclick="event.stopPropagation();editClientWhyFromHero()" style="margin-left:4px;background:rgba(255,255,255,0.18);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:99px;padding:3px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--f-body)">Edit</button>';
     textEl.style.cursor = 'default';
     textEl.style.fontStyle = 'italic';
     textEl.onclick = null;
@@ -12332,12 +12332,9 @@ function updateClientHeroWhy(client) {
   // "✦ Suggest one" actually fires the AI. Previously tapping anywhere on
   // the row went to manual entry, which contradicted the "tap ✦ to suggest"
   // hint (Elodie's review §2).
-  // v11730: empty-state buttons re-coloured for the new soft-pink hero
-  // (were styled white-on-magenta from the old solid-magenta hero, so
-  // invisible on the new pink background).
   textEl.innerHTML =
-    '<button onclick="event.stopPropagation();editClientWhyFromHero()" style="background:white;color:var(--magenta);border:1.5px solid rgba(229,4,139,0.30);border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--f-body);margin-right:6px;box-shadow:0 1px 4px rgba(229,4,139,0.10)">+ Add my why</button>' +
-    '<button onclick="event.stopPropagation();suggestClientWhy()" style="background:var(--sunshine);color:var(--magenta);border:none;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--f-body)">✦ Suggest one</button>';
+    '<button onclick="event.stopPropagation();editClientWhyFromHero()" style="background:rgba(255,255,255,0.18);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:99px;padding:3px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--f-body);margin-right:4px">+ Add my why</button>' +
+    '<button onclick="event.stopPropagation();suggestClientWhy()" style="background:var(--sunshine);color:var(--magenta);border:none;border-radius:99px;padding:3px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--f-body)">✦ Suggest one</button>';
   textEl.style.cursor = 'default';
   textEl.onclick = null;
   wrap.style.display = 'flex';
