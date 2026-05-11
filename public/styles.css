@@ -42,6 +42,30 @@
   --border-soft: rgba(229,4,139,0.06);
   --f-head: "AllRoundGothic", "Poppins", sans-serif;
   --f-body: "Poppins", sans-serif;
+
+  /* ────────────────────────────────────────────────────────────────
+     v11731 — Workbook-brand palette layered on top of the existing
+     pink palette. Pulled from Phoebe's MDC workbook + reference HTML
+     she shared. Existing tokens (magenta / hot-pink / bubblegum /
+     marshmallow / sunshine / teal) all KEPT — they're now used only
+     for "signatures + tiny moments". Base surfaces, body text and
+     primary CTAs move to cream / mint / ink / mustard.
+     ──────────────────────────────────────────────────────────────── */
+  --cream:        #FBF5E7;   /* primary surface */
+  --cream-warm:   #FFF8E4;   /* warmer accent surface */
+  --cream-soft:   #FBF6EC;   /* card off-white */
+  --mint:         #CCE5DA;   /* hero band + accent surface */
+  --mint-soft:    #E4F0EA;   /* secondary surface */
+  --mint-deep:    #9DC0B0;   /* mint borders + filled chips */
+  --ink:          #5C3D29;   /* primary text — warm brown */
+  --ink-soft:    #84634B;   /* secondary text */
+  --ink-faded:   #B89E89;   /* tertiary / hint text */
+  --rule:         #E5D2BB;   /* dividers + borders */
+  --mustard:      #E9B949;   /* primary CTA fill */
+  --mustard-soft: #F4D785;   /* hover / soft fill */
+  --mustard-deep: #C99A2E;   /* CTA bottom shadow */
+  --pink-pale:    #F7D7E3;   /* signature pink — tiny moments */
+  --good:         #7BAE9A;   /* status / success */
   /* Semantic layer — light theme (default).
      Use these in NEW components. Each token has a single semantic role
      so swapping themes is a one-line override. */
@@ -2980,3 +3004,388 @@ body.printing-workbook .workbook-print-area .workbook-print-only  { display: blo
     flex-shrink: 0;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   v11731 — WORKBOOK-BRAND VISUAL REFRESH
+   ════════════════════════════════════════════════════════════════════
+   Phoebe sent a reference HTML showing the new visual language pulled
+   from her Million Dollar Conspiracy workbook. The brief was clear:
+
+     • Pink is too dominant. Move pinks to "signatures + tiny moments".
+     • Cream / mint / ink (warm brown) becomes the base palette.
+     • Mustard yellow replaces hot-pink as the primary CTA fill.
+     • Display headings in lowercase (workbook voice).
+     • Pill-title pattern with ink outline for section titles.
+     • Keep existing borders, shadows, layout. Just less pink.
+
+   HARD RULES she set:
+     • No copy changes (text-transform CSS only).
+     • No functional changes — IDs, data-attrs, classes JS hooks into,
+       ARIA labels, feature flags all stay intact.
+     • No new dependencies.
+
+   This block re-skins via overrides. Every selector below sits in
+   #client-hub / #coach-hub scope so it wins over older rules. Inline
+   style="color:var(--magenta)" patterns sprinkled through the JS
+   render get overridden by !important on body-text containers.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── (1) BODY + HUB BASELINE ────────────────────────────────────── */
+body { background: var(--cream); color: var(--ink); }
+#client-hub, #coach-hub { background: var(--cream); }
+
+/* ── (2) TOPBAR — translucent cream w/ blur, ink text ──────────── */
+#client-hub .topbar,
+#coach-hub  .topbar {
+  background: rgba(251,245,231,0.85) !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--rule) !important;
+  color: var(--ink) !important;
+}
+#client-hub .topbar .topbar-logo,
+#client-hub .topbar .topbar-logo-text,
+#client-hub .topbar #client-topbar-date,
+#client-hub .topbar .topbar-date,
+#coach-hub  .topbar .topbar-logo,
+#coach-hub  .topbar .topbar-logo-text,
+#coach-hub  .topbar .topbar-date {
+  color: var(--ink) !important;
+}
+/* "hub" handwritten signature span — pink, Caveat */
+#client-hub .topbar .topbar-logo-text,
+#coach-hub  .topbar .topbar-logo-text {
+  font-family: "Caveat", var(--f-head), cursive !important;
+  font-size: 22px !important;
+  font-weight: 600 !important;
+  color: var(--hot-pink) !important;
+  text-transform: none !important;
+}
+/* MY HUB / Coach badges — flip from pink fill to mustard fill on ink */
+#client-hub .topbar #client-topbar-prog,
+#client-hub .topbar .topbar-badge,
+#client-hub .topbar .badge-client,
+#coach-hub  .topbar .topbar-badge,
+#coach-hub  .topbar .badge-coach {
+  background: var(--mustard) !important;
+  color: var(--ink) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase;
+  padding: 5px 14px !important;
+  border-radius: 999px;
+  box-shadow: inset 0 -2px 0 rgba(92,61,41,0.08);
+}
+/* Action buttons (bell, settings, theme) — ghost on cream */
+#client-hub .topbar .topbar-action-btn,
+#coach-hub  .topbar .topbar-action-btn {
+  background: transparent !important;
+  border: 1px solid var(--rule) !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+}
+#client-hub .topbar .topbar-action-btn:hover,
+#coach-hub  .topbar .topbar-action-btn:hover {
+  background: var(--mint-soft) !important;
+  border-color: var(--mint-deep) !important;
+}
+/* Sign-out — ghost ink, not hot-pink fill */
+#client-hub .topbar .btn-logout,
+#coach-hub  .topbar .btn-logout {
+  background: transparent !important;
+  color: var(--ink-soft) !important;
+  border: 1px solid var(--rule) !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+#client-hub .topbar .btn-logout:hover,
+#coach-hub  .topbar .btn-logout:hover {
+  background: var(--mint-soft) !important;
+  color: var(--ink) !important;
+}
+/* Notification badge dot stays pink — signature moment */
+#client-hub #client-topbar-notif-badge,
+#coach-hub  #topbar-notif-badge {
+  background: var(--hot-pink) !important;
+  color: white !important;
+}
+
+/* ── (3) HERO — mint band, ink text, pink kicker ───────────────── */
+#client-hub .client-hero {
+  background: var(--mint) !important;
+  color: var(--ink) !important;
+  border-radius: 28px;
+  margin: 24px 24px 0 !important;
+  padding: 44px 48px 40px !important;
+  position: relative;
+  overflow: hidden;
+}
+/* Replace the v11722 pink wave-divider pseudo-elements with the
+   workbook's monstera-leaf circle echoes. */
+#client-hub .client-hero::before {
+  content: "" !important;
+  position: absolute !important;
+  right: -80px !important; top: -80px !important;
+  left: auto !important; bottom: auto !important;
+  width: 280px !important; height: 280px !important;
+  background: var(--pink-pale) !important;
+  background-image: none !important;
+  border-radius: 50% !important;
+  opacity: 0.6 !important;
+  transform: none !important;
+  z-index: 0 !important;
+}
+#client-hub .client-hero::after {
+  content: "" !important;
+  position: absolute !important;
+  right: 30px !important; bottom: -60px !important;
+  left: auto !important; top: auto !important;
+  width: 140px !important; height: 140px !important;
+  background: var(--mustard-soft) !important;
+  background-image: none !important;
+  border-radius: 50% !important;
+  opacity: 0.7 !important;
+  z-index: 0 !important;
+  height: 140px !important;
+  background-size: auto !important;
+}
+#client-hub .client-hero-inner { position: relative; z-index: 1; }
+#client-hub .client-hero h2,
+#client-hub #client-hero-name {
+  color: var(--ink) !important;
+  font-family: var(--f-head), sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 52px !important;
+  text-transform: lowercase;
+  line-height: 1.05 !important;
+  letter-spacing: -0.5px !important;
+}
+#client-hub .client-hero-tagline,
+#client-hub #client-hero-tagline {
+  color: var(--ink-soft) !important;
+  font-weight: 500 !important;
+  font-size: 17px !important;
+  font-style: normal;
+}
+/* COACHING eyebrow gets the handwritten signature treatment */
+#client-hub #client-hero-prog,
+#client-hub .client-hero-prog {
+  font-family: "Caveat", cursive !important;
+  font-size: 28px !important;
+  color: var(--hot-pink) !important;
+  text-transform: lowercase !important;
+  letter-spacing: 0 !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+/* My Why pin — cream pill with ink text */
+#client-hub #client-hero-why-wrap {
+  background: rgba(255,255,255,0.7) !important;
+  border: 1px solid var(--rule) !important;
+  backdrop-filter: blur(2px);
+}
+#client-hub #client-hero-why-text { color: var(--ink) !important; }
+
+/* ── (4) TAB STRIP — cream pill, ink active ────────────────────── */
+#client-hub .client-tabs {
+  background: var(--cream-soft) !important;
+  border: 1px solid var(--rule) !important;
+  border-bottom: 1px solid var(--rule) !important;
+  border-radius: 999px;
+  padding: 6px !important;
+  margin: 18px 24px 28px !important;
+  display: flex !important;
+  gap: 4px !important;
+  overflow-x: auto;
+}
+#client-hub .client-tabs::after { display: none !important; }
+#client-hub .client-tab {
+  border-radius: 999px !important;
+  padding: 10px 18px !important;
+  color: var(--ink-soft) !important;
+  border-bottom: none !important;
+  font-weight: 600 !important;
+}
+#client-hub .client-tab.active {
+  background: var(--ink) !important;
+  color: var(--cream-soft) !important;
+  border-bottom: none !important;
+}
+
+/* ── (5) PAGE BACKGROUND for the content panes ─────────────────── */
+#client-summary-area,
+#client-content-area,
+#client-settings-area {
+  background: var(--cream) !important;
+}
+
+/* ── (6) SECTION CARDS — workbook-paper style ──────────────────── */
+#client-hub .client-section,
+#client-summary-area .client-section,
+#client-content-area .client-section,
+#client-settings-area .client-section {
+  background: #FFFDF7 !important;
+  border: 1px solid var(--rule) !important;
+  border-radius: 20px !important;
+  padding: 28px !important;
+  box-shadow: 0 1px 2px rgba(92,61,41,0.05), 0 4px 12px rgba(92,61,41,0.06) !important;
+}
+/* Reset the 4-tint cycle from v11729 — workbook style is uniform
+   cream cards with subtle accent variants used SPARINGLY. */
+#client-summary-area .client-section:nth-of-type(4n+1),
+#client-summary-area .client-section:nth-of-type(4n+2),
+#client-summary-area .client-section:nth-of-type(4n+3),
+#client-summary-area .client-section:nth-of-type(4n+4),
+#client-content-area .client-section:nth-of-type(4n+1),
+#client-content-area .client-section:nth-of-type(4n+2),
+#client-content-area .client-section:nth-of-type(4n+3),
+#client-content-area .client-section:nth-of-type(4n+4),
+#client-settings-area .client-section:nth-of-type(4n+1),
+#client-settings-area .client-section:nth-of-type(4n+2),
+#client-settings-area .client-section:nth-of-type(4n+3),
+#client-settings-area .client-section:nth-of-type(4n+4) {
+  background: #FFFDF7 !important;
+}
+
+/* ── (7) TYPOGRAPHY — ink for headings, ink-soft for body ──────── */
+#client-hub .client-section h3,
+#client-hub .client-section h4,
+#client-summary-area h3, #client-summary-area h4,
+#client-content-area h3, #client-content-area h4,
+#client-settings-area h3, #client-settings-area h4 {
+  color: var(--ink) !important;
+  font-family: var(--f-head), sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 22px !important;
+  text-transform: lowercase !important;
+  letter-spacing: -0.01em !important;
+  margin-bottom: 14px !important;
+}
+/* Story-card titles get the "pill-title" workbook treatment — ink
+   outline rounded pill, lowercase, Fredoka-feel. */
+#client-hub .story-card-title,
+#client-summary-area .story-card-title,
+#client-content-area .story-card-title,
+#client-settings-area .story-card-title {
+  display: inline-block;
+  padding: 10px 22px !important;
+  border: 1.5px solid var(--ink) !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  font-family: var(--f-head), sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 16px !important;
+  color: var(--ink) !important;
+  text-transform: lowercase !important;
+  letter-spacing: 0.02em !important;
+  margin-bottom: 14px !important;
+  opacity: 1 !important;
+}
+/* Eyebrow text (small caps above pill-title) → handwritten */
+#client-hub .client-section > div[style*="font-size:11px"][style*="uppercase"],
+#client-summary-area > div > div[style*="font-size:11px"][style*="uppercase"],
+#client-content-area > div > div[style*="font-size:11px"][style*="uppercase"],
+#client-settings-area > div > div[style*="font-size:11px"][style*="uppercase"] {
+  font-family: "Caveat", cursive !important;
+  font-size: 22px !important;
+  text-transform: lowercase !important;
+  letter-spacing: 0 !important;
+  color: var(--ink-faded) !important;
+  font-weight: 600 !important;
+}
+/* All body text inside the three content panes — ink */
+#client-summary-area, #client-content-area, #client-settings-area { color: var(--ink) !important; }
+#client-summary-area p, #client-summary-area li, #client-summary-area td, #client-summary-area label,
+#client-content-area p, #client-content-area li, #client-content-area td, #client-content-area label,
+#client-settings-area p, #client-settings-area li, #client-settings-area td, #client-settings-area label {
+  color: var(--ink) !important;
+}
+/* Override the v11721 #222 sweep with ink for div/span body text */
+#client-summary-area span:not(button *):not(.btn-sm *):not(.btn-enter *):not([class*="tab"] *):not(.prog-tag *):not(.cprog-tab *):not(.pill *),
+#client-summary-area div:not(button):not(.btn-sm):not(.btn-enter):not([class*="tab"]):not(.prog-tag):not(.cprog-tab):not(.pill),
+#client-content-area span:not(button *):not(.btn-sm *):not(.btn-enter *):not([class*="tab"] *):not(.prog-tag *):not(.cprog-tab *):not(.pill *),
+#client-content-area div:not(button):not(.btn-sm):not(.btn-enter):not([class*="tab"]):not(.prog-tag):not(.cprog-tab):not(.pill),
+#client-settings-area span:not(button *):not(.btn-sm *):not(.btn-enter *):not([class*="tab"] *):not(.prog-tag *):not(.cprog-tab *):not(.pill *),
+#client-settings-area div:not(button):not(.btn-sm):not(.btn-enter):not([class*="tab"]):not(.prog-tag):not(.cprog-tab):not(.pill) {
+  color: var(--ink) !important;
+}
+/* Helper text */
+#client-summary-area .client-section small,
+#client-content-area .client-section small,
+#client-settings-area .client-section small {
+  color: var(--ink-faded) !important;
+}
+
+/* ── (8) BUTTONS — primary = mustard with deep shadow ──────────── */
+#client-hub .btn-sm.primary {
+  background: var(--mustard) !important;
+  color: var(--ink) !important;
+  border-color: var(--mustard) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 3px 0 var(--mustard-deep) !important;
+}
+#client-hub .btn-sm.primary:hover {
+  background: var(--mustard-soft) !important;
+  border-color: var(--mustard-deep) !important;
+  transform: translateY(-1px);
+}
+/* Secondary buttons — ink outline */
+#client-hub .btn-sm:not(.primary) {
+  background: transparent !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--ink) !important;
+  font-weight: 600 !important;
+}
+#client-hub .btn-sm:not(.primary):hover {
+  background: var(--mint-soft) !important;
+  border-color: var(--ink) !important;
+}
+
+/* ── (9) FORM INPUTS — cream with ink text + mustard focus ────── */
+#client-hub input[type="text"],
+#client-hub input[type="email"],
+#client-hub input[type="tel"],
+#client-hub input[type="url"],
+#client-hub textarea,
+#client-hub select {
+  color: var(--ink) !important;
+  background: white;
+  border: 1px solid var(--rule);
+}
+#client-hub input:focus,
+#client-hub textarea:focus,
+#client-hub select:focus {
+  border-color: var(--ink) !important;
+  box-shadow: 0 0 0 3px var(--mustard-soft) !important;
+}
+#client-hub .intake-q-question {
+  color: var(--ink) !important;
+}
+/* My-answers form pill — re-pink the question input label? No,
+   ink + bolder matches workbook better. */
+#client-hub .intake-q-card input.intake-q-question {
+  color: var(--ink) !important;
+  font-weight: 700 !important;
+}
+
+/* ── (10) WAVE DIVIDER — keep, but in mint not pink ────────────── */
+#client-hub .brand-wave,
+.brand-wave {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 140' preserveAspectRatio='none'><g fill='%23CCE5DA'><path d='M0 51.76c36.21-2.25 77.57-3.58 126.42-3.58 320 0 320 57 640 57 271.15 0 312.58-40.91 513.58-53.4V0H0z' fill-opacity='.4'/><path d='M0 24.31c43.46-5.69 94.56-9.25 158.42-9.25 320 0 320 89.24 640 89.24 256.13 0 307.28-57.16 481.58-80V0H0z' fill-opacity='.65'/><path d='M0 0v3.4C28.2 1.6 59.4.59 94.42.59c320 0 320 84.3 640 84.3 285 0 316.17-66.85 545.58-81.49V0z'/></g></svg>") !important;
+}
+
+/* ── (11) NOTE-FOR-CLAUDE FAB stays as a signature pink moment ── */
+#test-comment-fab {
+  background: var(--ink) !important;
+  color: var(--cream-soft) !important;
+  box-shadow: 0 4px 0 rgba(0,0,0,0.18) !important;
+}
+
+/* ── (12) NEW-NOTE BANNER — cream-warm with ink text ───────────── */
+#client-new-note-banner {
+  background: linear-gradient(135deg, var(--cream-warm), var(--mint-soft)) !important;
+  border-bottom-color: var(--mint-deep) !important;
+  color: var(--ink) !important;
+}
+#client-new-note-msg { color: var(--ink) !important; }
+

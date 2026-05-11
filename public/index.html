@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11729">
-<link rel="stylesheet" href="styles.css?v=11729">
+<link rel="preload" as="style" href="styles.css?v=11731">
+<link rel="stylesheet" href="styles.css?v=11731">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11729 — design pass against Phoebe's actual Canva brand board (Happy Money Journey style guide). Key insight from her tone-of-voice doc: 'loud, clear, with style' + 'unapologetically feminist' + 'sassy edge'. The platform had been getting softer; brand wants bolder. Changes: (1) SECTION HEADINGS bigger + heavier — 16px→22px, weight 700→800, tighter letter-spacing for that All Round Gothic Bold energy. (2) TEAL more prominent in the section-card palette — 4-tint cycle now white/teal/white/cream (soft teal #E0EDEE bumped from the v11728 muted #E8F2F4). (3) FEATURE TEAL BAND class .feature-teal — opt-in class that turns ANY section into a saturated teal block with white text + sunshine accents, mirroring her website's middle band. (4) WIN CELEBRATION class .win-celebrate — yellow left border + soft cream fill + drop shadow for log-a-win cards. (5) ANOTHER WAVE divider between tab strip and content so the brand pattern repeats down the page. v11728: round-2 design audit. v11727: hero contrast pass. READY FOR CLIENT TESTING.">
+<meta name="hmh-build" content="v11731 — WORKBOOK-BRAND VISUAL REFRESH per Phoebe's reference HTML. Pulled the new palette + design language from her MDC workbook + hub-summary.html reference she shared. STRATEGIC SHIFT: pinks (magenta / hot-pink / bubblegum / marshmallow) move from primary surface colour to 'signatures + tiny moments only'. Base palette is now cream #FBF5E7 + mint #CCE5DA + warm-brown ink #5C3D29. Mustard yellow #E9B949 replaces hot-pink as the primary CTA fill. Headings display in lowercase to match the workbook voice. Pill-title pattern with ink outline for section titles. Caveat handwritten font used for kicker text + eyebrow labels (signature moments). HARD RULES respected: no copy changes (text-transform CSS only), no functional changes, all IDs / classes / data-attrs / ARIA labels preserved. Scoped to #client-hub + #coach-hub. Existing tokens (magenta / hot-pink / sunshine / teal) all kept in :root for the platform's signature moments (notification dots, FAB, win celebration, etc.).">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
