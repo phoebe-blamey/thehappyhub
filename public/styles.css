@@ -1127,6 +1127,48 @@ body[data-live-sync="synced"] .topbar-date::after {
   box-shadow: 0 1px 0 rgba(229,4,139,0.06), 0 6px 22px rgba(229,4,139,0.08) !important;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   v11724 — input/textarea readability fix.
+   Phoebe's screenshot: typed answers in the My answers form read in
+   pink (hard to read), labels above them read in dark.
+   Flip both:
+     • LABELS (.intake-q-question — the "ABOUT YOU — WHAT…" headings)
+       → brand magenta / hot-pink so they pop and clearly mark the
+       boundary between questions.
+     • TYPED CONTENT (.intake-q-answer textareas + general inputs /
+       textareas inside the three client panes) → dark #222 so the
+       client can actually read their own words back.
+   ════════════════════════════════════════════════════════════════════ */
+#client-summary-area input.intake-q-question,
+#client-content-area input.intake-q-question,
+#client-settings-area input.intake-q-question {
+  color: var(--magenta) !important;
+}
+#client-summary-area textarea,
+#client-summary-area input[type="text"],
+#client-summary-area input[type="email"],
+#client-summary-area input[type="tel"],
+#client-summary-area input[type="url"],
+#client-content-area textarea,
+#client-content-area input[type="text"],
+#client-content-area input[type="email"],
+#client-content-area input[type="tel"],
+#client-content-area input[type="url"],
+#client-settings-area textarea,
+#client-settings-area input[type="text"],
+#client-settings-area input[type="email"],
+#client-settings-area input[type="tel"],
+#client-settings-area input[type="url"] {
+  color: #222 !important;
+}
+/* Re-pink the question-label INPUT specifically (it's a text input
+   so the rule above would otherwise have just turned it dark too) */
+#client-summary-area .intake-q-card input.intake-q-question,
+#client-content-area .intake-q-card input.intake-q-question,
+#client-settings-area .intake-q-card input.intake-q-question {
+  color: var(--magenta) !important;
+}
+
 
 /* ════════════════════════════════════════════════════════════════════
    v11721 — body text colour: #222222 inside Summary, Programs and

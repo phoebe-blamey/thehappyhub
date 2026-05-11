@@ -40,14 +40,14 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11723">
-<link rel="stylesheet" href="styles.css?v=11723">
+<link rel="preload" as="style" href="styles.css?v=11724">
+<link rel="stylesheet" href="styles.css?v=11724">
 
 </head>
 <body>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11723 — three fixes. (1) AI-refusal text leaking into the client hero's 'My Why' pin is now filtered at render time — if the saved why looks like an AI refusal (or is >300 chars), the empty-state '+ Add my why' placeholder shows instead. Elodie's test client was affected. (2) Section visibility per Phoebe's website screenshot — borders removed (harsh), corners 14px → 18px (friendlier, matches website cards), shadow added so sections float, and adjacent sections rotate through 4 background tints (white → soft pink → soft teal → soft cream) so you can see where one ends and the next begins WITHOUT extra padding. (3) styles.css cache-busted to v=11723 so the v11722 hero swap finally appears for users with a stale service-worker cache. v11722: hero restyled to match website. v11721: body text → #222222. v11710-v11715: notification bell, AI email draft, rename + 3-tap-logo, race fix, batch items. READY FOR CLIENT TESTING.">
+<meta name="hmh-build" content="v11724 — input/textarea readability fix on the client portal. Typed answers in the My answers form were rendering in pink (hard to read against the cream textareas); labels above them were dark. Flipped: labels (.intake-q-question — the 'ABOUT YOU — WHAT…' headings) now read in brand magenta as accents; typed content inside textareas + text inputs reads in dark #222. Scoped to the three content panes only. Cache-bust bumped to v=11724. v11723: section visibility (no harsh lines). v11722: hero restyled to match website. v11721: body text → #222222. v11710-v11715: notification bell, AI email draft, rename + 3-tap-logo, race fix, batch items. READY FOR CLIENT TESTING.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
