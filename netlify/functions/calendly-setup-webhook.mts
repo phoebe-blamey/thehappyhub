@@ -31,9 +31,12 @@ export default async (req: Request) => {
 
   let body: any;
   try { body = await req.json(); } catch { return new Response("Bad JSON", { status: 400 }); }
-  // v11510: PIN updated Happy_529 (case-sensitive). Override via COACH_ADMIN_PIN env.
+  // v11751: accept PIN in x-coach-pin header (preferred) or body.pin (legacy).
   const expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
-  if (body.pin !== expectedPin) return new Response("Unauthorised", { status: 401 });
+  const headerPin = req.headers.get("x-coach-pin") || "";
+  if (headerPin !== expectedPin && body.pin !== expectedPin) {
+    return new Response("Unauthorised", { status: 401 });
+  }
 
   const token = Netlify.env.get("CALENDLY_API_TOKEN");
   if (!token) {

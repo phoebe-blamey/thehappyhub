@@ -1,4 +1,5 @@
 import type { Config } from "@netlify/functions";
+import { requireInternalAuth } from "./_auth.mts";
 
 // POST /api/send-message
 // Body: { type: 'email'|'sms', to, subject, message, clientName }
@@ -6,8 +7,15 @@ import type { Config } from "@netlify/functions";
 // Email: sends via the Gmail API as the configured GOOGLE_SENDER_EMAIL.
 //        Sent emails appear in that mailbox's Sent folder automatically.
 // SMS:   sends via Twilio.
+//
+// v11751: requires coach PIN OR internal cron secret (was unauthenticated —
+// anyone could send emails/SMS as Phoebe, blasting clients with spam).
+// needs-support.mts and daily-digest.mts (server-to-server) authenticate
+// via x-cron-secret. The coach UI authenticates via x-coach-pin.
 export default async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  const unauth = requireInternalAuth(req);
+  if (unauth) return unauth;
 
   let body: any;
   try { body = await req.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }

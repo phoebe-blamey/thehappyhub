@@ -10,8 +10,14 @@ import type { Config } from "@netlify/functions";
 
 export default async (req: Request) => {
   const url = (Netlify.env.get("URL") || "https://hub.phoebeblamey.com.au").replace(/\/$/, "");
+  // v11751: pass the internal cron secret so the auth gate on
+  // /api/daily-digest lets this server-to-server call through.
+  const cronSecret = Netlify.env.get("INTERNAL_CRON_SECRET") || "";
   try {
-    const r = await fetch(`${url}/api/daily-digest`, { method: "POST" });
+    const r = await fetch(`${url}/api/daily-digest`, {
+      method: "POST",
+      headers: cronSecret ? { "x-cron-secret": cronSecret } : {},
+    });
     const data = await r.json().catch(() => ({}));
     console.log("[daily-digest-cron] result:", JSON.stringify(data).slice(0, 500));
     return new Response(JSON.stringify({ triggered: true, status: r.status }), {

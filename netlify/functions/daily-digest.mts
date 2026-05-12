@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireInternalAuth } from "./_auth.mts";
 
 // ════════════════════════════════════════════════════════════════════
 // v11743 — DAILY DIGEST scheduled function
@@ -276,6 +277,11 @@ function buildEmailBody(firstName: string, items: DigestItem[], hubUrl: string) 
 }
 
 export default async (req: Request) => {
+  // v11751: auth-gated. daily-digest-cron.mts calls this with x-cron-secret,
+  // the coach UI's manual-trigger calls it with x-coach-pin. Either unlocks.
+  const unauth = requireInternalAuth(req);
+  if (unauth) return unauth;
+
   const secret = Netlify.env.get("QUICK_ACTION_SECRET");
   const base = (Netlify.env.get("URL") || "https://hub.phoebeblamey.com.au").replace(/\/$/, "");
   if (!secret) {
@@ -357,7 +363,10 @@ export default async (req: Request) => {
 
       const sendResp = await fetch(`${base}/api/send-message`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-cron-secret": Netlify.env.get("INTERNAL_CRON_SECRET") || "",
+        },
         body: JSON.stringify({
           type: "email",
           to: client.email,

@@ -1,14 +1,14 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireCoachAuth } from "./_auth.mts";
 
 // GET /api/get-clients — returns all clients from Netlify Blobs.
-// Lists ALL blobs in the "clients" store regardless of key prefix. The earlier
-// version filtered by prefix:"client:" which silently hid every record whose
-// id used the "client-" hyphen format (sync-calendly, sync-zoom, demo seed).
-// The "clients" store only ever contains client records, so the prefix filter
-// was both unnecessary and a real data-loss-by-display bug.
+// v11751: coach-PIN-gated (was unauthenticated — anyone with the URL
+// could fetch every client's full PII).
 export default async (req: Request) => {
   if (req.method !== "GET") return new Response("Method not allowed", { status: 405 });
+  const unauth = requireCoachAuth(req);
+  if (unauth) return unauth;
 
   try {
     const store = getStore("clients");

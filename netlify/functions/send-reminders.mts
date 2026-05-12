@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireInternalAuth } from "./_auth.mts";
 
 // Scheduled every 10 minutes (see netlify.toml `[functions."send-reminders"]`).
 // Walks every client's programs, finds upcoming session datetimes, and sends
@@ -136,6 +137,11 @@ async function buildReminderEmail(args: {
 }
 
 export default async (req: Request) => {
+  // v11751: auth-gated. send-reminders-cron.mts calls with x-cron-secret;
+  // a manual coach UI trigger uses x-coach-pin. Either unlocks.
+  const unauth = requireInternalAuth(req);
+  if (unauth) return unauth;
+
   const baseUrl = new URL(req.url).origin;
   const clients = getStore("clients");
   const reminders = getStore("reminders");
@@ -189,7 +195,10 @@ export default async (req: Request) => {
           try {
             const resp = await fetch(`${baseUrl}/api/send-message`, {
               method:  "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "x-cron-secret": Netlify.env.get("INTERNAL_CRON_SECRET") || "",
+              },
               body:    JSON.stringify({ type: "email", to: client.email, subject, message: body, clientName: client.name }),
             });
             if (resp.ok) {

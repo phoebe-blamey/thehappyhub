@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+// v11751: imports kept for the body-pin fallback used below.
 
 // POST /api/merge-clients
 // Walks all clients, groups by normalized email, merges duplicates into a
@@ -73,11 +74,13 @@ export default async (req: Request) => {
 
   let body: any = {};
   try { body = await req.json(); } catch {}
-  // v11560: PIN guard — was previously unauthenticated, which meant any
-  // anonymous POST could trigger a real merge against live client data.
-  // Override via COACH_ADMIN_PIN env var if Phoebe rotates the shared secret.
+  // v11751: accept the PIN in either x-coach-pin header (preferred) or
+  // body.pin (legacy callers).
   const expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
-  if (body.pin !== expectedPin) return new Response("Unauthorised", { status: 401 });
+  const headerPin = req.headers.get("x-coach-pin") || "";
+  if (headerPin !== expectedPin && body.pin !== expectedPin) {
+    return new Response("Unauthorised", { status: 401 });
+  }
   const dryRun: boolean = !!body.dryRun;
 
   const store = getStore("clients");

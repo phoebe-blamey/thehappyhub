@@ -1,15 +1,15 @@
 // netlify/functions/ai-call.mts
 // Proxies AI calls from the browser to Anthropic so the API key stays on the server.
+//
+// v11751: coach-PIN-gated and CORS-restricted to our own origins (was open
+// to any caller — anyone could drive Anthropic costs on Phoebe's bill and
+// send arbitrary prompts that might leak client PII).
 
 import type { Context } from "@netlify/functions";
+import { requireCoachAuth, corsHeadersFor } from "./_auth.mts";
 
 export default async (req: Request, _context: Context) => {
-  // CORS for safety
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
+  const corsHeaders = corsHeadersFor(req);
 
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -20,6 +20,12 @@ export default async (req: Request, _context: Context) => {
       status: 405,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
+
+  // Auth check — coach PIN required.
+  const unauth = requireCoachAuth(req);
+  if (unauth) {
+    return new Response(await unauth.text(), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   const apiKey = Netlify.env.get("ANTHROPIC_API_KEY");

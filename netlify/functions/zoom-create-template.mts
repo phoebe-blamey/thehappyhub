@@ -232,6 +232,11 @@ function brandedFor(templateName: string): BrandedSettings {
 
 export default async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  // v11751: coach-PIN-gated
+  const _expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
+  if ((req.headers.get("x-coach-pin") || "") !== _expectedPin) {
+    return new Response(JSON.stringify({ error: "Unauthorised" }), { status: 401, headers: { "Content-Type": "application/json" } });
+  }
 
   const accountId    = Netlify.env.get("ZOOM_ACCOUNT_ID");
   const zoomClientId = Netlify.env.get("ZOOM_CLIENT_ID");
@@ -363,7 +368,8 @@ export default async (req: Request) => {
   let savedToSettings = false;
   try {
     const baseUrl = (Netlify.env.get("URL") || "https://hub.phoebeblamey.com.au").replace(/\/$/, "");
-    const settingsResp = await fetch(`${baseUrl}/api/coach-settings`, { method: "GET" });
+    const _cronH = { "x-cron-secret": Netlify.env.get("INTERNAL_CRON_SECRET") || "" };
+    const settingsResp = await fetch(`${baseUrl}/api/coach-settings`, { method: "GET", headers: _cronH });
     let current: any = {};
     if (settingsResp.ok) {
       try { current = await settingsResp.json(); } catch {}
@@ -378,7 +384,7 @@ export default async (req: Request) => {
     };
     const saveResp = await fetch(`${baseUrl}/api/coach-settings`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ..._cronH },
       body: JSON.stringify(current),
     });
     savedToSettings = saveResp.ok;

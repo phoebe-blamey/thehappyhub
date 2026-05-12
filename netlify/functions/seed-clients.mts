@@ -1,9 +1,11 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireCoachAuth } from "./_auth.mts";
 
 // POST /api/seed-clients
 // Seeds real Calendly clients into Netlify Blobs (run once from Settings)
-// Protected by coach PIN
+// v11751: now also requires x-coach-pin header (was body-pin only — easy
+// to spam since the PIN was guessable)
 
 const REAL_CLIENTS = [
   {
@@ -246,13 +248,15 @@ const REAL_CLIENTS = [
 
 export default async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
-
+  // v11751: prefer header-based auth (matches every other coach endpoint).
+  // Still accept body.pin for backward compat with the existing Settings UI.
   let body: any = {};
   try { body = await req.json(); } catch {}
-  // v11510: PIN updated Happy_529 (case-sensitive). Override possible via
-  // COACH_ADMIN_PIN env var if Phoebe ever rotates the shared admin secret.
   const expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
-  if (body.pin !== expectedPin) return new Response("Unauthorised", { status: 401 });
+  const headerPin = req.headers.get("x-coach-pin") || "";
+  if (headerPin !== expectedPin && body.pin !== expectedPin) {
+    return new Response("Unauthorised", { status: 401 });
+  }
 
   const store = getStore("clients");
   const results: string[] = [];

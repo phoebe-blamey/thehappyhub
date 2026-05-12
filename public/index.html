@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11750">
-<link rel="stylesheet" href="styles.css?v=11750">
+<link rel="preload" as="style" href="styles.css?v=11751">
+<link rel="stylesheet" href="styles.css?v=11751">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11750 — Universal 'ask clarifying questions first' pattern. Any AI generator can now run Phoebe through up to 3 short clarifying questions (in the branded modal) before producing output. Applied to: ✦ Generate research brief and ✦ Generate fresh client snapshot. Same approach already powers the plan builder. Phoebe can skip and generate immediately, or answer 1-3 questions and the AI weights its output to her context. Answers persist on the program record so the next regenerate can build on them. v11749 Scott-quality plans + per-client digest cadence + QUICK_ACTION_SECRET set remain shipped.">
+<meta name="hmh-build" content="v11751 — Auth layer (CRITICAL compliance fix #1-4). Every coach-only endpoint now requires x-coach-pin matching the COACH_ADMIN_PIN env var (was unauthenticated — anyone could fetch all client PII, modify any record, drive Anthropic costs, or trigger Zoom transcript pulls). Internal cron + webhook server-to-server calls authenticate via x-cron-secret (INTERNAL_CRON_SECRET env var). Front-end fetch interceptor automatically attaches x-coach-pin (from localStorage) and x-client-access (from sessionStorage) to every /api/* call. CORS on /api/ai-call tightened to our own origins. _auth.mts shared helper. v11750 universal Q&A pattern + v11749 Scott-quality plans remain shipped.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -2021,9 +2021,44 @@ document.addEventListener('keydown', function(e) {
     });
   }
 
+  // v11751: auth header injector. Coach PIN comes from localStorage (set
+  // when Phoebe entered it on landing); client access code comes from
+  // sessionStorage (set by enterClient). We send BOTH if available — server
+  // endpoints check whichever they need.
+  function _attachAuthHeaders(opts) {
+    opts = opts || {};
+    var existing = opts.headers || {};
+    // Always copy into a fresh plain object so we don't mutate caller's
+    // headers and don't crash on Headers instances.
+    var merged = {};
+    if (existing instanceof Headers) {
+      existing.forEach(function(v, k) { merged[k] = v; });
+    } else {
+      Object.assign(merged, existing);
+    }
+    try {
+      var pin = localStorage.getItem('hmh_coach_pin') || sessionStorage.getItem('hmh_coach_pin') || '';
+      if (pin && !merged['x-coach-pin'] && !merged['X-Coach-Pin']) merged['x-coach-pin'] = pin;
+    } catch (e) {}
+    try {
+      var access = sessionStorage.getItem('hmh_client_access') || localStorage.getItem('hmh_client_access') || '';
+      if (access && !merged['x-client-access'] && !merged['X-Client-Access']) merged['x-client-access'] = access;
+    } catch (e) {}
+    opts.headers = merged;
+    return opts;
+  }
+
   window.fetch = function(url, opts) {
-    // Only intercept Anthropic API calls
-    if (typeof url !== 'string' || url.indexOf('api.anthropic.com') < 0) {
+    var urlStr = (typeof url === 'string') ? url : (url && url.url) || '';
+    // v11751: attach auth headers to every call to our own /api/* endpoints
+    // (and to the .netlify/functions/* internal paths).
+    if (urlStr.indexOf('/api/') === 0 ||
+        urlStr.indexOf('/.netlify/functions/') >= 0 ||
+        urlStr.indexOf(window.location.origin + '/api/') === 0) {
+      opts = _attachAuthHeaders(opts || {});
+    }
+    // Only intercept Anthropic API calls past this point
+    if (urlStr.indexOf('api.anthropic.com') < 0) {
       return origFetch(url, opts);
     }
     opts = opts || {};
@@ -2037,11 +2072,12 @@ document.addEventListener('keydown', function(e) {
       }
     } catch (e) {}
 
-    return origFetch('/api/ai-call', {
+    // v11751: the rewritten /api/ai-call call also needs the coach PIN
+    return origFetch('/api/ai-call', _attachAuthHeaders({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: opts.body
-    }).then(function(resp) {
+    })).then(function(resp) {
       if (!resp.ok) {
         return resp.text().then(function(txt) {
           throw new Error('AI proxy returned ' + resp.status + ': ' + txt.slice(0, 200));
@@ -4318,6 +4354,8 @@ async function restoreSession() {
     if (role === 'client') {
       var code = sessionGet(HMH_SESSION.CLIENT_CODE);
       if (!code) return false;
+      // v11751: also mirror into sessionStorage for the fetch interceptor
+      try { sessionStorage.setItem('hmh_client_access', code); } catch(e) {}
       if (!clients.length) { try { await loadClients(); } catch (e) {} }
       var client = clients.find(function(c) { return (c.clientAccess || '').toUpperCase() === code.toUpperCase(); });
       if (!client) { clearSession(); return false; }
@@ -4407,6 +4445,10 @@ async function enterClient() {
     sessionSet(HMH_SESSION.ROLE, 'client');
     sessionSet(HMH_SESSION.CLIENT_CODE, client.clientAccess);
     sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
+    // v11751: the fetch interceptor reads this to attach x-client-access
+    // header on every /api/* call. Stays in sessionStorage so it clears on
+    // close (not localStorage — minimises exposure).
+    try { sessionStorage.setItem('hmh_client_access', client.clientAccess); } catch(e) {}
     document.getElementById('landing').style.display = 'none';
     document.getElementById('client-hub').classList.add('active');
     currentClientId = client.id;

@@ -313,7 +313,11 @@ export default async (req: Request) => {
         `Phoebe x`;
     fetch(`${baseUrl}/api/send-message`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // v11751: internal cron secret unlocks the auth gate on send-message
+        "x-cron-secret": Netlify.env.get("INTERNAL_CRON_SECRET") || "",
+      },
       body: JSON.stringify({
         type:       "email",
         to:         email,

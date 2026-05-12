@@ -380,7 +380,11 @@ export default async (req: Request) => {
     const baseUrl = (Netlify.env.get("URL") || "https://hub.phoebeblamey.com.au").replace(/\/$/, "");
     fetch(`${baseUrl}/api/activity-log`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // v11751: internal cron secret so activity-log auth lets us through
+        "x-cron-secret": Netlify.env.get("INTERNAL_CRON_SECRET") || "",
+      },
       body: JSON.stringify({
         append: {
           id: `act-${Date.now()}`,

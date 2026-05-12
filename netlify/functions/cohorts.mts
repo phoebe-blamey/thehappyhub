@@ -1,13 +1,20 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireCoachAuth } from "./_auth.mts";
 
 // MDC cohorts — the groupings of MDC clients with their dates, WhatsApp
 // links, Zoom links, next-session times, and activeness flag.
 //
 // GET  /api/cohorts        → returns the array (or [])
 // POST /api/cohorts        → body is the full cohorts array, replaces
+//
+// v11751: coach-PIN-gated (was unauthenticated — anyone could read or
+// overwrite Phoebe's cohort assignments).
 
 export default async (req: Request) => {
+  const unauth = requireCoachAuth(req);
+  if (unauth) return unauth;
+
   const store = getStore("cohorts");
   const KEY = "main";
 

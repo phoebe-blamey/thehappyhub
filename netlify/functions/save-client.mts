@@ -1,7 +1,10 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireCoachAuth } from "./_auth.mts";
 
 // POST /api/save-client — saves a client record to Netlify Blobs.
+// v11751: coach-PIN-gated (was unauthenticated — anyone could modify
+// any client's record).
 //
 // Body: { clientId, data, expectedVersion? }
 //   - clientId          : blob key
@@ -18,6 +21,8 @@ import { getStore } from "@netlify/blobs";
 // its "expectedVersion" tracker in sync after a successful save.
 export default async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  const unauth = requireCoachAuth(req);
+  if (unauth) return unauth;
 
   let body: any;
   try { body = await req.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }

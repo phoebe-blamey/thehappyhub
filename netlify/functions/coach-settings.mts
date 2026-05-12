@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireInternalAuth } from "./_auth.mts";
 
 // Single-blob coach-wide settings: custom badges, plan templates, hub
 // resources, removed-resource ids, hourly rate, coach phone, notifications
@@ -9,12 +10,14 @@ import { getStore } from "@netlify/blobs";
 // POST /api/coach-settings           → body is either a full replacement
 //                                       OR a { patch: {...} } merge
 //
-// All Phoebe's devices read the same record, so creating a custom badge on
-// her laptop appears immediately when she opens the iPad. Lost-write risk
-// is acceptable here because settings change rarely and Phoebe is the only
-// writer.
+// v11751: requires coach PIN OR internal cron secret. daily-digest and
+// send-reminders read this blob server-to-server (for email templates)
+// using x-cron-secret. The coach UI uses x-coach-pin.
 
 export default async (req: Request) => {
+  const unauth = requireInternalAuth(req);
+  if (unauth) return unauth;
+
   const store = getStore("coach-settings");
   const KEY = "main";
 

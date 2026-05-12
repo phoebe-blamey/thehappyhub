@@ -1,15 +1,22 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireCoachAuth } from "./_auth.mts";
 
 // Called from the client detail page: POST /api/zoom-transcript
 // Body: { clientId, sessionDate }
 // Finds the Zoom cloud recording for that date, pulls the transcript,
 // stores it on the client record, and returns it for plan building.
+//
+// v11751: coach-PIN-gated (was unauthenticated — anyone with a clientId
+// could trigger Zoom transcript pull + AI analysis, billing Phoebe's
+// account and potentially leaking client data through forged calls).
 
 export default async (req: Request) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
+  const unauth = requireCoachAuth(req);
+  if (unauth) return unauth;
 
   let body: any;
   try { body = await req.json(); } catch {

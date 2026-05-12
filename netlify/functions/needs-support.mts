@@ -81,7 +81,11 @@ export default async (req: Request) => {
       `— sent automatically by the Happy Hub`;
     await fetch(`${base}/api/send-message`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // v11751: internal cron secret so /api/send-message auth lets us through
+        "x-cron-secret": Netlify.env.get("INTERNAL_CRON_SECRET") || "",
+      },
       body: JSON.stringify({
         type: "email",
         to: phoebeEmail,

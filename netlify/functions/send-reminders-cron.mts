@@ -14,8 +14,14 @@ import type { Config } from "@netlify/functions";
 
 export default async (req: Request) => {
   const url = (Netlify.env.get("URL") || "https://hub.phoebeblamey.com.au").replace(/\/$/, "");
+  // v11751: pass internal cron secret so the auth gate on
+  // /api/send-reminders accepts this server-to-server call.
+  const cronSecret = Netlify.env.get("INTERNAL_CRON_SECRET") || "";
   try {
-    const r = await fetch(`${url}/api/send-reminders`, { method: "POST" });
+    const r = await fetch(`${url}/api/send-reminders`, {
+      method: "POST",
+      headers: cronSecret ? { "x-cron-secret": cronSecret } : {},
+    });
     const data = await r.json().catch(() => ({}));
     console.log("[send-reminders-cron] result:", JSON.stringify(data).slice(0, 500));
     return new Response(JSON.stringify({ triggered: true, status: r.status }), {

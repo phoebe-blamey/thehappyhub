@@ -249,6 +249,11 @@ const BRAND_TEMPLATES: Record<TemplateKey, TemplatePreset> = {
 
 export default async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  // v11751: coach-PIN-gated
+  const _expectedPin = Netlify.env.get("COACH_ADMIN_PIN") || "Happy_529";
+  if ((req.headers.get("x-coach-pin") || "") !== _expectedPin) {
+    return new Response(JSON.stringify({ error: "Unauthorised" }), { status: 401, headers: { "Content-Type": "application/json" } });
+  }
 
   const accountId    = Netlify.env.get("ZOOM_ACCOUNT_ID");
   const clientId     = Netlify.env.get("ZOOM_CLIENT_ID");
@@ -353,7 +358,9 @@ export default async (req: Request) => {
   if (!resolvedTemplateId && templateName) {
     try {
       const baseUrl = (Netlify.env.get("URL") || "https://hub.phoebeblamey.com.au").replace(/\/$/, "");
-      const r = await fetch(`${baseUrl}/api/coach-settings`);
+      const r = await fetch(`${baseUrl}/api/coach-settings`, {
+        headers: { "x-cron-secret": Netlify.env.get("INTERNAL_CRON_SECRET") || "" },
+      });
       if (r.ok) {
         const settings: any = await r.json();
         const saved = settings && settings.zoomTemplates && settings.zoomTemplates[templateName];

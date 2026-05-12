@@ -1,9 +1,14 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireCoachAuth } from "./_auth.mts";
 
 // GET /api/get-notifications — returns and clears pending coach notifications
+// v11751: coach-PIN-gated (was unauthenticated — anyone could drain
+// Phoebe's queue of new-client alerts).
 export default async (req: Request) => {
   if (req.method !== "GET") return new Response("Method not allowed", { status: 405 });
+  const unauth = requireCoachAuth(req);
+  if (unauth) return unauth;
 
   try {
     const store = getStore("notifications");

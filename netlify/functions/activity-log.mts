@@ -1,5 +1,6 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
+import { requireInternalAuth } from "./_auth.mts";
 
 // Activity log shared across Phoebe's devices. Was localStorage-only —
 // now persisted to a single blob so her iPad and laptop see the same
@@ -11,11 +12,18 @@ import { getStore } from "@netlify/blobs";
 //                                        { entries: [...] } replaces fully (used by client-side cache)
 // DELETE /api/activity-log              → wipes the log
 //
+// v11751: requires coach PIN OR internal cron secret. needs-support.mts
+// writes to this log server-to-server with x-cron-secret; the coach UI
+// reads/writes with x-coach-pin.
+//
 // We cap the stored array at 500 entries so the blob doesn't grow forever.
 
 const MAX_ENTRIES = 500;
 
 export default async (req: Request) => {
+  const unauth = requireInternalAuth(req);
+  if (unauth) return unauth;
+
   const store = getStore("activity-log");
   const KEY = "main";
 
