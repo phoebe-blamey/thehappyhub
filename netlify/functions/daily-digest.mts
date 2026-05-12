@@ -1,6 +1,7 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 import { requireInternalAuth } from "./_auth.mts";
+import { buildUnsubscribeUrl } from "./unsubscribe.mts";
 
 // ════════════════════════════════════════════════════════════════════
 // v11743 — DAILY DIGEST scheduled function
@@ -200,7 +201,7 @@ function _substitute(s: string, vars: Record<string, string>): string {
   return (s || "").replace(/\{(\w+)\}/g, (m, key) => (key in vars ? String(vars[key] ?? "") : m));
 }
 
-function buildEmailBody(firstName: string, items: DigestItem[], hubUrl: string) {
+function buildEmailBody(firstName: string, items: DigestItem[], hubUrl: string, unsubscribeUrl?: string) {
   const lines: string[] = [];
   lines.push(`Hi ${firstName},`);
   lines.push("");
@@ -273,6 +274,13 @@ function buildEmailBody(firstName: string, items: DigestItem[], hubUrl: string) 
   lines.push("Small moves, big consequences.");
   lines.push("");
   lines.push("Phoebe x");
+  // v11752: Spam Act 2003 §17 — every commercial email needs an unsubscribe.
+  if (unsubscribeUrl) {
+    lines.push("");
+    lines.push("─────────────");
+    lines.push("Don't want these emails? Unsubscribe: " + unsubscribeUrl);
+    lines.push("You can also change which emails you get from your Hub Settings.");
+  }
   return lines.join("\n");
 }
 
@@ -334,7 +342,11 @@ export default async (req: Request) => {
 
       const firstName = (client.name || "").split(" ")[0] || "there";
       const hubUrl = `${base}/?client=${encodeURIComponent(client.clientAccess || "")}`;
-      const innerBody = buildEmailBody(firstName, items, hubUrl);
+      // v11752: Spam Act 2003 §17 — build the signed unsubscribe URL once
+      // per client and embed in both the buildEmailBody footer + the
+      // Phoebe-editable template's {unsubscribeUrl} placeholder.
+      const unsubUrl = buildUnsubscribeUrl(base, client.id, "digest", secret);
+      const innerBody = buildEmailBody(firstName, items, hubUrl, unsubUrl);
 
       // v11746: render via Phoebe-editable template if she's saved one.
       // The digest-* templates use {digestBody} as the dynamic middle
@@ -348,6 +360,7 @@ export default async (req: Request) => {
         hubUrl,
         accessCode: client.clientAccess || "",
         digestBody: innerBody.replace(/^Hi [^\n]+,\n*/i, "").replace(/\n\nPhoebe x\s*$/i, "").trim(),
+        unsubscribeUrl: unsubUrl,
       };
       // Subject — keep it personal + count-aware
       const counts: string[] = [];
@@ -359,7 +372,12 @@ export default async (req: Request) => {
         : "Today on your hub";
 
       const subject = tpl ? _substitute(tpl.subject, vars) : defaultSubject;
-      const body    = tpl ? _substitute(tpl.body, vars)    : innerBody;
+      // v11752: if Phoebe's saved template forgot to include {unsubscribeUrl},
+      // append the unsubscribe footer ourselves so we stay Spam-Act compliant.
+      let body = tpl ? _substitute(tpl.body, vars) : innerBody;
+      if (tpl && body.indexOf(unsubUrl) < 0) {
+        body += "\n\n─────────────\nDon't want these emails? Unsubscribe: " + unsubUrl;
+      }
 
       const sendResp = await fetch(`${base}/api/send-message`, {
         method: "POST",

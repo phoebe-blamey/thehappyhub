@@ -1,6 +1,7 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 import { requireInternalAuth } from "./_auth.mts";
+import { buildUnsubscribeUrl } from "./unsubscribe.mts";
 
 // Scheduled every 10 minutes (see netlify.toml `[functions."send-reminders"]`).
 // Walks every client's programs, finds upcoming session datetimes, and sends
@@ -163,6 +164,9 @@ export default async (req: Request) => {
       try { client = JSON.parse(raw); } catch { continue; }
       if (!client.email || !client.clientAccess) continue;
       if (client.archived) continue; // archived clients don't get reminders
+      // v11752: skip if client opted out of reminders OR all notifications
+      if (client.notificationsDisabled) continue;
+      if (client.prefsReminders === false) continue;
       const firstName = String(client.name || "there").split(" ")[0] || "there";
       for (const prog of client.programs || []) {
         if (!prog.sessionDate) continue;
@@ -188,10 +192,19 @@ export default async (req: Request) => {
           const sessionTime = formatSessionTime(prog.sessionDate);
           const hubUrl = `${baseUrl}/?client=${client.clientAccess}`;
           const zoomUrl = prog.zoomJoin || "";
-          const { subject, body } = await buildReminderEmail({
+          // v11752: signed unsubscribe URL embedded in every reminder
+          const qaSecret = Netlify.env.get("QUICK_ACTION_SECRET") || "";
+          const unsubUrl = qaSecret ? buildUnsubscribeUrl(baseUrl, client.id, "reminders", qaSecret) : "";
+          let { subject, body } = await buildReminderEmail({
             firstName, programLabel, sessionTime, tierKey: tier.key, tierLabel: tier.label, zoomUrl,
             hubUrl, hubCode: client.clientAccess,
           });
+          if (unsubUrl) {
+            // Append once if not already present (Phoebe's saved template may include it)
+            if (body.indexOf(unsubUrl) < 0) {
+              body += "\n\n─────────────\nDon't want reminder emails? Unsubscribe: " + unsubUrl;
+            }
+          }
           try {
             const resp = await fetch(`${baseUrl}/api/send-message`, {
               method:  "POST",

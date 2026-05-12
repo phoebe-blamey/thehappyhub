@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11751">
-<link rel="stylesheet" href="styles.css?v=11751">
+<link rel="preload" as="style" href="styles.css?v=11752">
+<link rel="stylesheet" href="styles.css?v=11752">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11751 — Auth layer (CRITICAL compliance fix #1-4). Every coach-only endpoint now requires x-coach-pin matching the COACH_ADMIN_PIN env var (was unauthenticated — anyone could fetch all client PII, modify any record, drive Anthropic costs, or trigger Zoom transcript pulls). Internal cron + webhook server-to-server calls authenticate via x-cron-secret (INTERNAL_CRON_SECRET env var). Front-end fetch interceptor automatically attaches x-coach-pin (from localStorage) and x-client-access (from sessionStorage) to every /api/* call. CORS on /api/ai-call tightened to our own origins. _auth.mts shared helper. v11750 universal Q&A pattern + v11749 Scott-quality plans remain shipped.">
+<meta name="hmh-build" content="v11752 — Privacy + Terms acceptance gate, unsubscribe links, data export + deletion (CRITICAL compliance fix #5, #6, #10). First-time portal visitors must accept the Privacy Policy + ToS before they can use the hub (acceptance timestamp persists on the client record per APP 1 + 5). Every outbound email (digest, reminders, welcome) now carries an HMAC-signed unsubscribe link (Spam Act 2003 §17) backed by /api/unsubscribe. New /api/export-my-data (APP 12 / GDPR Art 15+20) downloads a complete JSON of everything we hold; /api/delete-my-data (APP 13 / GDPR Art 17) soft-deletes + emails Phoebe for hard-delete within 30 days. Client portal Settings now has email-pref toggles (digest / reminders / coach broadcasts) and links to read Privacy + Terms anytime. v11751 auth layer + v11750 Q&A + v11749 plans remain shipped.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -9193,6 +9193,16 @@ function loadClientPortal(client) {
   document.getElementById('client-hero-name').textContent = client.name.split(' ')[0] + '\'s Hub';
   document.getElementById('client-hero-tagline').textContent = 'You\'re good at what you do. Let\'s make your money reflect it.';
 
+  // v11752: Privacy + Terms acceptance gate. Blocks portal access until
+  // the client has accepted at least once (APP 1 + 5, GDPR Art 13).
+  // Renders BEFORE the welcome / blocked-task flows so they never get
+  // through to the hub without seeing it.
+  if (!client.acceptedPrivacyAt) {
+    try { maybeShowPrivacyAcceptanceGate(client); } catch(e) { console.warn('[Privacy gate]', e); }
+    // Fall through — the modal sits on top of the portal so the rest of
+    // the load still happens in the background.
+  }
+
   // First-visit welcome modal — runs once per device per client. Stops Phoebe
   // having to chase up "what's this hub thing?" after Calendly auto-creates
   // them. The modal points at the three places we want them to look first.
@@ -9906,6 +9916,204 @@ function maybeShowFirstVisitWelcome(client) {
     return;
   }
   setTimeout(function() { startOnboardingFlow(client); }, 500);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// v11752 — Privacy Policy, Terms of Service, data rights (APP + GDPR)
+// ════════════════════════════════════════════════════════════════════
+// Australian Privacy Principle 1 (collection must be lawful + disclosed
+// at point of collection), APP 5 (notification), APP 12 (access), APP
+// 13 (correction/deletion). GDPR Articles 13-15, 17, 20.
+//
+// Each client must accept Privacy + Terms before the portal lets them
+// in for the first time. Acceptance timestamp persists on client.acceptedPrivacyAt
+// and acts as the audit trail.
+
+var PRIVACY_POLICY_HTML =
+  '<div style="font-size:13px;line-height:1.65;color:var(--magenta)">' +
+    '<p style="font-size:11px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;margin-bottom:4px">Last updated: May 2026</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Who we are</h4>' +
+    '<p>The Happy Hub is operated by Phoebe Blamey Coaching (phoebeblamey.com.au), based in Australia. Phoebe is the only person who accesses your information.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">What we collect</h4>' +
+    '<ul style="margin:0 0 8px 18px;padding:0"><li>Your name, email, phone number, business details</li>' +
+    '<li>Your intake answers, session notes, plans, tasks, wins, and mood logs</li>' +
+    '<li>Zoom session recordings + transcripts (only if you have a coaching session over Zoom)</li>' +
+    '<li>Mobile / browser device info for safety + access logs</li></ul>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">How we use it</h4>' +
+    '<ul style="margin:0 0 8px 18px;padding:0"><li>To deliver your coaching program and personalise the plan Phoebe builds for you</li>' +
+    '<li>To send you reminders, your weekly digest, and session-related messages (you can turn any of these off in your Hub Settings)</li>' +
+    '<li>To generate AI summaries of your sessions and a research brief — see "AI processing" below</li></ul>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">AI processing</h4>' +
+    '<p>To help Phoebe coach you well we use AI models. Specifically:</p>' +
+    '<ul style="margin:0 0 8px 18px;padding:0"><li>Anthropic Claude (US-based) — to generate research briefs, plan drafts, and session summaries from your intake, transcripts, and notes</li>' +
+    '<li>OpenAI Whisper or AssemblyAI (US-based) — to transcribe Zoom audio when Zoom\'s own transcript isn\'t ready</li></ul>' +
+    '<p>These services process your data under their own data-processing terms. We don\'t allow them to train their models on your data. If you want to opt out of AI processing, tell Phoebe and she\'ll switch you to manual-only.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Third parties we share data with</h4>' +
+    '<ul style="margin:0 0 8px 18px;padding:0"><li>Calendly — your booking details</li>' +
+    '<li>Zoom — when you join a coaching session</li>' +
+    '<li>Gmail (Google) — to send you emails as Phoebe</li>' +
+    '<li>Netlify (hosting + secure storage of your record)</li>' +
+    '<li>Anthropic / OpenAI / AssemblyAI as listed above</li></ul>' +
+    '<p>We never sell, rent, or trade your information.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Your rights (APP + GDPR)</h4>' +
+    '<ul style="margin:0 0 8px 18px;padding:0"><li><strong>Access:</strong> see everything we hold about you. Use "Export my data" in Settings.</li>' +
+    '<li><strong>Correction:</strong> fix anything wrong. Edit your details in Settings.</li>' +
+    '<li><strong>Deletion:</strong> request removal. Use "Request data deletion" in Settings — soft-deleted immediately, hard-deleted within 30 days.</li>' +
+    '<li><strong>Unsubscribe:</strong> stop any email type. Toggle in Settings or click the unsubscribe link in any email.</li>' +
+    '<li><strong>Complain:</strong> if you\'re unhappy with how we handle your data, contact phoebe@phoebeblamey.com.au. You can also lodge a complaint with the <a href="https://www.oaic.gov.au/" target="_blank" rel="noopener" style="color:var(--hot-pink)">Office of the Australian Information Commissioner (OAIC)</a>.</li></ul>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">How long we keep it</h4>' +
+    '<p>While your coaching relationship is active. After you stop, we delete personal data within 30 days unless the law requires us to keep it (Australian tax law requires some records for 7 years).</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Security</h4>' +
+    '<p>Your data is stored encrypted at rest in Netlify Blobs. All connections use HTTPS. Access is gated by your personal access code and Phoebe\'s admin PIN. We rotate credentials and run regular audits.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Contact</h4>' +
+    '<p>Questions? Email <a href="mailto:phoebe@phoebeblamey.com.au" style="color:var(--hot-pink)">phoebe@phoebeblamey.com.au</a>.</p>' +
+  '</div>';
+
+var TERMS_OF_SERVICE_HTML =
+  '<div style="font-size:13px;line-height:1.65;color:var(--magenta)">' +
+    '<p style="font-size:11px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;margin-bottom:4px">Last updated: May 2026</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Using The Happy Hub</h4>' +
+    '<p>The Happy Hub is a private coaching platform for clients of Phoebe Blamey Coaching. It\'s here to help you get the most out of your coaching — track your plan, see your wins, and stay in touch between sessions.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Your account</h4>' +
+    '<p>Your access code is personal. Don\'t share it. If you think someone else has it, change it from Settings or ask Phoebe.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">AI-generated content</h4>' +
+    '<p>Some content in your hub is generated by AI (research briefs, session summaries, plan drafts). Phoebe reviews everything before it\'s used in your coaching. AI can be wrong — treat anything AI-generated as a starting point, not gospel. If something doesn\'t feel right, raise it with Phoebe.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Not financial or legal advice</h4>' +
+    '<p>Coaching helps you think clearly, set goals, and make decisions. It is not financial, legal, medical, or tax advice. Where you need specialist advice, get it from a qualified specialist.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Your content</h4>' +
+    '<p>You own what you write into your hub. We use it solely to deliver your coaching and the features described in the Privacy Policy.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">What we can\'t promise</h4>' +
+    '<p>We work hard to keep the hub running, but we can\'t guarantee 100% uptime or that every feature will work every time. If something\'s broken, tell us and we\'ll fix it.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Changes</h4>' +
+    '<p>We may update these terms occasionally. If we change anything material we\'ll show you the new version on your next login and ask you to accept it.</p>' +
+    '<h4 style="margin:14px 0 6px;color:var(--hot-pink);font-size:14px">Governing law</h4>' +
+    '<p>These terms are governed by the laws of Victoria, Australia.</p>' +
+  '</div>';
+
+function _showPrivacyOrTermsModal(title, htmlBody) {
+  var host = document.getElementById('branded-modal-host');
+  if (!host) { alert(title); return; }
+  document.getElementById('branded-modal-icon').textContent = '';
+  document.getElementById('branded-modal-title').textContent = title;
+  var body = document.getElementById('branded-modal-body');
+  body.innerHTML = htmlBody;
+  body.style.maxHeight = '60vh';
+  body.style.overflowY = 'auto';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML = '<button type="button" class="btn-sm primary" onclick="document.getElementById(\'branded-modal-host\').style.display=\'none\'">Close</button>';
+  host._cancel = function() { host.style.display = 'none'; };
+  host.style.display = 'flex';
+}
+
+function showPrivacyPolicy() { _showPrivacyOrTermsModal('Privacy Policy', PRIVACY_POLICY_HTML); }
+function showTermsOfService() { _showPrivacyOrTermsModal('Terms of Service', TERMS_OF_SERVICE_HTML); }
+
+// First-visit acceptance gate. Blocks portal access until accepted.
+function maybeShowPrivacyAcceptanceGate(client) {
+  if (!client) return;
+  if (client.acceptedPrivacyAt) return; // already accepted
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  var firstName = (client.name || '').split(' ')[0] || 'there';
+  document.getElementById('branded-modal-icon').textContent = '🔒';
+  document.getElementById('branded-modal-title').textContent = 'Welcome, ' + firstName + ' — one quick thing';
+  var body = document.getElementById('branded-modal-body');
+  body.style.maxHeight = '60vh';
+  body.style.overflowY = 'auto';
+  body.innerHTML =
+    '<div style="font-size:13px;line-height:1.6;color:var(--magenta);margin-bottom:12px">' +
+      'Before we begin: I want to be upfront about what data I hold, how I use it, and what your rights are. Quick scroll below — takes 60 seconds. You can reopen these anytime from Settings.' +
+    '</div>' +
+    '<details open style="margin-bottom:10px"><summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--hot-pink);padding:6px 0">📄 Privacy Policy</summary>' + PRIVACY_POLICY_HTML + '</details>' +
+    '<details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--hot-pink);padding:6px 0">📜 Terms of Service</summary>' + TERMS_OF_SERVICE_HTML + '</details>' +
+    '<label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px;background:var(--marshmallow);border-radius:10px;margin-top:10px">' +
+      '<input type="checkbox" id="accept-privacy-check" style="margin-top:2px;width:18px;height:18px;accent-color:var(--magenta);cursor:pointer" onchange="document.getElementById(\'accept-privacy-btn\').disabled = !this.checked">' +
+      '<span style="font-size:13px;color:var(--magenta)">I\'ve read the Privacy Policy and Terms of Service and I\'m happy to continue.</span>' +
+    '</label>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actions = document.getElementById('branded-modal-actions');
+  actions.innerHTML =
+    '<button type="button" class="btn-sm" onclick="window.location.href=\'/\'">No, sign me out</button>' +
+    '<button type="button" class="btn-sm primary" id="accept-privacy-btn" disabled onclick="acceptPrivacyAndContinue()">Accept &amp; continue</button>';
+  host._cancel = function() { window.location.href = '/'; };
+  host.style.display = 'flex';
+}
+
+async function acceptPrivacyAndContinue() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  client.acceptedPrivacyAt = new Date().toISOString();
+  client.acceptedTermsAt   = new Date().toISOString();
+  client.acceptedPrivacyVersion = '2026-05';
+  await persistClient(client);
+  document.getElementById('branded-modal-host').style.display = 'none';
+  if (typeof branded !== 'undefined' && branded.toast) branded.toast('Thanks — you\'re in.');
+}
+
+// v11752 — data export. Downloads a JSON file with everything we hold.
+async function exportMyData() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var ok = await branded.confirm(
+    'Download a copy of all the data we hold about you? The file will save to your device as a JSON document — you can keep it, share it with a privacy auditor, or use it to move to another platform.',
+    { title: 'Export your data', okLabel: 'Yes, download' }
+  );
+  if (!ok) return;
+  try {
+    var resp = await fetch('/api/export-my-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: client.id }),
+    });
+    if (!resp.ok) {
+      branded.error('Couldn\'t export right now — try again or email Phoebe at phoebe@phoebeblamey.com.au.');
+      return;
+    }
+    var blob = await resp.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'my-happy-hub-data-' + (client.clientAccess || client.id) + '-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    branded.toast('Downloaded ✓');
+  } catch (err) {
+    branded.error('Export failed: ' + (err && err.message || err));
+  }
+}
+
+// v11752 — data deletion request. Soft-delete + email Phoebe.
+async function requestMyDataDeletion() {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var confirmed = await branded.confirm(
+    'Are you sure? This will: \n\n• Stop all emails to you immediately\n• Notify Phoebe that you want your data removed\n• Schedule your record for permanent deletion within 30 days\n\nYou can change your mind by emailing Phoebe within that window.',
+    { title: '🗑 Delete your data', okLabel: 'Yes, delete', cancelLabel: 'Cancel', danger: true }
+  );
+  if (!confirmed) return;
+  var reason = await branded.prompt('Want to tell Phoebe why? (Optional — helps her improve)', '', 'Anything you want her to know');
+  try {
+    var resp = await fetch('/api/delete-my-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: client.id, confirm: true, reason: reason || '' }),
+    });
+    var data = await resp.json();
+    if (!resp.ok) {
+      branded.error(data.error || 'Couldn\'t process deletion request — email phoebe@phoebeblamey.com.au.');
+      return;
+    }
+    // Locally mirror so the UI updates
+    client.deletionRequestedAt = data.deletionRequestedAt || new Date().toISOString();
+    client.notificationsDisabled = true;
+    renderClientSettings(client);
+    branded.success(data.message || 'Request received. Phoebe will be in touch within 30 days.', { title:'Deletion requested' });
+  } catch (err) {
+    branded.error('Deletion request failed: ' + (err && err.message || err));
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -13544,6 +13752,11 @@ function renderClientSettings(client) {
   if (!el || !client) return;
   var s = client.socials || {};
 
+  // v11752 — email preferences (per APP + Spam Act)
+  var prefsDigest = client.prefsDigest !== false && !client.notificationsDisabled;
+  var prefsReminders = client.prefsReminders !== false && !client.notificationsDisabled;
+  var prefsCoach = client.prefsCoach !== false && !client.notificationsDisabled;
+
   el.innerHTML =
     '<div class="client-section">' +
       '<h3 style="font-size:14px;letter-spacing:0.04em">🔑 My access</h3>' +
@@ -13572,7 +13785,60 @@ function renderClientSettings(client) {
       clientSettingsField('Instagram', 'instagram', s.instagram, 'text', 'instagram.com/yourhandle') +
       clientSettingsField('Facebook', 'facebook', s.facebook, 'text', 'facebook.com/yourpage') +
       clientSettingsField('TikTok', 'tiktok', s.tiktok, 'text', 'tiktok.com/@yourhandle') +
+    '</div>' +
+
+    // v11752 — email preferences (per-type opt-out)
+    '<div class="client-section">' +
+      '<h3 style="font-size:14px;letter-spacing:0.04em">📧 Email preferences</h3>' +
+      '<p style="font-size:13px;color:var(--stone);margin-bottom:14px">Choose what we email you. You can change these any time, or unsubscribe completely below.</p>' +
+      _clientPrefRow('digest', '<strong>Monday + Friday digest</strong><div style="font-size:11px;color:var(--stone);margin-top:2px">What\'s on this week + Friday reflection</div>', prefsDigest) +
+      _clientPrefRow('reminders', '<strong>Session reminders</strong><div style="font-size:11px;color:var(--stone);margin-top:2px">24 hours, 1 hour, and 10 minutes before each session</div>', prefsReminders) +
+      _clientPrefRow('coach', '<strong>Coach broadcasts</strong><div style="font-size:11px;color:var(--stone);margin-top:2px">When Phoebe sends a message via the hub</div>', prefsCoach) +
+    '</div>' +
+
+    // v11752 — privacy + data rights (APP 12 + 13, GDPR 15 + 17 + 20)
+    '<div class="client-section">' +
+      '<h3 style="font-size:14px;letter-spacing:0.04em">🔒 Privacy & your data</h3>' +
+      '<p style="font-size:13px;color:var(--stone);margin-bottom:14px">Under Australian privacy law you have the right to see what we hold about you, get a copy, and ask us to delete it.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+        '<button class="btn-sm" onclick="showPrivacyPolicy()" style="text-align:left;background:var(--paper);border:1px solid var(--border);padding:10px 14px;cursor:pointer">📄 Read the Privacy Policy</button>' +
+        '<button class="btn-sm" onclick="showTermsOfService()" style="text-align:left;background:var(--paper);border:1px solid var(--border);padding:10px 14px;cursor:pointer">📜 Read the Terms of Service</button>' +
+        '<button class="btn-sm primary" onclick="exportMyData()" style="text-align:left;padding:10px 14px;cursor:pointer">📦 Export my data (download JSON)</button>' +
+        '<button class="btn-sm" onclick="requestMyDataDeletion()" style="text-align:left;background:#FFF0EE;border:1.5px solid rgba(192,57,43,0.4);color:#C0392B;padding:10px 14px;cursor:pointer">🗑 Request data deletion</button>' +
+      '</div>' +
+      (client.deletionRequestedAt
+        ? '<div style="margin-top:10px;padding:10px 12px;background:#FFF0EE;border-radius:8px;font-size:12px;color:#C0392B">You requested deletion on ' + new Date(client.deletionRequestedAt).toLocaleDateString('en-AU') + '. Phoebe has been notified and your data will be removed within 30 days. All emails to you have been stopped.</div>'
+        : '') +
+      (client.acceptedPrivacyAt
+        ? '<div style="margin-top:10px;font-size:11px;color:var(--stone)">You accepted the Privacy Policy + Terms on ' + new Date(client.acceptedPrivacyAt).toLocaleDateString('en-AU') + '.</div>'
+        : '') +
     '</div>';
+}
+
+// v11752 — toggle row helper for per-type email opt-out
+function _clientPrefRow(key, labelHtml, isOn) {
+  return '<label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;margin-bottom:8px;background:white">' +
+    '<input type="checkbox" ' + (isOn ? 'checked' : '') + ' onchange="updateMyEmailPref(\'' + key + '\', this.checked)" style="margin-top:2px;width:18px;height:18px;accent-color:var(--magenta);cursor:pointer">' +
+    '<div style="flex:1;font-size:13px;color:var(--magenta)">' + labelHtml + '</div>' +
+  '</label>';
+}
+
+// v11752 — toggle a per-type pref. Saves via the same persistClient path
+// so the change syncs to the server immediately.
+async function updateMyEmailPref(key, on) {
+  var client = clients.find(function(c){ return c.id === currentClientId; });
+  if (!client) return;
+  var fieldMap = { digest: 'prefsDigest', reminders: 'prefsReminders', coach: 'prefsCoach' };
+  var field = fieldMap[key];
+  if (!field) return;
+  client[field] = !!on;
+  // If they re-enable any pref, ensure notificationsDisabled is cleared too
+  if (on && client.notificationsDisabled) client.notificationsDisabled = false;
+  await persistClient(client);
+  if (typeof branded !== 'undefined' && branded.toast) {
+    branded.toast(on ? '✓ Turned on' : '✓ Turned off');
+  }
+}
   // v11570: removed the "My answers moved" announcement banner — it was
   // only useful for the few-week transition period after v11210 when
   // the answers shifted location. Anyone joining now has only ever seen

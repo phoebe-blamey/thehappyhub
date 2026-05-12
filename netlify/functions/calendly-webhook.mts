@@ -291,7 +291,7 @@ export default async (req: Request) => {
     const subject = isPaidProgram
       ? `Welcome to PeaBe Coaching Hub — let's get started`
       : `Looking forward to our ${programInfo.label}, ${firstName}`;
-    const body = isPaidProgram
+    let body = isPaidProgram
       ? `Hi ${firstName},\n\n` +
         `Lovely to have you on board. Your private client space is set up and ready when you are.\n\n` +
         (sessionDateStr ? `Our first session: ${sessionDateStr}\n\n` : "") +
@@ -311,6 +311,15 @@ export default async (req: Request) => {
         `If you decide to work with me afterwards, you'll get access to a private hub to track everything we cover.\n\n` +
         `See you soon,\n` +
         `Phoebe x`;
+    // v11752: Spam Act 2003 §17 — add signed unsubscribe link
+    try {
+      const qaSecret = Netlify.env.get("QUICK_ACTION_SECRET") || "";
+      if (qaSecret && clientRecord.id) {
+        const { buildUnsubscribeUrl } = await import("./unsubscribe.mts");
+        const unsubUrl = buildUnsubscribeUrl(baseUrl, clientRecord.id, "all", qaSecret);
+        body += `\n\n─────────────\nDon't want emails from The Happy Hub? Unsubscribe: ${unsubUrl}`;
+      }
+    } catch (e) { /* non-fatal */ }
     fetch(`${baseUrl}/api/send-message`, {
       method: "POST",
       headers: {
