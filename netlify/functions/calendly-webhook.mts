@@ -87,9 +87,21 @@ function extractFields(questions: any[]): Record<string, string> {
   return fields;
 }
 
+// v11753: client access codes were 4 letters + 3 digits = ~250k possibilities.
+// Enumerable by brute force from a single IP. Switched to crypto-random
+// 8-character alphanumeric (~36^8 = 2.8 trillion possibilities), prefixed
+// with the first letter of the client's name for a touch of personalisation.
+// Existing codes stay valid — this only affects new clients from
+// calendly-webhook + manual seeding. Old codes are still recognised on login.
 function generateCode(name: string): string {
-  const first = name.split(" ")[0]?.toUpperCase().slice(0, 4) || "CLNT";
-  return first + Math.floor(Math.random() * 900 + 100);
+  const initial = (name.split(" ")[0]?.[0] || "C").toUpperCase();
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // skip 0/O, 1/I, ambiguous chars
+  // crypto.getRandomValues is available in the Netlify runtime (V8)
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  let suffix = "";
+  for (let i = 0; i < 8; i++) suffix += alphabet[bytes[i] % alphabet.length];
+  return initial + suffix; // e.g. "S7K3M9PXQ" — 9 chars, ~30^8 entropy
 }
 
 export default async (req: Request) => {

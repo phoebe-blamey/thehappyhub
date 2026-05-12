@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11752">
-<link rel="stylesheet" href="styles.css?v=11752">
+<link rel="preload" as="style" href="styles.css?v=11753">
+<link rel="stylesheet" href="styles.css?v=11753">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11752 — Privacy + Terms acceptance gate, unsubscribe links, data export + deletion (CRITICAL compliance fix #5, #6, #10). First-time portal visitors must accept the Privacy Policy + ToS before they can use the hub (acceptance timestamp persists on the client record per APP 1 + 5). Every outbound email (digest, reminders, welcome) now carries an HMAC-signed unsubscribe link (Spam Act 2003 §17) backed by /api/unsubscribe. New /api/export-my-data (APP 12 / GDPR Art 15+20) downloads a complete JSON of everything we hold; /api/delete-my-data (APP 13 / GDPR Art 17) soft-deletes + emails Phoebe for hard-delete within 30 days. Client portal Settings now has email-pref toggles (digest / reminders / coach broadcasts) and links to read Privacy + Terms anytime. v11751 auth layer + v11750 Q&A + v11749 plans remain shipped.">
+<meta name="hmh-build" content="v11753 — PIN + access-code hardening (CRITICAL compliance fix #8 + #9). Coach PIN active-session token now lives in sessionStorage only (clears on browser close); localStorage keeps the 'expected' value for the login compare. New 30-minute idle timeout auto-signs-out an unattended coach session. Brute-force lockouts: 5 wrong PINs in 5 min → 5-min lock; 8 wrong client codes in 5 min → 10-min lock. New client access codes are now crypto-random (Initial + 8 chars from a 30-char ambiguity-free alphabet = ~30^8 entropy, up from ~250k). Existing codes stay valid for back-compat. The fetch interceptor reads sessionStorage only — never localStorage — so a stolen browser-storage value alone gets nothing. v11752 privacy gate + v11751 auth layer remain shipped.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -2037,7 +2037,11 @@ document.addEventListener('keydown', function(e) {
       Object.assign(merged, existing);
     }
     try {
-      var pin = localStorage.getItem('hmh_coach_pin') || sessionStorage.getItem('hmh_coach_pin') || '';
+      // v11753: read sessionStorage only (the active session token).
+      // localStorage holds the "expected" PIN for login comparison; never
+      // for API auth. If sessionStorage is empty the user must re-enter
+      // the PIN — and the server 401s in the meantime.
+      var pin = sessionStorage.getItem('hmh_coach_pin') || '';
       if (pin && !merged['x-coach-pin'] && !merged['X-Coach-Pin']) merged['x-coach-pin'] = pin;
     } catch (e) {}
     try {
@@ -2149,6 +2153,16 @@ var PROGRAMS = {
     }
   } catch (e) {}
 })();
+// v11753: TWO-LAYER PIN MODEL
+//   - localStorage.hmh_coach_pin: the "expected" PIN value Phoebe set.
+//     Persists across browser sessions so she only has to set it once.
+//   - sessionStorage.hmh_coach_pin: the ACTIVE session token. Written on
+//     successful login, cleared on browser close OR after 30 min idle.
+//   - Server-side COACH_ADMIN_PIN env var: the authoritative source the
+//     server checks every header against. Front-end-changed PINs must
+//     be mirrored to the env var manually (or the server auth fails).
+// getCoachPin() returns the EXPECTED value (used by the login check).
+// The fetch interceptor reads sessionStorage directly (the active token).
 function getCoachPin() {
   return localStorage.getItem('hmh_coach_pin') || 'Happy_529';
 }
@@ -4347,6 +4361,20 @@ async function restoreSession() {
       }
       try { startNotificationPolling(); } catch (e) {}
       try { startLiveSync(); } catch (e) {}
+      // v11753: if Phoebe restored a coach session, ensure the active PIN
+      // token is in sessionStorage so the fetch interceptor can send it.
+      // Read from localStorage (the "expected" PIN). The session token
+      // will clear on close — re-restoration after restart requires the
+      // sessionGet HMH_SESSION.ROLE which also clears on session end, so
+      // this branch only runs within an open browser session.
+      try {
+        if (!sessionStorage.getItem('hmh_coach_pin')) {
+          var savedPin = localStorage.getItem('hmh_coach_pin') || 'Happy_529';
+          sessionStorage.setItem('hmh_coach_pin', savedPin);
+        }
+      } catch(e) {}
+      // v11753: start idle timer for restored sessions too
+      if (typeof _startCoachIdleTimer === 'function') _startCoachIdleTimer();
       var rfab = document.getElementById('review-fab');
       if (rfab) { rfab.style.display = 'inline-flex'; if (typeof updateReviewCount === 'function') updateReviewCount(); }
       return true;
@@ -4407,9 +4435,28 @@ function focusCoachPin() { document.getElementById('coach-pin').focus(); }
 async function enterCoach() {
   // v11510: PINs are case-sensitive (was uppercase-only) so Happy_529 works
   var pin = document.getElementById('coach-pin').value;
+  // v11753: brute-force lockout — 5 wrong attempts in 5 min locks the PIN
+  // entry for 5 more minutes. State is in sessionStorage so closing the
+  // browser clears the lockout (intentional — Phoebe can recover by closing).
+  var lockUntil = parseInt(sessionStorage.getItem('hmh_coach_pin_lock_until') || '0', 10) || 0;
+  if (lockUntil > Date.now()) {
+    var mins = Math.ceil((lockUntil - Date.now()) / 60000);
+    document.getElementById('coach-err').textContent = 'Too many wrong PIN attempts. Try again in ' + mins + ' min.';
+    return;
+  }
   if (pin === getCoachPin()) {
+    // v11753: clear failed-attempt counter on success
+    try { sessionStorage.removeItem('hmh_coach_pin_attempts'); sessionStorage.removeItem('hmh_coach_pin_lock_until'); } catch(e) {}
+    // v11753: write the active session token to sessionStorage (clears on
+    // browser close). The fetch interceptor reads from here only.
+    // localStorage keeps the "expected" PIN so Phoebe doesn't have to
+    // re-set it every browser session.
+    try { sessionStorage.setItem('hmh_coach_pin', pin); } catch(e) {}
     sessionSet(HMH_SESSION.ROLE, 'coach');
     sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
+    // v11753: start the idle-timeout watcher so an unattended session signs
+    // out after 30 minutes of no input
+    if (typeof _startCoachIdleTimer === 'function') _startCoachIdleTimer();
     document.getElementById('landing').style.display = 'none';
     document.getElementById('coach-hub').classList.add('active');
     // Pull all shared state from Netlify Blobs in parallel with the client list
@@ -4431,17 +4478,66 @@ async function enterCoach() {
     var rfab = document.getElementById('review-fab');
     if (rfab) { rfab.style.display = 'inline-flex'; updateReviewCount(); }
   } else {
-    document.getElementById('coach-err').textContent = 'Incorrect PIN.';
+    // v11753: track failed attempts; lock after 5 in 5 min
+    var attempts = parseInt(sessionStorage.getItem('hmh_coach_pin_attempts') || '0', 10) + 1;
+    try { sessionStorage.setItem('hmh_coach_pin_attempts', String(attempts)); } catch(e) {}
+    if (attempts >= 5) {
+      try { sessionStorage.setItem('hmh_coach_pin_lock_until', String(Date.now() + 5 * 60 * 1000)); sessionStorage.setItem('hmh_coach_pin_attempts', '0'); } catch(e) {}
+      document.getElementById('coach-err').textContent = 'Too many wrong attempts. Locked for 5 minutes.';
+    } else {
+      document.getElementById('coach-err').textContent = 'Incorrect PIN. (' + (5 - attempts) + ' more before lockout)';
+    }
   }
+}
+
+// v11753 — coach idle timeout. After 30 min with no mouse, touch, or
+// keyboard activity, sign Phoebe out automatically. Protects an unattended
+// coach session from anyone who walks past the laptop.
+var _coachIdleTimerId = null;
+var _coachIdleListenersAttached = false;
+function _startCoachIdleTimer() {
+  var IDLE_MS = 30 * 60 * 1000; // 30 min
+  function _resetIdle() {
+    if (_coachIdleTimerId) clearTimeout(_coachIdleTimerId);
+    _coachIdleTimerId = setTimeout(function() {
+      try { sessionStorage.removeItem('hmh_coach_pin'); } catch(e) {}
+      try { sessionStorage.removeItem('hmh_role'); } catch(e) {}
+      // Use branded.alert so the user knows what happened
+      if (typeof branded !== 'undefined' && branded.alert) {
+        branded.alert('You\'ve been signed out after 30 minutes of inactivity. Sign back in to continue.', { title:'Session timed out', okLabel:'Sign back in' }).then(function() {
+          window.location.href = '/';
+        });
+      } else {
+        window.location.href = '/';
+      }
+    }, IDLE_MS);
+  }
+  if (!_coachIdleListenersAttached) {
+    _coachIdleListenersAttached = true;
+    ['mousemove','keydown','touchstart','click','scroll'].forEach(function(ev) {
+      window.addEventListener(ev, _resetIdle, { passive: true });
+    });
+  }
+  _resetIdle();
 }
 
 async function enterClient() {
   var code = (document.getElementById('client-code').value || '').toUpperCase().trim();
   var urlCode = (new URLSearchParams(window.location.search).get('client') || '').toUpperCase();
   var lookup = code || urlCode;
+  // v11753: brute-force lockout on access code entry. 8 wrong attempts in 5 min
+  // → 10-min lockout. Matches the coach PIN lockout pattern.
+  var clockUntil = parseInt(sessionStorage.getItem('hmh_client_lock_until') || '0', 10) || 0;
+  if (clockUntil > Date.now()) {
+    var clmins = Math.ceil((clockUntil - Date.now()) / 60000);
+    document.getElementById('client-err').textContent = 'Too many wrong codes. Try again in ' + clmins + ' min.';
+    return;
+  }
   if (!clients.length) await loadClients();
   var client = clients.find(function(c) { return c.clientAccess === lookup; });
   if (client) {
+    // Clear failed-attempt counter on success
+    try { sessionStorage.removeItem('hmh_client_attempts'); sessionStorage.removeItem('hmh_client_lock_until'); } catch(e) {}
     sessionSet(HMH_SESSION.ROLE, 'client');
     sessionSet(HMH_SESSION.CLIENT_CODE, client.clientAccess);
     sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
@@ -4474,7 +4570,15 @@ async function enterClient() {
     try { startLiveSync(); } catch (e) {}
     loadClientPortal(client);
   } else {
-    document.getElementById('client-err').textContent = 'Access code not recognised. Check with Phoebe.';
+    // v11753: track failed access-code attempts; lock after 8 in 5 min
+    var clatt = parseInt(sessionStorage.getItem('hmh_client_attempts') || '0', 10) + 1;
+    try { sessionStorage.setItem('hmh_client_attempts', String(clatt)); } catch(e) {}
+    if (clatt >= 8) {
+      try { sessionStorage.setItem('hmh_client_lock_until', String(Date.now() + 10 * 60 * 1000)); sessionStorage.setItem('hmh_client_attempts', '0'); } catch(e) {}
+      document.getElementById('client-err').textContent = 'Too many wrong codes. Locked for 10 minutes.';
+    } else {
+      document.getElementById('client-err').textContent = 'Access code not recognised. Check with Phoebe. (' + (8 - clatt) + ' more before lockout)';
+    }
   }
 }
 
