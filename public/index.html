@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11749">
-<link rel="stylesheet" href="styles.css?v=11749">
+<link rel="preload" as="style" href="styles.css?v=11750">
+<link rel="stylesheet" href="styles.css?v=11750">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11749 — Scott-Taylor-quality 90-day plans. The plan builder now produces a full transformation document: honest diagnosis (assets + blocks + current-vs-target table), north-star goal with the maths working backwards to a daily anchor, 2-3 strategic pillars (name + why + mechanics), 12-week breakdown with ~2 actions per week (24 total, digestible — not 12 chunky monthly tasks), default Mon-Fri weekly rhythm, KPI scorecards (weekly + monthly), 2-4 ready-to-send templates, and a 3-5 entry risk register. EVERY section editable inline — Phoebe rewrites anything, autosaves on blur. Empty plans get + Add buttons so Phoebe can build from scratch too. Existing plans render alongside (backward-compatible). v11748 Summary-tab Zoom + action-items remain shipped.">
+<meta name="hmh-build" content="v11750 — Universal 'ask clarifying questions first' pattern. Any AI generator can now run Phoebe through up to 3 short clarifying questions (in the branded modal) before producing output. Applied to: ✦ Generate research brief and ✦ Generate fresh client snapshot. Same approach already powers the plan builder. Phoebe can skip and generate immediately, or answer 1-3 questions and the AI weights its output to her context. Answers persist on the program record so the next regenerate can build on them. v11749 Scott-quality plans + per-client digest cadence + QUICK_ACTION_SECRET set remain shipped.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -4943,6 +4943,141 @@ function phoebeVoice(prompt) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// v11750 — Universal "ask clarifying questions first" helper
+// ════════════════════════════════════════════════════════════════════
+// Drop-in two-step pattern for any AI generator. Phoebe's brief: "When
+// anything is AI generated on Platform, Phoebe should be able to answer
+// any questions and then re-run your research/deepdives etc."
+//
+// Step 1: Claude reads the FULL context and returns 3 short clarifying
+//   questions — gaps in what it knows, choices between two valid
+//   directions, or context the data doesn't reveal.
+// Step 2: Phoebe answers as many as she wants (each is optional) and
+//   clicks "Generate". The caller's `proceed(answers)` runs with the
+//   answers (plus the original context) baked in.
+//
+// Returns a Promise that resolves once the user either generates or
+// cancels. The promise resolves to { proceeded: true|false, answers }.
+// The caller's `proceed` does the actual AI call + DOM update.
+//
+// Usage:
+//   await askClarifyingThenGenerate({
+//     purpose: 'generate the research brief',
+//     context: <everything Claude already knows>,
+//     proceed: async function(answers) {
+//       // run the actual generator, splicing answers into the prompt
+//     },
+//     onCancel: function() { /* optional — restore button state */ },
+//   });
+async function askClarifyingThenGenerate(opts) {
+  opts = opts || {};
+  var purpose  = opts.purpose || 'this task';
+  var context  = opts.context  || '';
+  var maxQuestions = opts.maxQuestions || 3;
+  var proceed  = opts.proceed || function(){};
+  var onCancel = opts.onCancel || function(){};
+
+  // Step 1 — ask Claude for short clarifying questions
+  var qPrompt = phoebeVoice(
+    'You are about to ' + purpose + ' for one of Phoebe\'s coaching clients. Before doing so, ask up to ' + maxQuestions + ' SHORT clarifying questions that will materially change the output — gaps in what you know, choices between two valid directions, or context the data does not reveal.\n\n' +
+    '──── EVERYTHING WE KNOW ────\n' + context + '\n──── END ────\n\n' +
+    'Return ONLY valid JSON in this exact shape — no preamble:\n' +
+    '{"questions":[{"q":"...","why":"..."}, ... ]}\n\n' +
+    'Each "q" is the question itself, max 25 words, in Phoebe\'s direct voice. Each "why" is a one-line reason it would change the output. Maximum ' + maxQuestions + ' questions. If the context is rich enough that you have no real questions, return {"questions":[]} and Phoebe will skip straight to generation.'
+  );
+
+  var questions = [];
+  try {
+    var qResp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
+      body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:800, messages:[{role:'user', content: qPrompt}] })
+    });
+    var qData = await qResp.json();
+    var qText = (qData.content && qData.content[0] && qData.content[0].text) || '';
+    qText = qText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+    var qMatch = qText.match(/\{[\s\S]*\}/);
+    if (qMatch) {
+      var parsed = JSON.parse(qMatch[0]);
+      questions = (parsed.questions || []).slice(0, maxQuestions);
+    }
+  } catch (err) {
+    console.warn('[askClarifyingThenGenerate] questions step failed, proceeding without:', err);
+  }
+
+  // No questions? Just proceed.
+  if (!questions.length) {
+    try { await proceed([]); } catch (e) { console.warn('[askClarifyingThenGenerate] proceed failed', e); onCancel(); }
+    return { proceeded: true, answers: [] };
+  }
+
+  // Step 2 — render questions in the branded modal and wait for Phoebe
+  return new Promise(function(resolve) {
+    var host = document.getElementById('branded-modal-host');
+    if (!host) {
+      // No modal host — just proceed without questions
+      Promise.resolve(proceed([])).finally(function(){ resolve({ proceeded: true, answers: [] }); });
+      return;
+    }
+    document.getElementById('branded-modal-icon').textContent = '✦';
+    document.getElementById('branded-modal-title').textContent = 'A few quick questions before I ' + purpose;
+    var body = document.getElementById('branded-modal-body');
+    body.innerHTML =
+      '<div style="font-size:13px;color:var(--magenta);line-height:1.5;margin-bottom:14px">Answer as much as you want — each question is optional. Skip them and I\'ll generate from what I already know.</div>' +
+      questions.map(function(q, i) {
+        return '<div style="margin-bottom:14px">' +
+          '<div style="font-size:13px;color:var(--magenta);font-weight:700;line-height:1.4;margin-bottom:4px">' + (i+1) + '. ' + escapeHtml(q.q || '') + '</div>' +
+          (q.why ? '<div style="font-size:11px;color:var(--stone);font-style:italic;margin-bottom:6px">Why I\'m asking: ' + escapeHtml(q.why) + '</div>' : '') +
+          '<textarea id="aiqa-q-' + i + '" rows="2" placeholder="Your answer (optional)" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;min-height:50px"></textarea>' +
+        '</div>';
+      }).join('');
+    document.getElementById('branded-modal-input').style.display = 'none';
+    var actions = document.getElementById('branded-modal-actions');
+    actions.innerHTML =
+      '<button type="button" class="btn-sm" id="aiqa-skip">Skip — generate now</button>' +
+      '<button type="button" class="btn-sm primary" id="aiqa-go">Generate with my answers</button>';
+    function close() {
+      host.style.display = 'none';
+      host._cancel = null;
+    }
+    function collect() {
+      var answers = [];
+      questions.forEach(function(q, i) {
+        var ta = document.getElementById('aiqa-q-' + i);
+        var a = ta ? (ta.value || '').trim() : '';
+        if (a) answers.push({ q: q.q, a: a });
+      });
+      return answers;
+    }
+    document.getElementById('aiqa-skip').onclick = async function() {
+      close();
+      try { await proceed([]); } catch (e) { console.warn('[askClarifying skip] proceed failed', e); }
+      resolve({ proceeded: true, answers: [] });
+    };
+    document.getElementById('aiqa-go').onclick = async function() {
+      var ans = collect();
+      close();
+      try { await proceed(ans); } catch (e) { console.warn('[askClarifying go] proceed failed', e); }
+      resolve({ proceeded: true, answers: ans });
+    };
+    host._cancel = function() {
+      close();
+      onCancel();
+      resolve({ proceeded: false, answers: [] });
+    };
+    host.style.display = 'flex';
+  });
+}
+
+// Convert {q,a} answer pairs into a prompt block. Use as
+//   buildAnswersBlock(answers) inside the final generation prompt.
+function buildAnswersBlock(answers) {
+  if (!answers || !answers.length) return '';
+  return '\n──── PHOEBE\'S ANSWERS TO YOUR QUESTIONS ────\n' +
+    answers.map(function(x){ return 'Q: ' + x.q + '\nA: ' + x.a; }).join('\n\n') +
+    '\n──── END ANSWERS ────\n';
+}
+
+// ════════════════════════════════════════════════════════════════════
 // v11739 — FULL CLIENT CONTEXT for AI features
 // Single utility every AI call uses to assemble the client's complete
 // known picture: intake + research brief + session history + Zoom
@@ -8605,59 +8740,106 @@ async function autoRunResearch() {
   if (!client||!prog) return;
   var btn    = document.getElementById('auto-research-btn');
   var output = document.getElementById('note-research');
-  btn.disabled = true; btn.textContent = '⏳ Running…';
-  output.value = 'Generating research brief…\n';
-  var prompt = 'You are Phoebe Blamey\'s research assistant.\n\n' +
-    '**Use the web_search tool** to actually look this person and their business up. Visit their website, check their LinkedIn, find recent activity. Don\'t make things up — base every assertion on what you can see or reasonably infer.\n\n' +
-    'New client:\n' +
-    '- Name: ' + client.name + '\n' +
-    '- Business: ' + (client.biz||'Not provided') + '\n' +
-    '- Website: ' + (prog.websiteUrl||'Not provided') + '\n' +
-    '- Social: ' + (prog.websiteSocial||'Not provided') + '\n' +
-    '- Intake (universal — same answers across every program):\n' +
-    (buildIntakeContextForAI(client, prog) || 'Not provided') + '\n\n' +
-    'Pre-session coaching brief — use these EXACT section headings in this order:\n\n' +
-    '⚠️ FOR PHOEBE\'S ATTENTION — RED FLAGS\n' +
-    'The 3-5 things Phoebe MUST probe in the first session because they will trip this client up if not surfaced. ' +
-    'These are concerning patterns, contradictions, missing info, or red flags spotted from the website/LinkedIn/intake. ' +
-    'Be direct — no padding, no diplomatic softening. If you spot pricing chaos, mention it. If their ICP is unclear, say so. ' +
-    'If their stated goal doesn\'t match what their site sells, flag it. Each item: the flag (1 line) + WHY it matters (1 line) + the question Phoebe should ask.\n\n' +
-    '1. DIGITAL PRESENCE AUDIT — messaging clarity, CTA strength, score /10. Cite specific things you saw on their site.\n' +
-    '2. REVENUE LEAK SPOTS — based on their actual setup, not generic advice\n' +
-    '3. OPPORTUNITIES — networks, referrals, quick wins\n' +
-    '4. COACHING FOCUS AREAS — what Phoebe should probe in session\n' +
-    '5. QUICK WINS — 3-5 specific first-30-day actions\n\n' +
-    'Sharp, practical, Australian English. For a highly experienced business coach. ' +
-    'The "FOR PHOEBE\'S ATTENTION" section sits at the very top because it\'s the most important — ' +
-    'Phoebe reads it 60 seconds before the call to know what to listen for.';
-  try {
-    var resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 3000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
-        messages: [{ role:'user', content: prompt }]
-      })
-    });
-    var data = await resp.json();
-    // Tool-using responses can have multiple content blocks — concat all 'text' blocks
-    var text = '';
-    if (Array.isArray(data.content)) {
-      data.content.forEach(function(block) {
-        if (block && block.type === 'text' && block.text) text += block.text;
-      });
-    }
-    output.value = text;
-    prog.notes = prog.notes||{};
-    // Archive the previous brief into history before overwriting
-    archiveCurrentResearch(prog);
-    prog.notes.research = text;
-    await persistClient(client);
-    renderResearchHistory(prog);
-    logActivity('ai-brief', 'Research brief generated for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: 'With web search · ~' + Math.round(text.length/100) + '00 chars' });
-    btn.textContent = '✓ Done'; setTimeout(function() { btn.textContent='✦ Generate research brief'; btn.disabled=false; }, 3000);
-  } catch(e) { output.value='Error: '+e.message; btn.disabled=false; btn.textContent='✦ Generate research brief'; }
+
+  // v11750: two-step pattern — Claude asks Phoebe up to 3 clarifying
+  // questions first, then generates with her answers spliced into the
+  // prompt. Same approach as the plan builder. Phoebe's brief:
+  // "When anything is AI generated, Phoebe should be able to answer
+  //  questions and then re-run."
+
+  // Build a compact context: what Claude already has on the client
+  var contextLines = [
+    'Name: ' + client.name,
+    'Business: ' + (client.biz || 'Unknown'),
+    'Website: ' + (prog.websiteUrl || 'Not provided'),
+    'Social: ' + (prog.websiteSocial || 'Not provided'),
+    'Programme: ' + ((PROGRAMS[prog.program]||{}).label || prog.program),
+    '',
+    'Intake answers:',
+    buildIntakeContextForAI(client, prog) || '(none yet)',
+  ];
+  var prevBrief = (prog.notes && prog.notes.research) || '';
+  if (prevBrief) {
+    contextLines.push('', 'Previous research brief on file (you\'re replacing this — should feel like a step forward):');
+    contextLines.push(prevBrief.slice(0, 2000));
+  }
+  var contextStr = contextLines.join('\n');
+
+  btn.disabled = true; btn.textContent = '⏳ Thinking…';
+  output.placeholder = 'Claude\'s thinking through what to ask you…';
+
+  await askClarifyingThenGenerate({
+    purpose: 'generate the research brief',
+    context: contextStr,
+    maxQuestions: 3,
+    onCancel: function() {
+      btn.disabled = false;
+      btn.textContent = '✦ Generate research brief';
+      output.placeholder = '';
+    },
+    proceed: async function(answers) {
+      btn.textContent = '⏳ Running…';
+      output.value = 'Generating research brief' + (answers.length ? ' with your context…' : '…') + '\n';
+      var prompt = 'You are Phoebe Blamey\'s research assistant.\n\n' +
+        '**Use the web_search tool** to actually look this person and their business up. Visit their website, check their LinkedIn, find recent activity. Don\'t make things up — base every assertion on what you can see or reasonably infer.\n\n' +
+        'New client:\n' +
+        '- Name: ' + client.name + '\n' +
+        '- Business: ' + (client.biz||'Not provided') + '\n' +
+        '- Website: ' + (prog.websiteUrl||'Not provided') + '\n' +
+        '- Social: ' + (prog.websiteSocial||'Not provided') + '\n' +
+        '- Intake (universal — same answers across every program):\n' +
+        (buildIntakeContextForAI(client, prog) || 'Not provided') + '\n' +
+        buildAnswersBlock(answers) + '\n' +
+        'Pre-session coaching brief — use these EXACT section headings in this order:\n\n' +
+        '⚠️ FOR PHOEBE\'S ATTENTION — RED FLAGS\n' +
+        'The 3-5 things Phoebe MUST probe in the first session because they will trip this client up if not surfaced. ' +
+        'These are concerning patterns, contradictions, missing info, or red flags spotted from the website/LinkedIn/intake. ' +
+        'Be direct — no padding, no diplomatic softening. If you spot pricing chaos, mention it. If their ICP is unclear, say so. ' +
+        'If their stated goal doesn\'t match what their site sells, flag it. Each item: the flag (1 line) + WHY it matters (1 line) + the question Phoebe should ask.\n\n' +
+        '1. DIGITAL PRESENCE AUDIT — messaging clarity, CTA strength, score /10. Cite specific things you saw on their site.\n' +
+        '2. REVENUE LEAK SPOTS — based on their actual setup, not generic advice\n' +
+        '3. OPPORTUNITIES — networks, referrals, quick wins\n' +
+        '4. COACHING FOCUS AREAS — what Phoebe should probe in session\n' +
+        '5. QUICK WINS — 3-5 specific first-30-day actions\n\n' +
+        (answers.length ? 'Phoebe\'s answers above are the most important context — weight your conclusions to match what she has told you. Reference them explicitly where useful.\n\n' : '') +
+        'Sharp, practical, Australian English. For a highly experienced business coach. ' +
+        'The "FOR PHOEBE\'S ATTENTION" section sits at the very top because it\'s the most important — ' +
+        'Phoebe reads it 60 seconds before the call to know what to listen for.';
+      try {
+        var resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method:'POST', headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 3000,
+            tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+            messages: [{ role:'user', content: prompt }]
+          })
+        });
+        var data = await resp.json();
+        var text = '';
+        if (Array.isArray(data.content)) {
+          data.content.forEach(function(block) {
+            if (block && block.type === 'text' && block.text) text += block.text;
+          });
+        }
+        output.value = text;
+        prog.notes = prog.notes||{};
+        if (typeof archiveCurrentResearch === 'function') archiveCurrentResearch(prog);
+        prog.notes.research = text;
+        prog.notes.researchAnsweredQuestions = answers;
+        await persistClient(client);
+        if (typeof renderResearchHistory === 'function') renderResearchHistory(prog);
+        if (typeof renderResearchPreview === 'function') renderResearchPreview();
+        logActivity('ai-brief', 'Research brief generated for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: 'With web search · ~' + Math.round(text.length/100) + '00 chars · ' + answers.length + ' answered questions' });
+        btn.textContent = '✓ Done';
+        setTimeout(function() { btn.textContent='✦ Generate research brief'; btn.disabled=false; }, 3000);
+      } catch(e) {
+        output.value='Error: '+e.message;
+        btn.disabled=false;
+        btn.textContent='✦ Generate research brief';
+      }
+    },
+  });
 }
 
 async function runResearch() {
@@ -19244,7 +19426,6 @@ async function generateIntakeSummary() {
   // session notes, open tasks, completed tasks, wins, MDC sprint focus,
   // coaching themes. The summary should reflect the WHOLE current picture.
   var research = (researchEl && researchEl.value) || (prog.notes && prog.notes.research) || '';
-  // v11000: universal intake first; legacy prog.intake folded in via the helper
   var intake   = (typeof buildIntakeContextForAI === 'function') ? buildIntakeContextForAI(client, prog) : (prog.intake || '');
   var n        = prog.notes || {};
   var recentNotes = (prog.sessionNotes||[]).slice(-3).map(function(sn) {
@@ -19256,64 +19437,83 @@ async function generateIntakeSummary() {
     return '🏆 ' + (w.metric||'') + ': ' + (w.before||'?') + ' → ' + (w.after||'?') + (w.note ? ' — ' + w.note : '');
   }).join('\n');
   var planSummary = (prog.plan||[]).map(function(m){ return (m.label || ('Month ' + m.month)) + ' (' + (m.tasks||[]).length + ' tasks)'; }).join(', ');
-  var prevSummaryLine = (prog.notes && prog.notes.summary) ? '\n\nPREVIOUS SUMMARY (you\'re replacing this):\n' + prog.notes.summary : '';
+  var prevSummary = (prog.notes && prog.notes.summary) || '';
 
   if (!research && !intake && !recentNotes && !wins) {
     branded.alert('Nothing to summarise yet — run the research brief first, or fill in the intake, or log some session notes.');
     return;
   }
 
-  if (btn) { btn.disabled = true; btn.textContent = '✦ Generating…'; }
+  // v11750: two-step Q&A first. Phoebe answers anything Claude can't tell
+  // from the data, then Claude regenerates the snapshot with her context.
+  var contextStr = [
+    'Client: ' + client.name,
+    'Business: ' + (client.biz || 'Unknown'),
+    'Programme: ' + ((PROGRAMS[prog.program]||{}).label || prog.program) + (prog.sessionDate ? ' (started ' + prog.sessionDate + ')' : ''),
+    intake ? '\nIntake:\n' + intake : '',
+    research ? '\nResearch brief:\n' + research : '',
+    n.themes ? '\nThemes: ' + n.themes : '',
+    n.opps ? '\nOpportunities: ' + n.opps : '',
+    n.private ? '\nPhoebe\'s private notes: ' + n.private : '',
+    recentNotes ? '\nRecent session notes:\n' + recentNotes : '',
+    planSummary ? '\nCurrent plan: ' + planSummary : '',
+    openTasks ? '\nOpen tasks:\n' + openTasks : '',
+    doneTasks ? '\nRecently completed:\n' + doneTasks : '',
+    wins ? '\nRecent wins:\n' + wins : '',
+    prevSummary ? '\n\nPREVIOUS SUMMARY (you\'re replacing this):\n' + prevSummary : '',
+  ].filter(Boolean).join('\n');
 
-  var prompt = 'You are Phoebe Blamey\'s coaching assistant. Write a sharp 2-3 line snapshot of this client for Phoebe\'s eyes only — what to remember about them at a glance, RIGHT NOW. ' +
-    'Reflect their CURRENT state — wins they\'ve had, what they\'re working on, what to watch. If there\'s a previous summary, this should feel like a meaningful update, not a copy.\n\n' +
-    'Client: ' + client.name + '\n' +
-    'Business: ' + (client.biz || 'Unknown') + '\n' +
-    'Programme: ' + ((PROGRAMS[prog.program]||{}).label || prog.program) + (prog.sessionDate ? ' (started ' + prog.sessionDate + ')' : '') + '\n\n' +
-    (intake ? 'Intake:\n' + intake + '\n\n' : '') +
-    (research ? 'Research brief:\n' + research + '\n\n' : '') +
-    (n.themes ? 'Themes: ' + n.themes + '\n' : '') +
-    (n.opps ? 'Opportunities: ' + n.opps + '\n' : '') +
-    (n.private ? 'Phoebe\'s private notes: ' + n.private + '\n' : '') +
-    (recentNotes ? '\nRecent session notes:\n' + recentNotes + '\n' : '') +
-    (planSummary ? '\nCurrent plan: ' + planSummary + '\n' : '') +
-    (openTasks ? '\nOpen tasks:\n' + openTasks + '\n' : '') +
-    (doneTasks ? '\nRecently completed:\n' + doneTasks + '\n' : '') +
-    (wins ? '\nRecent wins:\n' + wins + '\n' : '') +
-    prevSummaryLine + '\n\n' +
-    'Return ONLY the snapshot. No headings, no bullet points. Plain prose, 2-3 sentences max. Australian English. Warm but direct — like one coach handing notes to another.';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Thinking…'; }
 
-  try {
-    var resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{role:'user', content: prompt}] })
-    });
-    var data = await resp.json();
-    var text = (data.content && data.content[0] && data.content[0].text) || '';
-    if (text) {
-      // Archive the previous summary BEFORE overwriting
-      _archiveCurrentSummary(prog, 'ai');
-      summaryEl.value = text.trim();
-      prog.notes = prog.notes || {};
-      prog.notes.summary = summaryEl.value;
-      prog.notes.summaryUpdatedAt = new Date().toISOString();
-      await persistClient(client);
-      if (typeof logActivity === 'function') logActivity('ai-summary', 'Client summary refreshed for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: prog.summaryHistory && prog.summaryHistory.length ? prog.summaryHistory.length + ' past version' + (prog.summaryHistory.length===1?'':'s') + ' archived' : 'first version' });
-      branded.toast('Fresh summary generated · old version archived');
-      if (status) {
-        status.textContent = '✦ Generated · ' + new Date().toLocaleString('en-AU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
-        setTimeout(function(){ status.textContent = ''; }, 6000);
+  await askClarifyingThenGenerate({
+    purpose: 'write a fresh client snapshot',
+    context: contextStr,
+    maxQuestions: 2, // a snapshot is short; 2 questions is plenty
+    onCancel: function() {
+      if (btn) { btn.disabled = false; btn.textContent = '✦ Generate fresh'; }
+    },
+    proceed: async function(answers) {
+      if (btn) btn.textContent = '✦ Generating…';
+      var prompt = phoebeVoice(
+        'Write a sharp 2-3 line snapshot of this client for Phoebe\'s eyes only — what to remember about them at a glance, RIGHT NOW. ' +
+        'Reflect their CURRENT state — wins they\'ve had, what they\'re working on, what to watch. If there\'s a previous summary, this should feel like a meaningful update, not a copy.\n\n' +
+        contextStr +
+        buildAnswersBlock(answers) + '\n' +
+        'Return ONLY the snapshot. No headings, no bullet points. Plain prose, 2-3 sentences max. Australian English. Warm but direct — like one coach handing notes to another.'
+      );
+      try {
+        var resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 400, messages: [{role:'user', content: prompt}] })
+        });
+        var data = await resp.json();
+        var text = (data.content && data.content[0] && data.content[0].text) || '';
+        if (text) {
+          _archiveCurrentSummary(prog, 'ai');
+          summaryEl.value = text.trim();
+          prog.notes = prog.notes || {};
+          prog.notes.summary = summaryEl.value;
+          prog.notes.summaryUpdatedAt = new Date().toISOString();
+          prog.notes.summaryAnsweredQuestions = answers;
+          await persistClient(client);
+          if (typeof logActivity === 'function') logActivity('ai-summary', 'Client summary refreshed for ' + client.name, { clientId: client.id, clientName: client.name, progId: prog.id, detail: (prog.summaryHistory && prog.summaryHistory.length ? prog.summaryHistory.length + ' past version' + (prog.summaryHistory.length===1?'':'s') + ' archived' : 'first version') + ' · ' + answers.length + ' answered questions' });
+          branded.toast('Fresh summary generated · old version archived');
+          if (status) {
+            status.textContent = '✦ Generated · ' + new Date().toLocaleString('en-AU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+            setTimeout(function(){ status.textContent = ''; }, 6000);
+          }
+          renderSummaryHistory(prog);
+        } else {
+          branded.error('AI returned no text — try again.');
+        }
+      } catch (e) {
+        branded.alert('Summary generation failed: ' + e.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '✦ Generate fresh'; }
       }
-      renderSummaryHistory(prog);
-    } else {
-      branded.error('AI returned no text — try again.');
-    }
-  } catch (e) {
-    branded.alert('Summary generation failed: ' + e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✦ Generate fresh'; }
-  }
+    },
+  });
 }
 
 // ────────────────────────────────────────────────────────────────────
