@@ -10,10 +10,15 @@ import { requireCoachAuth } from "./_auth.mts";
 //
 // v11751: coach-PIN-gated (was unauthenticated — anyone could read or
 // overwrite Phoebe's cohort assignments).
+// v11756: GET made public so MDC clients can read their cohort metadata
+// for the Community tab. POST still requires the coach PIN.
 
 export default async (req: Request) => {
-  const unauth = requireCoachAuth(req);
-  if (unauth) return unauth;
+  // v11756: only gate POST. GET is publicly readable.
+  if (req.method === "POST") {
+    const unauth = requireCoachAuth(req);
+    if (unauth) return unauth;
+  }
 
   const store = getStore("cohorts");
   const KEY = "main";

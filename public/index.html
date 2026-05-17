@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11755">
-<link rel="stylesheet" href="styles.css?v=11755">
+<link rel="preload" as="style" href="styles.css?v=11756">
+<link rel="stylesheet" href="styles.css?v=11756">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11755 — Communications killswitch. One toggle in Coach Settings → Account pauses every outbound client email + SMS (digests, session reminders, welcome, broadcasts). Internal alerts to your own inbox (clients flagging blocked tasks, deletion requests) keep flowing. State persists on coachSettings.commsPaused + commsPausedAt; server-side send-message.mts reads them on every call and short-circuits with { blocked:true, reason:'communications-killswitch' } when paused. Flick on for holidays / outages / copy review; flick off to resume — digests start firing again on next Mon/Fri 8am AEST, reminders within 10 minutes. v11754 coach PIN removal + v11751-3 compliance shipped remain in place.">
+<meta name="hmh-build" content="v11756 — Login page fixes. (1) Client login was broken since v11751 (the auth gate on /api/get-clients meant clients couldn't look themselves up without the coach PIN). New public /api/client-login endpoint takes the access code in the body and returns just that one client record. enterClient + the auto-restore path now use it. (2) Coach card is visible on the landing page by default — the previous 'type phoebe' / '?coach=1' trigger was friction with no real security value once the PIN was removed. Click anywhere on the card → straight in. (3) PB logo on the landing page is now an inline SVG so the 'pb' text inherits AllRoundGothic Bold from page CSS (was loading via img + script + replacement which raced font loading). (4) /api/coach-settings + /api/cohorts GET made public so the client portal can read shared resources + cohort metadata. POST on both still requires coach PIN. (5) /api/save-client accepts x-client-access matching the stored access code so clients can save their own privacy acceptance, prefs, mood logs etc. without the coach PIN.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -94,20 +94,46 @@
   <button id="net-banner-action" onclick="hideNetBanner()" style="background:rgba(255,255,255,0.2);color:white;border:none;border-radius:99px;padding:3px 10px;font-size:11px;font-weight:700;margin-left:8px;cursor:pointer">Dismiss</button>
 </div>
 
-<!-- ========== LANDING ========== -->
+<!-- ========== LANDING ==========
+     v11756: redesigned. Coach card now visible by default (the previous
+     "hidden until you type phoebe" gymnastics was a friction barrier with
+     no real security value since we removed the PIN). PB logo is now an
+     INLINE SVG so the "pb" text inherits AllRoundGothic Bold from the
+     page CSS — previously it loaded as an <img> + fetched + replaced
+     after fonts loaded, which sometimes raced and rendered with the
+     fallback system font. -->
 <div id="landing">
-  <!-- v11210: PeaBe logo image at the top of the landing page (Elodie's
-       review §6: "Add logo to sign-in page — currently bare and does not
-       reinforce brand trust at first impression"). -->
-  <img src="/icons/peabe.svg" alt="PeaBe" class="landing-brand-mark" style="width:88px;height:88px;display:block;margin:0 auto 14px">
+  <!-- Inline PB logo — inherits AllRoundGothic from page CSS -->
+  <span class="landing-brand-mark" aria-label="PeaBe" style="display:block;width:88px;height:88px;margin:0 auto 14px">
+    <svg viewBox="0 0 512 512" role="img" aria-label="PeaBe" style="display:block;width:100%;height:100%">
+      <defs>
+        <radialGradient id="lp-pbHighlight" cx="35%" cy="30%" r="75%">
+          <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.18"/>
+          <stop offset="55%"  stop-color="#FFFFFF" stop-opacity="0.04"/>
+          <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="lp-pbDepth" cx="78%" cy="80%" r="60%">
+          <stop offset="0%"   stop-color="#C9266B" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="#C9266B" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="266" cy="262" r="234" fill="#C9266B" opacity="0.45"/>
+      <circle cx="252" cy="248" r="234" fill="#F0A3C7"/>
+      <circle cx="252" cy="248" r="234" fill="url(#lp-pbHighlight)"/>
+      <circle cx="252" cy="248" r="234" fill="url(#lp-pbDepth)"/>
+      <text x="252" y="338" text-anchor="middle"
+            font-family="AllRoundGothic, 'All Round Gothic', Poppins, system-ui, -apple-system, Helvetica, Arial, sans-serif"
+            font-size="280" font-weight="700" letter-spacing="-12" fill="#FFFFFF">pb</text>
+    </svg>
+  </span>
   <div class="landing-logo">PeaBe<br>Coaching Hub</div>
   <div class="landing-sub">Phoebe Blamey — Business Coaching Platform</div>
   <div class="access-grid" id="access-grid">
-    <!-- v11210: coach card hidden by default. Type the secret reveal phrase
-         ("phoebe" or hit shift+P 3 times) OR open with ?coach=1 in URL.
-         Elodie §6: "Coach sign-in visible to clients — Should be hidden
-         from clients entirely". Phoebe knows the trigger. -->
-    <div class="access-card" id="coach-access-card" onclick="enterCoach()" style="display:none;cursor:pointer">
+    <!-- v11756: coach card visible by default (previously hidden behind
+         "phoebe" keystroke or ?coach=1 URL trick — security theatre once
+         the PIN was removed, and a real UX blocker for Phoebe's own
+         workflow). Click anywhere on the card to enter. -->
+    <div class="access-card" id="coach-access-card" onclick="enterCoach()" style="cursor:pointer">
       <div class="card-icon">🏆</div>
       <h3>Coach Portal</h3>
       <p>Manage all clients and programs. View research briefs, session notes, and track progress.</p>
@@ -115,12 +141,10 @@
         <span class="prog-tag">All programs</span>
         <span class="prog-tag">All clients</span>
       </div>
-      <!-- v11754: PIN entry removed per request. Click the card to enter.
-           Hidden input retained so any existing scripts that reference
-           document.getElementById('coach-pin') don't error. -->
       <div class="pin-row" style="margin-top:10px">
         <button class="btn-enter" onclick="event.stopPropagation();enterCoach()" style="width:100%">Enter coach portal →</button>
       </div>
+      <!-- Hidden input retained so any back-compat scripts that look it up don't error -->
       <input type="hidden" id="coach-pin" value="">
       <div class="error-msg" id="coach-err"></div>
     </div>
@@ -135,6 +159,7 @@
       </div>
       <div class="pin-row">
         <input type="text" id="client-code" placeholder="Your access code" maxlength="12"
+          autocomplete="off" autocapitalize="characters"
           onkeydown="if(event.key==='Enter') enterClient()" style="text-transform:uppercase">
         <button class="btn-enter" onclick="enterClient()">Enter</button>
       </div>
@@ -4461,9 +4486,23 @@ async function restoreSession() {
       if (!code) return false;
       // v11751: also mirror into sessionStorage for the fetch interceptor
       try { sessionStorage.setItem('hmh_client_access', code); } catch(e) {}
-      if (!clients.length) { try { await loadClients(); } catch (e) {} }
-      var client = clients.find(function(c) { return (c.clientAccess || '').toUpperCase() === code.toUpperCase(); });
+      // v11756: use the public /api/client-login endpoint instead of
+      // /api/get-clients (which now requires the coach PIN).
+      var client = null;
+      try {
+        var loginResp = await fetch('/api/client-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessCode: code }),
+        });
+        if (loginResp.ok) {
+          var loginData = await loginResp.json();
+          client = loginData && loginData.client;
+        }
+      } catch (e) { console.warn('[restore client] login failed', e); }
       if (!client) { clearSession(); return false; }
+      // Mirror into local state so renderers find it by id
+      clients = [client];
       document.getElementById('landing').style.display = 'none';
       document.getElementById('client-hub').classList.add('active');
       currentClientId = client.id;
@@ -4551,6 +4590,10 @@ async function enterClient() {
   var code = (document.getElementById('client-code').value || '').toUpperCase().trim();
   var urlCode = (new URLSearchParams(window.location.search).get('client') || '').toUpperCase();
   var lookup = code || urlCode;
+  if (!lookup) {
+    document.getElementById('client-err').textContent = 'Type your access code first.';
+    return;
+  }
   // v11753: brute-force lockout on access code entry. 8 wrong attempts in 5 min
   // → 10-min lockout. Matches the coach PIN lockout pattern.
   var clockUntil = parseInt(sessionStorage.getItem('hmh_client_lock_until') || '0', 10) || 0;
@@ -4559,9 +4602,31 @@ async function enterClient() {
     document.getElementById('client-err').textContent = 'Too many wrong codes. Try again in ' + clmins + ' min.';
     return;
   }
-  if (!clients.length) await loadClients();
-  var client = clients.find(function(c) { return c.clientAccess === lookup; });
+
+  // v11756: use the new public /api/client-login endpoint instead of
+  // /api/get-clients (which requires the coach PIN). The endpoint returns
+  // just this one client record if the access code matches.
+  var client = null;
+  try {
+    var loginResp = await fetch('/api/client-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessCode: lookup }),
+    });
+    if (loginResp.ok) {
+      var data = await loginResp.json();
+      client = data && data.client;
+    }
+  } catch (err) {
+    console.warn('[enterClient] network error', err);
+    document.getElementById('client-err').textContent = 'Network issue — try again in a moment.';
+    return;
+  }
+
   if (client) {
+    // Mirror into the local clients array so renderers find it by id
+    clients = [client];
+    try { localStorage.setItem('hmh_clients_v2', JSON.stringify(clients)); } catch(e) {}
     // Clear failed-attempt counter on success
     try { sessionStorage.removeItem('hmh_client_attempts'); sessionStorage.removeItem('hmh_client_lock_until'); } catch(e) {}
     sessionSet(HMH_SESSION.ROLE, 'client');

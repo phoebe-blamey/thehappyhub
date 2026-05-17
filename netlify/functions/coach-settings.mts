@@ -13,10 +13,17 @@ import { requireInternalAuth } from "./_auth.mts";
 // v11751: requires coach PIN OR internal cron secret. daily-digest and
 // send-reminders read this blob server-to-server (for email templates)
 // using x-cron-secret. The coach UI uses x-coach-pin.
+// v11756: GET is now PUBLIC so the client portal can read shared data
+// (hub resources, cohort metadata, coach phone shown in the help drawer).
+// Most fields here are non-sensitive (badge configs, resource library).
+// POST is still gated — only Phoebe / cron can write.
 
 export default async (req: Request) => {
-  const unauth = requireInternalAuth(req);
-  if (unauth) return unauth;
+  // v11756: only gate POST. GET is publicly readable.
+  if (req.method === "POST") {
+    const unauth = requireInternalAuth(req);
+    if (unauth) return unauth;
+  }
 
   const store = getStore("coach-settings");
   const KEY = "main";
