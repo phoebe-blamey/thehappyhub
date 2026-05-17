@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11754">
-<link rel="stylesheet" href="styles.css?v=11754">
+<link rel="preload" as="style" href="styles.css?v=11755">
+<link rel="stylesheet" href="styles.css?v=11755">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11754 — Coach PIN requirement removed per request. The coach card on the landing page is still hidden by default (revealed by ?coach=1 URL or typing 'phoebe'). Clicking 'Enter coach portal' lands Phoebe straight in — no PIN typing, no idle timeout, no failed-attempt lockout. Server-side auth is preserved: the fetch interceptor auto-populates the matching token from COACH_ADMIN_PIN env var into sessionStorage so /api/* calls still authenticate. Trade-off: anyone who knows the URL trick gets in (same exposure as before this session's hardening). v11753 access-code hardening + v11752 privacy gate + v11751 server auth all stay shipped.">
+<meta name="hmh-build" content="v11755 — Communications killswitch. One toggle in Coach Settings → Account pauses every outbound client email + SMS (digests, session reminders, welcome, broadcasts). Internal alerts to your own inbox (clients flagging blocked tasks, deletion requests) keep flowing. State persists on coachSettings.commsPaused + commsPausedAt; server-side send-message.mts reads them on every call and short-circuits with { blocked:true, reason:'communications-killswitch' } when paused. Flick on for holidays / outages / copy review; flick off to resume — digests start firing again on next Mon/Fri 8am AEST, reminders within 10 minutes. v11754 coach PIN removal + v11751-3 compliance shipped remain in place.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -779,6 +779,23 @@
           <button class="settings-tab-btn" data-group="content" onclick="setSettingsGroup('content')">📚 Content</button>
           <button class="settings-tab-btn" data-group="sync" onclick="setSettingsGroup('sync')">🔄 Sync &amp; tools</button>
           <button class="settings-tab-btn" data-group="maintenance" onclick="setSettingsGroup('maintenance')">🛡 Maintenance</button>
+        </div>
+
+        <!-- v11755 — Communications killswitch. ONE toggle that pauses
+             every outbound client email + SMS (digests, reminders, welcome,
+             coach broadcasts). Phoebe→Phoebe internal alerts still flow.
+             Flick it on when going on holiday, dealing with an outage, or
+             waiting on copy review. Flick it off when ready to resume. -->
+        <div class="settings-card" id="comms-killswitch-card" style="border:2px solid var(--magenta);background:linear-gradient(135deg,#FFFBE8 0%,#FDEFF5 100%)">
+          <div style="display:flex;align-items:flex-start;gap:14px">
+            <div style="font-size:32px;line-height:1;flex-shrink:0">🚦</div>
+            <div style="flex:1;min-width:0">
+              <h4 style="margin:0 0 4px">Communications killswitch</h4>
+              <p style="margin:0 0 12px;font-size:13px">Pause every outbound client email + SMS in one click. Digests, session reminders, welcome emails, broadcasts — all paused. Internal alerts to your own inbox (clients flagging blocked tasks, deletion requests) keep flowing.</p>
+              <div id="comms-killswitch-toggle-wrap"></div>
+              <div id="comms-killswitch-status" style="margin-top:8px;font-size:12px;color:var(--stone)"></div>
+            </div>
+          </div>
         </div>
 
         <!-- v11000: program types — Phoebe defines custom program shapes
@@ -3011,6 +3028,62 @@ function _getEmailTemplate(key) {
   };
 }
 
+// ════════════════════════════════════════════════════════════════════
+// v11755 — Communications killswitch UI
+// ════════════════════════════════════════════════════════════════════
+// One toggle in Settings that pauses every outbound client email + SMS
+// (digests, reminders, welcome, broadcasts). Internal alerts to Phoebe's
+// own inbox keep flowing. State persists on coachSettings.commsPaused +
+// commsPausedAt — server-side send-message.mts reads them on every call.
+function renderCommsKillswitch() {
+  var wrap = document.getElementById('comms-killswitch-toggle-wrap');
+  if (!wrap) return;
+  var paused = !!(window._coachSettings && window._coachSettings.commsPaused);
+  var pausedAt = (window._coachSettings && window._coachSettings.commsPausedAt) || '';
+  var pausedAtFmt = '';
+  if (pausedAt) {
+    try {
+      var d = new Date(pausedAt);
+      pausedAtFmt = d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }) +
+        ' at ' + d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true });
+    } catch (e) { pausedAtFmt = pausedAt; }
+  }
+  wrap.innerHTML = paused
+    ? '<button onclick="toggleCommsKillswitch(false)" class="btn-sm" style="background:#0E9F6E;color:white;border-color:#0E9F6E;font-size:14px;padding:10px 18px;font-weight:700">▶ Resume client communications</button>'
+    : '<button onclick="toggleCommsKillswitch(true)" class="btn-sm" style="background:#C0392B;color:white;border-color:#C0392B;font-size:14px;padding:10px 18px;font-weight:700">⏸ Pause all client emails &amp; SMS</button>';
+
+  var status = document.getElementById('comms-killswitch-status');
+  if (status) {
+    if (paused) {
+      status.innerHTML = '<strong style="color:#C0392B">⏸ Currently PAUSED</strong>' +
+        (pausedAtFmt ? ' — since ' + pausedAtFmt : '') +
+        '<br><span style="color:var(--stone)">No client digests, reminders, welcome emails, or broadcasts will be sent until you resume.</span>';
+    } else {
+      status.innerHTML = '<strong style="color:#0E9F6E">▶ Currently ACTIVE</strong> — all scheduled emails will go out as normal.';
+    }
+  }
+}
+
+async function toggleCommsKillswitch(nextPaused) {
+  var label = nextPaused
+    ? 'Pause ALL outgoing client emails and SMS?\n\nDigests, reminders, welcome emails, and broadcasts will stop until you resume. You can flick it back on any time from this page.\n\nInternal alerts to your own inbox (clients flagging blocks, deletion requests) will still come through.'
+    : 'Resume all client communications?\n\nDigests will start firing again on their next scheduled run (Monday + Friday 8am). Session reminders catch up on the next 10-minute scan. Welcome emails resume for any new Calendly bookings.';
+  var ok = await branded.confirm(label, {
+    title: nextPaused ? '⏸ Pause client comms?' : '▶ Resume client comms?',
+    okLabel: nextPaused ? 'Yes, pause' : 'Yes, resume',
+    danger: !!nextPaused,
+  });
+  if (!ok) return;
+  window._coachSettings = window._coachSettings || {};
+  window._coachSettings.commsPaused = !!nextPaused;
+  window._coachSettings.commsPausedAt = nextPaused ? new Date().toISOString() : '';
+  if (typeof flushCoachSettings === 'function') {
+    try { await flushCoachSettings(); } catch (e) { console.warn('[killswitch] save failed', e); }
+  }
+  renderCommsKillswitch();
+  branded.toast(nextPaused ? '⏸ Client comms paused' : '▶ Client comms resumed');
+}
+
 function renderEmailTemplatesList() {
   var el = document.getElementById('email-templates-list');
   if (!el) return;
@@ -3287,6 +3360,9 @@ function groupSettingsCards() {
   if (!cards.length) return;
   // ID-first lookup table — wins over heading-keyword matching
   var byId = {
+    // v11755: killswitch goes into "account" so it's always visible alongside
+    // Phoebe's own profile settings — the most-trafficked tab.
+    'comms-killswitch-card':   'account',
     'data-hygiene-card':       'maintenance',
     'intake-defaults-card':    'content',
     'zoom-templates-card':     'sync',
@@ -6562,6 +6638,7 @@ function showPage(id) {
       else if (id === 'planner')    { if (typeof renderPlanBuilderPage==='function') renderPlanBuilderPage(); }
       else if (id === 'research')   { if (typeof renderResearchPage==='function') renderResearchPage(); }
       else if (id === 'settings')   {
+        if (typeof renderCommsKillswitch==='function') renderCommsKillswitch();
         if (typeof renderCustomBadgeList==='function') renderCustomBadgeList();
         if (typeof renderZoomTemplatesList==='function') renderZoomTemplatesList();
         if (typeof renderCustomProgramTypesList==='function') renderCustomProgramTypesList();

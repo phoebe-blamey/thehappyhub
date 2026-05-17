@@ -1,8 +1,9 @@
 import type { Config } from "@netlify/functions";
+import { getStore } from "@netlify/blobs";
 import { requireInternalAuth } from "./_auth.mts";
 
 // POST /api/send-message
-// Body: { type: 'email'|'sms', to, subject, message, clientName }
+// Body: { type: 'email'|'sms', to, subject, message, clientName, force? }
 //
 // Email: sends via the Gmail API as the configured GOOGLE_SENDER_EMAIL.
 //        Sent emails appear in that mailbox's Sent folder automatically.
@@ -12,6 +13,14 @@ import { requireInternalAuth } from "./_auth.mts";
 // anyone could send emails/SMS as Phoebe, blasting clients with spam).
 // needs-support.mts and daily-digest.mts (server-to-server) authenticate
 // via x-cron-secret. The coach UI authenticates via x-coach-pin.
+//
+// v11755: global communications killswitch. When coach-settings.comms
+// Paused is true, every outbound email/SMS to a NON-coach recipient is
+// blocked (returns 200 with { blocked: true }). Emails to Phoebe's own
+// address (e.g. needs-support alerts, deletion-request notifications)
+// still flow through so she doesn't miss anything. Pass `force: true` in
+// the body to override the killswitch for a specific send (e.g. a
+// critical "Phoebe is back online" announcement).
 export default async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
   const unauth = requireInternalAuth(req);
@@ -20,8 +29,38 @@ export default async (req: Request) => {
   let body: any;
   try { body = await req.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }
 
-  const { type, to, subject, message, clientName } = body;
+  const { type, to, subject, message, clientName, force } = body;
   if (!type || !to || !message) return new Response("type, to, message required", { status: 400 });
+
+  // v11755: check the global communications killswitch.
+  // Phoebe's own inbox bypasses it (so internal notification emails keep
+  // flowing). `force: true` in the body also bypasses (manual override).
+  if (!force) {
+    try {
+      const settingsStore = getStore("coach-settings");
+      const rawSettings = await settingsStore.get("main");
+      const settings = rawSettings ? JSON.parse(rawSettings) : {};
+      const paused = settings && settings.commsPaused === true;
+      const coachEmail = (Netlify.env.get("GOOGLE_SENDER_EMAIL") || "").toLowerCase();
+      const recipient = String(to || "").toLowerCase();
+      const isToCoach = coachEmail && recipient === coachEmail;
+      if (paused && !isToCoach) {
+        const pausedAt = settings.commsPausedAt || "(unknown)";
+        console.log(`[send-message] killswitch ON — blocking ${type} to ${to} (paused at ${pausedAt})`);
+        return new Response(JSON.stringify({
+          blocked: true,
+          reason: "communications-killswitch",
+          message: "All client emails/SMS are currently paused. Toggle off in Coach Settings → Communications.",
+          to,
+          type,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+    } catch (err) {
+      // If we can't read the settings, fail OPEN (default: don't block).
+      // The killswitch is a convenience feature, not a security boundary.
+      console.warn("[send-message] killswitch check failed; defaulting to send:", err);
+    }
+  }
 
   // ── EMAIL via Gmail API ──────────────────────────────────────────────────
   if (type === "email") {
