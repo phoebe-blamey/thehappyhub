@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11762">
-<link rel="stylesheet" href="styles.css?v=11762">
+<link rel="preload" as="style" href="styles.css?v=11763">
+<link rel="stylesheet" href="styles.css?v=11763">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11762 — Save-pending diagnostics. The 'Save pending' pill is now clickable: tap it to force-retry the save queue. If the retry succeeds you get a green '✓ Cleared' alert; if anything fails you see exactly why (401 / 409 / network) with a one-line summary of the failing records. Every flush logs failures to the browser console so screenshots show the cause. Also: enterCoach now auto-fires a flush 2s after sign-in, so the queue clears itself once your PIN works again — no more lingering 'Save pending' banner from a previous broken session.">
+<meta name="hmh-build" content="v11763 — NPS surveys shipped end-to-end. Three auto-fire touchpoints per paid program: post-session (24h after first session), midway (50% of program length elapsed), final (status:complete OR ~95% elapsed). Single 0-10 question in a branded modal with score-gradient pills (red → amber → green). Score-based follow-ups: 9-10 → LinkedIn review link; 7-8 → 'book a call with Phoebe' Calendly link; ≤6 → required feedback textarea that emails Phoebe DIRECTLY (bypasses the comms killswitch). Coach side: Settings → 💬 NPS surveys card shows live NPS score, promoter/passive/detractor distribution, and the 8 most recent responses with comments. Two URL inputs (promoter LinkedIn, passive Calendly) configurable from the same card. Detractor responses also pop on the activity log. Inquiry / podcast / partner programs skipped — surveys only fire for paid coaching.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -853,6 +853,23 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
             <button class="btn-sm primary" onclick="addRecommendableProduct()">+ Add a product</button>
             <button class="btn-sm" onclick="addMyProgramAsProduct()" title="Pick from your built-in programs and add it as a recommendation with the Calendly link pre-filled">+ Add one of my programs</button>
+          </div>
+        </div>
+
+        <!-- v11763 — NPS surveys card. Aggregate + config + recent responses. -->
+        <div class="settings-card" id="nps-settings-card">
+          <h4>💬 NPS surveys</h4>
+          <p>Auto-fires three short surveys per paid program: 24 hours after the first session, halfway through, and at the end. Score-based follow-ups land where they should — 9–10 invited to leave a LinkedIn review, 7–8 prompted to book a quick call, ≤6 emails you directly with their answer.</p>
+          <div id="nps-dashboard" style="margin-top:12px"></div>
+          <hr style="border:none;border-top:1px solid var(--border-soft);margin:16px 0">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--stone);margin-bottom:8px">Configure</div>
+          <div style="margin-bottom:8px">
+            <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--stone);margin-bottom:4px">Promoter LinkedIn URL <span style="color:var(--stone);font-weight:400;text-transform:none;letter-spacing:0">(where 9–10 scorers go to leave a review)</span></label>
+            <input id="nps-linkedin-url" type="url" placeholder="https://www.linkedin.com/in/phoebeblamey/" onchange="saveNPSConfig()" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none">
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--stone);margin-bottom:4px">Passive Calendly URL <span style="color:var(--stone);font-weight:400;text-transform:none;letter-spacing:0">(where 7–8 scorers go to book a "let's-rework-this" call)</span></label>
+            <input id="nps-calendly-url" type="url" placeholder="https://calendly.com/phoebe-phoebeblamey/new-meeting" onchange="saveNPSConfig()" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:var(--paper);outline:none">
           </div>
         </div>
 
@@ -3396,6 +3413,9 @@ function groupSettingsCards() {
     // v11755: killswitch goes into "account" so it's always visible alongside
     // Phoebe's own profile settings — the most-trafficked tab.
     'comms-killswitch-card':   'account',
+    // v11763: NPS card lives under "account" too — it's a feedback feature
+    // Phoebe will check often + the URL config sits there.
+    'nps-settings-card':       'account',
     'data-hygiene-card':       'maintenance',
     'intake-defaults-card':    'content',
     'zoom-templates-card':     'sync',
@@ -3625,6 +3645,28 @@ var MY_PROGRAM_PRESETS = [
   { key: 'mdc',         label: 'Million Dollar Conspiracy Sprint', price: 'Members only', url: 'https://phoebeblamey.com.au/mdc',                              desc: 'The MDC community for graduates — ongoing accountability + cohort calls.', icon: '💡' },
   { key: 'inquiry',     label: '15-Minute Clarity Call',          price: 'Free',       url: 'https://calendly.com/phoebe-phoebeblamey/new-meeting',           desc: 'Quick free call to figure out if we are a good fit.', icon: '🤝' },
 ];
+
+// v11763 — save the NPS URLs onto coach-settings. Reads the two inputs
+// in the NPS card, persists to the server via flushCoachSettings.
+async function saveNPSConfig() {
+  var li = (document.getElementById('nps-linkedin-url') || {}).value || '';
+  var ca = (document.getElementById('nps-calendly-url') || {}).value || '';
+  window._coachSettings = window._coachSettings || {};
+  window._coachSettings.npsLinkedinUrl = li.trim();
+  window._coachSettings.npsCalendlyUrl = ca.trim();
+  if (typeof flushCoachSettings === 'function') {
+    try { await flushCoachSettings(); branded.toast('✓ Saved'); } catch(e) {}
+  }
+}
+
+// v11763 — pre-fill the NPS config inputs on settings open from saved state.
+function _initNPSConfigInputs() {
+  var s = window._coachSettings || {};
+  var li = document.getElementById('nps-linkedin-url');
+  var ca = document.getElementById('nps-calendly-url');
+  if (li && !li.value) li.value = s.npsLinkedinUrl || '';
+  if (ca && !ca.value) ca.value = s.npsCalendlyUrl || '';
+}
 
 async function addMyProgramAsProduct() {
   // Pick which program to add via a branded modal (single-select list).
@@ -6914,6 +6956,8 @@ function showPage(id) {
         if (typeof renderCustomProgramTypesList==='function') renderCustomProgramTypesList();
         if (typeof renderEmailTemplatesList==='function') renderEmailTemplatesList();
         if (typeof renderRecommendableProductsList==='function') renderRecommendableProductsList();
+        if (typeof renderNPSDashboard==='function') renderNPSDashboard('nps-dashboard');
+        if (typeof _initNPSConfigInputs==='function') _initNPSConfigInputs();
         if (typeof refreshIntegrationStatusPills==='function') refreshIntegrationStatusPills();
         if (typeof renderIntakeDefaultsEditor==='function') renderIntakeDefaultsEditor();
         // v11530: tag every card by group + apply the saved tab choice
@@ -9618,6 +9662,11 @@ function loadClientPortal(client) {
   // client's needsSupport[] array and pings Phoebe by email.
   try { maybeShowBlockedTaskForm(client); } catch(e) { console.warn('[Blocked task]', e); }
 
+  // v11763: NPS survey trigger — checks if a survey is due (post-session,
+  // midway, or final based on program timeline) and surfaces a focused
+  // modal. Skips clients who opted out of comms.
+  try { maybeTriggerNPS(client); } catch(e) { console.warn('[NPS]', e); }
+
   // v11550: show / hide the Community tab based on cohort membership.
   // Only MDC cohort members get the tab in their nav.
   try { if (typeof updateClientCommunityTabVisibility === 'function') updateClientCommunityTabVisibility(client); } catch(e) { console.warn('[Community tab]', e); }
@@ -10620,6 +10669,363 @@ function maybeShowBlockedTaskForm(client) {
     var ta = document.getElementById('blocked-reason-input');
     if (ta) ta.focus();
   }, 120);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// v11763 — NPS surveys (3 touchpoints per paid program journey)
+// ════════════════════════════════════════════════════════════════════
+// Trigger windows for each NPS type:
+//   - "post-session": fires 24h+ after the FIRST session (program.sessionDate)
+//   - "midway":       fires when ~50% of program length has elapsed since session
+//   - "final":        fires when program.status is 'complete' or 'locked',
+//                     OR when ~100% of program length has elapsed.
+//
+// Once an entry exists in client.nps[] it persists until responded to
+// (so a client can dismiss + come back). Each entry is keyed by
+// program.id + type so we never double-fire for the same program.
+
+// Programs we ask NPS on. Inquiry / podcast / partner / discovery don't
+// get surveys — they're one-offs without a coaching relationship to measure.
+var NPS_PROGRAM_TYPES = new Set(['90day','coaching','accelerator','broker','audit','mdc','happyhour','adhoc','builder-6m','mdc-cohort']);
+
+// Match-anything check — true if any entry already exists for the same
+// type + program combo (whether responded, dismissed, or still open).
+function _hasNPSEntry(client, type, programId) {
+  var arr = (client && client.nps) || [];
+  return arr.some(function(n) { return n && n.type === type && n.programId === programId; });
+}
+
+// Find the FIRST unresponded NPS entry to surface. Returns null if none.
+function _findPendingNPS(client) {
+  var arr = (client && client.nps) || [];
+  return arr.find(function(n) { return n && !n.respondedAt && !n.dismissedAt; }) || null;
+}
+
+// Compute days elapsed since a date string. Returns null on parse fail.
+function _daysSince(iso) {
+  if (!iso) return null;
+  var t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  return (Date.now() - t) / 86400000;
+}
+
+// Generate NPS entries that should exist for this client based on
+// program timing. Adds to client.nps[] and persists. Idempotent — each
+// (type, programId) only creates one entry ever.
+function _generatePendingNPS(client) {
+  if (!client) return false;
+  if (client.notificationsDisabled) return false; // opted out — never trigger
+  client.nps = Array.isArray(client.nps) ? client.nps : [];
+  var changed = false;
+  (client.programs || []).forEach(function(p) {
+    if (!p || !p.id || !p.program) return;
+    if (!NPS_PROGRAM_TYPES.has(p.program)) return;
+    var pi = (typeof PROGRAMS !== 'undefined' && PROGRAMS[p.program]) || {};
+    var lengthDays = pi.lengthDays || 90; // 90-day default
+    var daysSinceSession = _daysSince(p.sessionDate);
+
+    // 1. POST-SESSION — 24h+ after the first session, before any other trigger
+    if (daysSinceSession !== null && daysSinceSession >= 1 && !_hasNPSEntry(client, 'post-session', p.id)) {
+      client.nps.push({
+        id: 'nps-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        type: 'post-session',
+        programId: p.id,
+        programLabel: pi.label || p.label || p.program,
+        triggeredAt: new Date().toISOString(),
+      });
+      changed = true;
+    }
+    // 2. MIDWAY — ~50% of program length elapsed
+    if (daysSinceSession !== null && daysSinceSession >= (lengthDays * 0.5) && daysSinceSession < (lengthDays * 0.95) && !_hasNPSEntry(client, 'midway', p.id)) {
+      client.nps.push({
+        id: 'nps-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        type: 'midway',
+        programId: p.id,
+        programLabel: pi.label || p.label || p.program,
+        triggeredAt: new Date().toISOString(),
+      });
+      changed = true;
+    }
+    // 3. FINAL — program complete/locked, OR ~100% of length elapsed
+    var isComplete = p.status === 'complete' || p.locked === true;
+    if ((isComplete || (daysSinceSession !== null && daysSinceSession >= (lengthDays * 0.95))) && !_hasNPSEntry(client, 'final', p.id)) {
+      client.nps.push({
+        id: 'nps-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        type: 'final',
+        programId: p.id,
+        programLabel: pi.label || p.label || p.program,
+        triggeredAt: new Date().toISOString(),
+      });
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+// Called from loadClientPortal — generates any missing NPS entries
+// then shows a focused modal for the first unresponded one.
+async function maybeTriggerNPS(client) {
+  if (!client) return;
+  // Always opt-in default; honour notificationsDisabled global opt-out
+  if (client.notificationsDisabled) return;
+  // Generate entries that should now exist
+  var changed = _generatePendingNPS(client);
+  if (changed) {
+    try { await persistClient(client); } catch(e) { console.warn('[NPS] persist failed', e); }
+  }
+  // Surface the oldest unresponded one
+  var pending = _findPendingNPS(client);
+  if (pending) {
+    setTimeout(function() { showNPSModal(client, pending); }, 700); // small delay so other modals render first
+  }
+}
+
+// Renders the NPS modal — score picker 0-10 horizontal pills with
+// colour gradient (detractor red → passive amber → promoter green).
+function showNPSModal(client, npsEntry) {
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  var firstName = (client.name || '').split(' ')[0] || 'there';
+  var typeCopy = {
+    'post-session': { title: 'How was your session, ' + firstName + '?', sub: 'Quick reflection while it\'s fresh — takes 20 seconds.' },
+    'midway':       { title: 'Halfway check, ' + firstName, sub: 'You\'re halfway through — how\'s it going so far?' },
+    'final':        { title: 'You did it, ' + firstName + ' 🌷', sub: 'One last quick question before we wrap up your program.' },
+  }[npsEntry.type] || { title: 'Quick question', sub: 'Takes 20 seconds.' };
+
+  document.getElementById('branded-modal-icon').textContent = npsEntry.type === 'final' ? '🌷' : npsEntry.type === 'midway' ? '🧭' : '💛';
+  document.getElementById('branded-modal-title').textContent = typeCopy.title;
+  var bodyEl = document.getElementById('branded-modal-body');
+  bodyEl.style.maxHeight = '';
+  bodyEl.style.overflowY = '';
+
+  // Build the 0-10 score row
+  var scoreButtons = '';
+  for (var i = 0; i <= 10; i++) {
+    var hue = Math.round((i / 10) * 120); // 0=red, 10=green
+    scoreButtons += '<button type="button" class="nps-score-btn" data-score="' + i + '" ' +
+      'style="border:2px solid hsl(' + hue + ',55%,55%);background:white;color:hsl(' + hue + ',45%,40%);' +
+      'width:36px;height:36px;border-radius:50%;font-family:var(--f-head);font-size:14px;font-weight:700;cursor:pointer;' +
+      'transition:all 0.15s;outline:none">' + i + '</button>';
+  }
+
+  bodyEl.innerHTML =
+    '<p style="font-size:13px;color:var(--magenta);line-height:1.5;margin-bottom:14px">' + escapeHtml(typeCopy.sub) + '</p>' +
+    (npsEntry.programLabel ? '<div style="background:var(--paper);border:1px solid var(--border-soft);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--stone);margin-bottom:14px"><strong>About:</strong> ' + escapeHtml(npsEntry.programLabel) + '</div>' : '') +
+    '<div style="font-size:14px;color:var(--magenta);font-weight:600;margin-bottom:10px">How likely are you to recommend this to someone you know?</div>' +
+    '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:space-between;margin-bottom:6px">' + scoreButtons + '</div>' +
+    '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--stone);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">' +
+      '<span>Not at all</span><span>Extremely</span>' +
+    '</div>' +
+    '<div id="nps-followup-area" style="margin-top:18px;display:none"></div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  var actionsEl = document.getElementById('branded-modal-actions');
+  actionsEl.innerHTML =
+    '<button type="button" class="btn-sm" id="nps-skip-btn">Not now</button>';
+
+  function closeIt() {
+    host.style.display = 'none';
+    host._cancel = null;
+  }
+  host._cancel = closeIt;
+
+  document.getElementById('nps-skip-btn').onclick = async function() {
+    // "Not now" doesn't dismiss — it just closes the modal. Will re-show on next visit.
+    closeIt();
+  };
+
+  // Wire each score button
+  bodyEl.querySelectorAll('.nps-score-btn').forEach(function(btn) {
+    btn.onclick = function() {
+      var s = parseInt(btn.getAttribute('data-score'), 10);
+      // Highlight the selected score
+      bodyEl.querySelectorAll('.nps-score-btn').forEach(function(b) {
+        b.style.background = b === btn ? 'hsl(' + Math.round((s/10)*120) + ',55%,55%)' : 'white';
+        b.style.color = b === btn ? 'white' : 'hsl(' + Math.round((parseInt(b.getAttribute('data-score'),10)/10)*120) + ',45%,40%)';
+      });
+      _renderNPSFollowup(client, npsEntry, s, closeIt);
+    };
+  });
+
+  host.style.display = 'flex';
+}
+
+// Renders the score-based follow-up panel + handles submit.
+function _renderNPSFollowup(client, npsEntry, score, closeIt) {
+  var area = document.getElementById('nps-followup-area');
+  if (!area) return;
+  area.style.display = 'block';
+  var settings = (window._coachSettings || {});
+  var linkedinUrl = settings.npsLinkedinUrl || 'https://www.linkedin.com/in/phoebeblamey/';
+  var calendlyUrl = settings.npsCalendlyUrl || 'https://calendly.com/phoebe-phoebeblamey/new-meeting';
+  var nextStepsHtml = '';
+  // For "final" surveys, regardless of score, include a "Here's what's next" prompt
+  if (npsEntry.type === 'final') {
+    nextStepsHtml =
+      '<div style="background:#FFFBE8;border:1px solid rgba(232,160,32,0.4);border-radius:10px;padding:12px 14px;margin-top:14px">' +
+        '<div style="font-weight:700;color:#A07030;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">🌟 Here\'s what\'s next</div>' +
+        '<div style="font-size:13px;color:#5A2D08;line-height:1.5">Have a look at your Hub\'s ✨ recommendations card — Phoebe\'s picked out programs that build on what we\'ve covered. Or just reply to her any time to chat about next steps.</div>' +
+      '</div>';
+  }
+  if (score >= 9) {
+    // Promoter — LinkedIn share
+    area.innerHTML =
+      '<div style="background:#E8F5E9;border:1px solid #66BB6A;border-radius:10px;padding:14px 16px">' +
+        '<div style="font-size:14px;color:#2E7D32;font-weight:700;margin-bottom:4px">🎉 Thank you — that means the world.</div>' +
+        '<div style="font-size:13px;color:#1B5E20;line-height:1.5">Would you share a quick note about your experience on LinkedIn? Even one sentence helps other people find this work.</div>' +
+        '<a href="' + escapeHtml(linkedinUrl) + '" target="_blank" rel="noopener" class="btn-sm primary" style="display:inline-block;margin-top:10px;text-decoration:none" onclick="document.getElementById(\'nps-submit-btn\').click()">Open LinkedIn ↗</a>' +
+      '</div>' +
+      '<textarea id="nps-followup-input" rows="2" placeholder="Anything else you\'d like Phoebe to know? (optional)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;min-height:50px;margin-top:14px"></textarea>' +
+      nextStepsHtml;
+  } else if (score >= 7) {
+    // Passive — book a call
+    area.innerHTML =
+      '<div style="background:#FFFBE8;border:1px solid #E8A020;border-radius:10px;padding:14px 16px">' +
+        '<div style="font-size:14px;color:#A07030;font-weight:700;margin-bottom:4px">Thanks for that.</div>' +
+        '<div style="font-size:13px;color:#5A2D08;line-height:1.5">Sounds like there\'s room to make this work better for you. Want to book a quick call with Phoebe to talk about what would lift it from a ' + score + ' to a 10?</div>' +
+        '<a href="' + escapeHtml(calendlyUrl) + '" target="_blank" rel="noopener" class="btn-sm primary" style="display:inline-block;margin-top:10px;text-decoration:none">Book a call ↗</a>' +
+      '</div>' +
+      '<textarea id="nps-followup-input" rows="2" placeholder="What would make this a 10 for you? (optional)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;min-height:50px;margin-top:14px"></textarea>' +
+      nextStepsHtml;
+  } else {
+    // Detractor — open feedback (high care)
+    area.innerHTML =
+      '<div style="background:#FFF0EE;border:1px solid rgba(192,57,43,0.4);border-radius:10px;padding:14px 16px">' +
+        '<div style="font-size:14px;color:#C0392B;font-weight:700;margin-bottom:4px">Sorry it\'s not landing.</div>' +
+        '<div style="font-size:13px;color:#5A2D08;line-height:1.5">Phoebe genuinely wants to know what we could have done better. Was it a personality fit, the pace, the content, something specific? She\'ll reply personally.</div>' +
+      '</div>' +
+      '<textarea id="nps-followup-input" rows="4" placeholder="What got in the way for you?" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:13px;color:var(--magenta);background:white;outline:none;resize:vertical;min-height:90px;margin-top:14px" required></textarea>' +
+      nextStepsHtml;
+  }
+  // Add a submit button to the actions row
+  var actionsEl = document.getElementById('branded-modal-actions');
+  actionsEl.innerHTML =
+    '<button type="button" class="btn-sm" id="nps-skip-btn">Not now</button>' +
+    '<button type="button" class="btn-sm primary" id="nps-submit-btn">Send to Phoebe</button>';
+  document.getElementById('nps-skip-btn').onclick = closeIt;
+  document.getElementById('nps-submit-btn').onclick = async function() {
+    var ta = document.getElementById('nps-followup-input');
+    var followup = (ta && ta.value || '').trim();
+    if (score < 7 && !followup) {
+      ta.style.borderColor = '#C0392B';
+      ta.focus();
+      return;
+    }
+    var btn = document.getElementById('nps-submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      var resp = await fetch('/api/nps-submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: client.id,
+          npsId: npsEntry.id,
+          score: score,
+          followup: followup,
+          followupAction: score >= 9 ? 'linkedin' : score >= 7 ? 'book-call' : 'feedback',
+        }),
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      var data = await resp.json();
+      // Refresh local copy
+      if (data.client) {
+        var idx = (clients || []).findIndex(function(c) { return c.id === client.id; });
+        if (idx >= 0) clients[idx] = data.client; else clients = [data.client];
+      }
+      closeIt();
+      branded.toast('Thanks ' + ((client.name || '').split(' ')[0] || '') + ' 💛');
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Send to Phoebe';
+      branded.error('Couldn\'t send — check your connection and try again.\n\n' + (err && err.message || err), { title: 'Hmm, that didn\'t go through' });
+    }
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// v11763 — Coach-side NPS aggregation
+// ════════════════════════════════════════════════════════════════════
+// Returns { score, promoters, passives, detractors, count, responses }
+// across all clients. NPS = % promoters − % detractors (industry std).
+function computeNPSAggregate(clientsArr) {
+  var responses = [];
+  (clientsArr || []).forEach(function(c) {
+    if (!c) return;
+    (c.nps || []).forEach(function(n) {
+      if (n && n.respondedAt && Number.isFinite(n.score)) {
+        responses.push({
+          clientId: c.id,
+          clientName: c.name || 'Unnamed',
+          score: n.score,
+          type: n.type,
+          followup: n.followup || '',
+          respondedAt: n.respondedAt,
+          programLabel: n.programLabel || '',
+        });
+      }
+    });
+  });
+  var count = responses.length;
+  if (!count) return { score: null, promoters: 0, passives: 0, detractors: 0, count: 0, responses: [] };
+  var promoters  = responses.filter(function(r){ return r.score >= 9; }).length;
+  var passives   = responses.filter(function(r){ return r.score >= 7 && r.score <= 8; }).length;
+  var detractors = responses.filter(function(r){ return r.score <= 6; }).length;
+  var score = Math.round(((promoters / count) - (detractors / count)) * 100);
+  return { score: score, promoters: promoters, passives: passives, detractors: detractors, count: count, responses: responses };
+}
+
+// Renders the coach-side NPS panel — used in Settings + Revenue page.
+// Shows aggregate score, distribution, recent responses with comments.
+function renderNPSDashboard(targetId) {
+  var el = document.getElementById(targetId || 'nps-dashboard');
+  if (!el) return;
+  var agg = computeNPSAggregate(clients);
+  if (!agg.count) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--stone);font-style:italic;padding:14px">No NPS responses yet. Surveys fire automatically 24 hours after a client\'s first session, halfway through their program, and at completion. Detractor scores (≤6) email you directly.</div>';
+    return;
+  }
+  var scoreColor = agg.score >= 50 ? '#0E9F6E' : agg.score >= 0 ? '#E8A020' : '#C0392B';
+  var recent = agg.responses.slice().sort(function(a, b){
+    return new Date(b.respondedAt).getTime() - new Date(a.respondedAt).getTime();
+  }).slice(0, 8);
+  el.innerHTML =
+    '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:14px">' +
+      '<div style="text-align:center">' +
+        '<div style="font-family:var(--f-head);font-size:36px;font-weight:800;color:' + scoreColor + ';line-height:1">' + agg.score + '</div>' +
+        '<div style="font-size:10px;color:var(--stone);text-transform:uppercase;letter-spacing:0.06em;font-weight:700">NPS · ' + agg.count + ' response' + (agg.count === 1 ? '' : 's') + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:4px">' +
+        _npsBar('Promoters · 9–10', agg.promoters, agg.count, '#0E9F6E') +
+        _npsBar('Passives · 7–8',   agg.passives,  agg.count, '#E8A020') +
+        _npsBar('Detractors · ≤6',  agg.detractors,agg.count, '#C0392B') +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--stone);margin-bottom:6px">Recent responses</div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px">' +
+      recent.map(function(r) {
+        var cat = r.score >= 9 ? '#0E9F6E' : r.score >= 7 ? '#E8A020' : '#C0392B';
+        var when = '';
+        try { when = new Date(r.respondedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); } catch(e) {}
+        return '<div style="background:white;border:1px solid var(--border-soft);border-radius:10px;padding:10px 12px;font-size:12px;display:flex;gap:10px;align-items:flex-start">' +
+          '<div style="font-family:var(--f-head);font-size:18px;font-weight:800;color:' + cat + ';line-height:1;min-width:32px;text-align:center">' + r.score + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-weight:700;color:var(--magenta)">' + escapeHtml(r.clientName) + ' <span style="font-weight:400;color:var(--stone);font-size:11px">· ' + escapeHtml(r.type) + (when ? ' · ' + when : '') + '</span></div>' +
+            (r.followup ? '<div style="font-size:12px;color:var(--magenta);margin-top:2px;line-height:1.5;font-style:italic">"' + escapeHtml(r.followup) + '"</div>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+}
+
+function _npsBar(label, count, total, color) {
+  var pct = total ? Math.round((count / total) * 100) : 0;
+  return '<div style="display:flex;align-items:center;gap:8px;font-size:11px">' +
+    '<div style="min-width:120px;color:var(--magenta);font-weight:600">' + label + '</div>' +
+    '<div style="flex:1;height:10px;background:rgba(0,0,0,0.05);border-radius:99px;overflow:hidden">' +
+      '<div style="height:100%;width:' + pct + '%;background:' + color + ';transition:width 0.4s"></div>' +
+    '</div>' +
+    '<div style="min-width:38px;text-align:right;color:var(--stone);font-weight:600">' + count + ' · ' + pct + '%</div>' +
+  '</div>';
 }
 
 window._onboardingStep = 0;
