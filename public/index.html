@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11756">
-<link rel="stylesheet" href="styles.css?v=11756">
+<link rel="preload" as="style" href="styles.css?v=11757">
+<link rel="stylesheet" href="styles.css?v=11757">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11756 — Login page fixes. (1) Client login was broken since v11751 (the auth gate on /api/get-clients meant clients couldn't look themselves up without the coach PIN). New public /api/client-login endpoint takes the access code in the body and returns just that one client record. enterClient + the auto-restore path now use it. (2) Coach card is visible on the landing page by default — the previous 'type phoebe' / '?coach=1' trigger was friction with no real security value once the PIN was removed. Click anywhere on the card → straight in. (3) PB logo on the landing page is now an inline SVG so the 'pb' text inherits AllRoundGothic Bold from page CSS (was loading via img + script + replacement which raced font loading). (4) /api/coach-settings + /api/cohorts GET made public so the client portal can read shared resources + cohort metadata. POST on both still requires coach PIN. (5) /api/save-client accepts x-client-access matching the stored access code so clients can save their own privacy acceptance, prefs, mood logs etc. without the coach PIN.">
+<meta name="hmh-build" content="v11757 — Coach card hidden by default again on the landing page (Phoebe's request). Dedicated coach URL restored: https://hub.phoebeblamey.com.au/?coach reveals the coach card. Reveal also works via typing 'phoebe' anywhere on the page, OR via the localStorage flag that's set automatically after the first reveal on a device (so Phoebe's own browsers stay revealed across visits). Once revealed, single-click enters the coach portal (no PIN). Client login fix from v11756 (new /api/client-login endpoint) remains in place — the access code field on the client card calls it directly, no coach PIN needed. PB logo on the landing page stays as an inline SVG so the 'pb' text inherits AllRoundGothic Bold from page CSS.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -95,13 +95,11 @@
 </div>
 
 <!-- ========== LANDING ==========
-     v11756: redesigned. Coach card now visible by default (the previous
-     "hidden until you type phoebe" gymnastics was a friction barrier with
-     no real security value since we removed the PIN). PB logo is now an
-     INLINE SVG so the "pb" text inherits AllRoundGothic Bold from the
-     page CSS — previously it loaded as an <img> + fetched + replaced
-     after fonts loaded, which sometimes raced and rendered with the
-     fallback system font. -->
+     v11757: coach card hidden by default again (Phoebe's request). Phoebe
+     can reveal it via her bookmarked URL: https://hub.phoebeblamey.com.au/?coach
+     OR by typing "phoebe" anywhere on the page. After the first reveal on
+     a device, a localStorage flag keeps it visible on future visits to that
+     device. PB logo stays as an inline SVG so "pb" inherits AllRoundGothic. -->
 <div id="landing">
   <!-- Inline PB logo — inherits AllRoundGothic from page CSS -->
   <span class="landing-brand-mark" aria-label="PeaBe" style="display:block;width:88px;height:88px;margin:0 auto 14px">
@@ -129,11 +127,11 @@
   <div class="landing-logo">PeaBe<br>Coaching Hub</div>
   <div class="landing-sub">Phoebe Blamey — Business Coaching Platform</div>
   <div class="access-grid" id="access-grid">
-    <!-- v11756: coach card visible by default (previously hidden behind
-         "phoebe" keystroke or ?coach=1 URL trick — security theatre once
-         the PIN was removed, and a real UX blocker for Phoebe's own
-         workflow). Click anywhere on the card to enter. -->
-    <div class="access-card" id="coach-access-card" onclick="enterCoach()" style="cursor:pointer">
+    <!-- v11757: coach card hidden by default (per Phoebe's request).
+         Revealed by: ?coach in URL, localStorage flag from a prior coach
+         visit, OR typing "phoebe" on the page. No PIN required once
+         revealed — single click to enter. -->
+    <div class="access-card" id="coach-access-card" onclick="enterCoach()" style="display:none;cursor:pointer">
       <div class="card-icon">🏆</div>
       <h3>Coach Portal</h3>
       <p>Manage all clients and programs. View research briefs, session notes, and track progress.</p>
