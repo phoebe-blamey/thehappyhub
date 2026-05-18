@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11759">
-<link rel="stylesheet" href="styles.css?v=11759">
+<link rel="preload" as="style" href="styles.css?v=11760">
+<link rel="stylesheet" href="styles.css?v=11760">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11759 — CRITICAL FIX: stray '}' at line 14060 was a SyntaxError that broke ALL JavaScript on the page (since the v11752 renderClientSettings refactor left an orphan closing brace + comment block in place). With JS broken, no listeners attached: ?coach didn't reveal the coach card, typing 'phoebe' did nothing, client login form didn't work, etc. Removing the orphan brace unblocks every interactive piece on the landing page. PIN entry, ?coach URL, typing phoebe, client access code login — all restored. Service worker v4 already in place from v11757 to flush browser caches.">
+<meta name="hmh-build" content="v11760 — Two fixes from Phoebe's first live login. (1) PIN validation now happens server-side: enterCoach probes /api/get-clients with the typed PIN; only signs in on 200. Previously checked against localStorage value which could diverge from the server's COACH_ADMIN_PIN env var, leading to the front-end accepting a PIN the server then 401'd on every subsequent API call. (2) Badge toasts now silenced during login + session-restore — Phoebe was getting spammed by 5-10 'BADGE UNLOCKED' pops the moment she signed in because the auto-health-update + weekly-accountability check fired persistClient on every client, each of which ran checkAllBadges and surfaced any newly-met thresholds. Badges still get awarded silently during bulk flows; toasts resume for real user actions ~6 seconds later.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -4444,6 +4444,11 @@ function clearSession() {
 async function restoreSession() {
   var role = sessionGet(HMH_SESSION.ROLE);
   if (!role) return false;
+  // v11760: silence badge toasts during the restore-session bulk load so
+  // Phoebe doesn't get spammed by 5-10 "BADGE UNLOCKED" pops on every
+  // page open. Badges still get awarded silently. Clears after ~6s.
+  window._suppressBadgeToasts = true;
+  setTimeout(function(){ window._suppressBadgeToasts = false; }, 6000);
   try {
     if (role === 'coach') {
       document.getElementById('landing').style.display = 'none';
@@ -4562,25 +4567,49 @@ function focusCoachPin() {
 }
 
 async function enterCoach() {
+  var errEl = document.getElementById('coach-err');
   var pin = (document.getElementById('coach-pin').value || '').trim();
   if (!pin) {
-    document.getElementById('coach-err').textContent = 'Type your PIN to continue.';
+    errEl.textContent = 'Type your PIN to continue.';
     focusCoachPin();
     return;
   }
-  if (pin !== getCoachPin()) {
-    document.getElementById('coach-err').textContent = 'Incorrect PIN. Try again.';
+  errEl.textContent = '⏳ Checking…';
+  // v11760: the server is now the source of truth for the coach PIN
+  // (was previously a localStorage check that could diverge from the
+  // server's COACH_ADMIN_PIN env var). Try the PIN against the auth
+  // gate directly — if /api/get-clients returns 200 the PIN's correct.
+  // No more silent 401 spam after sign-in.
+  try {
+    var probeResp = await fetch('/api/get-clients', {
+      headers: { 'x-coach-pin': pin },
+    });
+    if (probeResp.status === 401) {
+      errEl.textContent = 'Incorrect PIN. Try again.';
+      return;
+    }
+    if (!probeResp.ok) {
+      errEl.textContent = 'Server returned ' + probeResp.status + ' — try again in a moment.';
+      return;
+    }
+  } catch (err) {
+    errEl.textContent = 'Network issue — try again in a moment.';
     return;
   }
-  document.getElementById('coach-err').textContent = '';
-  // Write the active-session token to sessionStorage so the fetch
-  // interceptor supplies x-coach-pin on every /api/* call. Mirror the
-  // PIN to localStorage too so subsequent visits to this browser remember
-  // the PIN value (the "expected" PIN for next login).
+  errEl.textContent = '';
+  // PIN verified against the server. Write the active-session token to
+  // sessionStorage so the fetch interceptor supplies x-coach-pin on every
+  // /api/* call. Mirror to localStorage so subsequent visits remember
+  // the value (used for the "expected" PIN on the next login compare).
   try { sessionStorage.setItem('hmh_coach_pin', pin); } catch(e) {}
   try { localStorage.setItem('hmh_coach_pin', pin); } catch(e) {}
   // Sticky reveal — coach card stays visible on this device from now on.
   try { localStorage.setItem('hmh_session_coach_known', '1'); } catch(e) {}
+  // v11760: silence badge toasts during the post-login bulk save flurry
+  // (auto-health update, weekly-accountability check, etc). Badges are
+  // still awarded silently. Toasts resume for real user actions ~6s later.
+  window._suppressBadgeToasts = true;
+  setTimeout(function(){ window._suppressBadgeToasts = false; }, 6000);
   sessionSet(HMH_SESSION.ROLE, 'coach');
   sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
   document.getElementById('landing').style.display = 'none';
@@ -6008,6 +6037,12 @@ function checkAllBadges(client) {
 function showBadgeToast(badgeId) {
   var b = BADGES[badgeId];
   if (!b) return;
+  // v11760: suppress badge toasts during bulk operations (sign-in,
+  // session-restore, weekly auto-health update). The badge IS still
+  // awarded silently — the toast just doesn't fire for the noise.
+  // The flag is set true at the start of enterCoach / auto-restore,
+  // and cleared ~6 seconds after page-load is done.
+  if (window._suppressBadgeToasts) return;
   // Big confetti — bigger than the per-task tick celebration
   if (typeof fireConfetti === 'function') fireConfetti(120);
   // Pick the animation for the toast itself + the icon. Custom badges carry
