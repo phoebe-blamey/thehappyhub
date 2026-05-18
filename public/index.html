@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11757">
-<link rel="stylesheet" href="styles.css?v=11757">
+<link rel="preload" as="style" href="styles.css?v=11758">
+<link rel="stylesheet" href="styles.css?v=11758">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11757 — Coach card hidden by default again on the landing page (Phoebe's request). Dedicated coach URL restored: https://hub.phoebeblamey.com.au/?coach reveals the coach card. Reveal also works via typing 'phoebe' anywhere on the page, OR via the localStorage flag that's set automatically after the first reveal on a device (so Phoebe's own browsers stay revealed across visits). Once revealed, single-click enters the coach portal (no PIN). Client login fix from v11756 (new /api/client-login endpoint) remains in place — the access code field on the client card calls it directly, no coach PIN needed. PB logo on the landing page stays as an inline SVG so the 'pb' text inherits AllRoundGothic Bold from page CSS.">
+<meta name="hmh-build" content="v11758 — Coach PIN restored per Phoebe's request. Coach card still hidden by default on the landing page (reveal via ?coach URL / typing 'phoebe' / localStorage flag from a prior coach visit). Once revealed, Phoebe types her PIN (default Happy_529) and hits Enter to sign in. Successful sign-in writes the active PIN to sessionStorage so the fetch interceptor can authenticate API calls server-side, mirrors to localStorage so subsequent visits remember the value, and sets the sticky-reveal flag so the coach card stays visible on this device from now on. Settings → Coach PIN card restored so Phoebe can change her PIN any time. Client login (/api/client-login) + visible-by-default PB logo + dedicated ?coach URL from v11756/v11757 all remain shipped. Service worker bumped to peabe-v4 to flush any stale browser caches.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -127,11 +127,11 @@
   <div class="landing-logo">PeaBe<br>Coaching Hub</div>
   <div class="landing-sub">Phoebe Blamey — Business Coaching Platform</div>
   <div class="access-grid" id="access-grid">
-    <!-- v11757: coach card hidden by default (per Phoebe's request).
-         Revealed by: ?coach in URL, localStorage flag from a prior coach
-         visit, OR typing "phoebe" on the page. No PIN required once
-         revealed — single click to enter. -->
-    <div class="access-card" id="coach-access-card" onclick="enterCoach()" style="display:none;cursor:pointer">
+    <!-- v11758: coach card hidden by default, PIN required (Phoebe's
+         updated request). Revealed by: ?coach URL, localStorage flag from
+         a prior coach visit, OR typing "phoebe" on the page. Once revealed
+         Phoebe types her PIN (default Happy_529) and presses Enter. -->
+    <div class="access-card" id="coach-access-card" onclick="focusCoachPin()" style="display:none">
       <div class="card-icon">🏆</div>
       <h3>Coach Portal</h3>
       <p>Manage all clients and programs. View research briefs, session notes, and track progress.</p>
@@ -139,11 +139,11 @@
         <span class="prog-tag">All programs</span>
         <span class="prog-tag">All clients</span>
       </div>
-      <div class="pin-row" style="margin-top:10px">
-        <button class="btn-enter" onclick="event.stopPropagation();enterCoach()" style="width:100%">Enter coach portal →</button>
+      <div class="pin-row">
+        <input type="password" id="coach-pin" placeholder="Coach PIN" maxlength="20"
+          onkeydown="if(event.key==='Enter') enterCoach()">
+        <button class="btn-enter" onclick="enterCoach()">Enter</button>
       </div>
-      <!-- Hidden input retained so any back-compat scripts that look it up don't error -->
-      <input type="hidden" id="coach-pin" value="">
       <div class="error-msg" id="coach-err"></div>
     </div>
     <div class="access-card">
@@ -1071,13 +1071,20 @@
           </div>
         </div>
 
-        <!-- v11754: Coach PIN settings card removed — login no longer
-             prompts for a PIN. The card is replaced with an explanatory
-             card so Phoebe knows the change. -->
+        <!-- v11758: Coach PIN card restored. The PIN is what you type on
+             the landing-page coach card to sign in. Default is Happy_529 —
+             change it any time below. PINs are case-sensitive. NOTE: the
+             server's auth gate reads the COACH_ADMIN_PIN env var on
+             Netlify, so if you change the PIN here, also update the env
+             var to match — otherwise API calls will 401 after sign-in. -->
         <div class="settings-card">
-          <h4>🔑 Coach access</h4>
-          <p>You're set up to access the coach portal directly — no PIN required. The portal is still hidden from the landing page by default; you reveal it via the <code>?coach=1</code> URL parameter or by typing "phoebe" on the landing screen.</p>
-          <p style="font-size:12px;color:var(--stone);margin-top:8px">If you want the PIN back at any time, ask Claude Code and the change takes about 2 minutes.</p>
+          <h4>🔑 Coach PIN</h4>
+          <p>Your login PIN to access this dashboard. Default is <code>Happy_529</code>. PINs are case-sensitive. If you change the PIN here, you'll also need to update <code>COACH_ADMIN_PIN</code> in Netlify env vars (or your API calls will 401) — ask Claude Code if you need help with that.</p>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <input id="new-coach-pin" type="text" placeholder="New PIN (e.g. Happy_529)" maxlength="20" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-family:var(--f-body);font-size:14px;color:var(--magenta);background:var(--paper);outline:none;width:200px">
+            <button class="btn-sm primary" onclick="changeCoachPin()">Save new PIN</button>
+            <span id="coach-pin-saved" style="font-size:12px;color:var(--teal)"></span>
+          </div>
         </div>
 
         <div class="settings-card">
@@ -4544,27 +4551,41 @@ async function restoreSession() {
 }
 
 // ========== ACCESS ==========
-// v11754: coach PIN requirement removed. The coach card is still hidden
-// on the landing page (revealed via "phoebe" keystroke or ?coach=1 URL),
-// so accessing this code path requires knowing the trigger. Server-side
-// auth is preserved: we auto-populate the matching token into
-// sessionStorage so the fetch interceptor supplies x-coach-pin on every
-// /api/* call. Trade-off: anyone who knows the trigger gets in without
-// typing anything.
-function focusCoachPin() { /* v11754: no-op — kept as a stub for back-compat with older onclick handlers. Calling enterCoach instead. */ enterCoach(); }
+// v11758: PIN restored per Phoebe's request. The coach card is hidden by
+// default on the landing page (reveal via ?coach URL, typing "phoebe", or
+// the localStorage flag from a prior visit). Once revealed, Phoebe types
+// her PIN and presses Enter. Default PIN is Happy_529 (matches
+// COACH_ADMIN_PIN env var); change via Settings → Coach PIN.
+function focusCoachPin() {
+  var el = document.getElementById('coach-pin');
+  if (el) { try { el.focus(); } catch(e) {} }
+}
 
 async function enterCoach() {
-  // No PIN check — straight in. Auto-populate the active-session token
-  // so the fetch interceptor can authenticate API calls server-side.
-  var serverPin = getCoachPin(); // matches COACH_ADMIN_PIN env var
-  try { sessionStorage.setItem('hmh_coach_pin', serverPin); } catch(e) {}
+  var pin = (document.getElementById('coach-pin').value || '').trim();
+  if (!pin) {
+    document.getElementById('coach-err').textContent = 'Type your PIN to continue.';
+    focusCoachPin();
+    return;
+  }
+  if (pin !== getCoachPin()) {
+    document.getElementById('coach-err').textContent = 'Incorrect PIN. Try again.';
+    return;
+  }
+  document.getElementById('coach-err').textContent = '';
+  // Write the active-session token to sessionStorage so the fetch
+  // interceptor supplies x-coach-pin on every /api/* call. Mirror the
+  // PIN to localStorage too so subsequent visits to this browser remember
+  // the PIN value (the "expected" PIN for next login).
+  try { sessionStorage.setItem('hmh_coach_pin', pin); } catch(e) {}
+  try { localStorage.setItem('hmh_coach_pin', pin); } catch(e) {}
+  // Sticky reveal — coach card stays visible on this device from now on.
+  try { localStorage.setItem('hmh_session_coach_known', '1'); } catch(e) {}
   sessionSet(HMH_SESSION.ROLE, 'coach');
   sessionSet(HMH_SESSION.LAST_ACTIVE_AT, new Date().toISOString());
   document.getElementById('landing').style.display = 'none';
   document.getElementById('coach-hub').classList.add('active');
-  // Pull all shared state from Netlify Blobs in parallel with the client list
   await Promise.all([loadClients(), loadRemoteState('coach').catch(function(e){ console.warn('[remote-state]', e); })]);
-  // Run weekly accountability check (Mondays only, once per Monday)
   try { await runWeeklyAccountabilityCheck(); } catch (e) {}
   renderClients();
   renderHome();
@@ -4580,8 +4601,7 @@ async function enterCoach() {
   if (rfab) { rfab.style.display = 'inline-flex'; updateReviewCount(); }
 }
 
-// v11754: idle timeout removed per request. Stub kept so any callers
-// that reference it don't error.
+// v11754: idle timeout stays removed (no-op stub) for back-compat.
 function _startCoachIdleTimer() { /* intentionally empty */ }
 
 async function enterClient() {
