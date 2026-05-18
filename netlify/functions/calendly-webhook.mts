@@ -83,8 +83,29 @@ function extractFields(questions: any[]): Record<string, string> {
     if (name.includes("website") || name.includes("link") || name.includes("find your business") || name.includes("linkedin") || name.includes("instagram")) fields.websiteLink = val;
     if (name.includes("focus") || name.includes("happy hour") || name.includes("anything") || name.includes("prepare")) fields.notes = val;
     if (name.includes("tell me about your business")) fields.businessAbout = val;
+    // v11761: Spam Act 2003 + APP 1+5 compliance. Phoebe adds a tick-box
+    // question on Calendly such as "I agree to receive hub updates and
+    // helpful coaching emails". Match any phrasing that mentions
+    // updates / emails / agree / consent / opt-in / hub.
+    if (name.includes("agree") || name.includes("consent") || name.includes("opt") || name.includes("updates") || name.includes("subscribe") || name.includes("emails") || (name.includes("hub") && name.includes("info"))) {
+      fields.commsConsent = val;
+    }
   }
   return fields;
+}
+
+// v11761: turn whatever Calendly returned for the consent tick-box into a
+// strict boolean. Calendly returns "yes"/"no" for single-select, or the
+// option text for tick-box ("I agree to..."). Anything matching no/false/0
+// is treated as opt-out; anything else (including missing) is treated as
+// the client implicitly agreeing to transactional emails per legitimate
+// interest, BUT they still get the unsubscribe link on every send so they
+// can opt out from their inbox.
+function parseCommsConsent(raw: string | undefined): boolean {
+  if (!raw) return true; // no question asked → default to opt-in transactional
+  const v = raw.toString().toLowerCase().trim();
+  if (v === "no" || v === "false" || v === "0" || v === "off" || v.startsWith("no ") || v.startsWith("don't")) return false;
+  return true;
 }
 
 // v11753: client access codes were 4 letters + 3 digits = ~250k possibilities.
@@ -216,12 +237,31 @@ export default async (req: Request) => {
   let clientId: string;
   let isNew = false;
 
+  // v11761: parse the Calendly comms-consent tick-box. Default to opt-in
+  // for transactional emails (welcome, reminders, digest, NPS surveys) but
+  // log the explicit answer so it's clear in the audit trail.
+  const commsConsent = parseCommsConsent(fields.commsConsent);
+
   if (existingClient && existingId) {
     // ── Returning client — add program to existing profile ─────────────────
     existingClient.programs = existingClient.programs || [];
     existingClient.programs.push(newProgramEntry);
     existingClient.updatedAt = new Date().toISOString();
     existingClient.status = "active";
+    // v11761: a fresh "no" answer revokes previously-granted comms; a
+    // fresh "yes" turns them back on if they'd previously opted out.
+    if (fields.commsConsent) {
+      existingClient.commsConsent = commsConsent;
+      existingClient.commsConsentAt = new Date().toISOString();
+      existingClient.commsConsentSource = "calendly:" + (programInfo.label || "booking");
+      // Mirror to the per-type flags (digest/reminders) so the
+      // killswitch + send-message + send-reminders honour the choice.
+      if (!commsConsent) {
+        existingClient.prefsDigest = false;
+        existingClient.prefsReminders = false;
+        existingClient.prefsCoach = false;
+      }
+    }
     clientRecord = existingClient;
     clientId = existingId;
   } else {
@@ -240,6 +280,15 @@ export default async (req: Request) => {
       updatedAt:    new Date().toISOString(),
       programs:     [newProgramEntry],
       source:       "calendly",
+      // v11761: persisted consent state. Welcome + login emails always
+      // go (transactional / required for program delivery); marketing /
+      // digest / reminders honour these flags.
+      commsConsent: commsConsent,
+      commsConsentAt: new Date().toISOString(),
+      commsConsentSource: "calendly:" + (programInfo.label || "booking"),
+      prefsDigest: commsConsent,
+      prefsReminders: commsConsent,
+      prefsCoach: commsConsent,
     };
   }
 

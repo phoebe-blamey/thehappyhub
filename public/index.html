@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11760">
-<link rel="stylesheet" href="styles.css?v=11760">
+<link rel="preload" as="style" href="styles.css?v=11761">
+<link rel="stylesheet" href="styles.css?v=11761">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11760 — Two fixes from Phoebe's first live login. (1) PIN validation now happens server-side: enterCoach probes /api/get-clients with the typed PIN; only signs in on 200. Previously checked against localStorage value which could diverge from the server's COACH_ADMIN_PIN env var, leading to the front-end accepting a PIN the server then 401'd on every subsequent API call. (2) Badge toasts now silenced during login + session-restore — Phoebe was getting spammed by 5-10 'BADGE UNLOCKED' pops the moment she signed in because the auto-health-update + weekly-accountability check fired persistClient on every client, each of which ran checkAllBadges and surfaced any newly-met thresholds. Badges still get awarded silently during bulk flows; toasts resume for real user actions ~6 seconds later.">
+<meta name="hmh-build" content="v11761 — Calendly consent + programs as recommendations. (1) Calendly webhook now extracts a comms-consent tick-box from intake answers (matches 'agree' / 'consent' / 'opt-in' / 'updates' / 'subscribe' / 'emails' phrasing). New clients get commsConsent + commsConsentAt + commsConsentSource recorded on their record. If they tick 'no' the per-type prefs (prefsDigest / prefsReminders / prefsCoach) all flip off so the digest + reminder schedules skip them automatically — still gets the welcome + login emails (transactional). (2) Settings → Products to recommend now has '+ Add one of my programs' alongside '+ Add a product'. Pick from a preset list (90-Day Builder, Accelerator, Broker, Happy Hour, Audit, MDC, Clarity Call, Ad Hoc) and the Calendly link + price + description auto-fill. (3) Settings copy updated: the Calendly webhook is now explicitly described as handling ALL Calendly programs, not just 90-Day.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -850,7 +850,10 @@
           <h4>📦 Products to recommend</h4>
           <p>Add courses, books, or services here. They appear on a client's "What's next?" card during the last 4 weeks of their current program — alongside Phoebe's AI-suggested next program.</p>
           <div id="recommendable-products-list" style="margin-top:12px"></div>
-          <button class="btn-sm primary" style="margin-top:10px" onclick="addRecommendableProduct()">+ Add a product</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn-sm primary" onclick="addRecommendableProduct()">+ Add a product</button>
+            <button class="btn-sm" onclick="addMyProgramAsProduct()" title="Pick from your built-in programs and add it as a recommendation with the Calendly link pre-filled">+ Add one of my programs</button>
+          </div>
         </div>
 
         <!-- Zoom templates — one-click "create the MDC template in Zoom" so
@@ -921,7 +924,7 @@
 
         <div class="settings-card">
           <h4>🔌 Calendly webhook</h4>
-          <p>When a client books the 90-Day Business Builder, a client file is auto-created with all intake answers. Add this URL in Calendly → Integrations → Webhooks → invitee.created:</p>
+          <p>When a client books <strong>any</strong> of your Calendly programs — 90-Day Business Builder, Accelerator, Broker, Happy Hour, Audit, MDC sessions, Ad Hoc, Discovery, podcast or partner chats — a client file is auto-created with all intake answers and the right workbook attached. One webhook handles them all. Add this URL in Calendly → Integrations → Webhooks → invitee.created:</p>
           <div class="code-block" id="webhook-url-display">https://hub.phoebeblamey.com.au/api/calendly-webhook</div>
           <script>
             // Auto-fill the webhook URL with whatever origin Phoebe is currently
@@ -3605,6 +3608,86 @@ async function addRecommendableProduct() {
   flushCoachSettings();
   renderRecommendableProductsList();
   branded.success('Added "' + newProd.name + '" — visible to ' + (newProd.audience === 'all' ? 'all clients' : 'clients on ' + newProd.audience));
+}
+
+// v11761 — Add one of Phoebe's built-in programs as a recommendable product.
+// Picks from a curated list (only programs that make sense as recommendations
+// — paid + delivers ongoing value). Auto-fills Calendly URL, label, price
+// hint, and description. Phoebe can edit after import via the normal Edit
+// button.
+var MY_PROGRAM_PRESETS = [
+  { key: '90day',       label: '90-Day Business Builder',         price: '$2,997 AUD', url: 'https://calendly.com/phoebe-phoebeblamey/90day-businessbuilder', desc: 'The 90-day intensive — 2-hour deep dive + custom plan + Mon/Fri check-ins.', icon: '📅' },
+  { key: 'accelerator', label: 'Business Growth Accelerator',     price: '$2,997 AUD', url: 'https://calendly.com/phoebe-phoebeblamey/accelerator',           desc: '90 days of focused growth coaching — same structure as Business Builder, growth focus.', icon: '🚀' },
+  { key: 'broker',      label: 'Broker Business Breakthrough',    price: '$2,997 AUD', url: 'https://calendly.com/phoebe-phoebeblamey/broker',                desc: '90-day program tailored for brokers — pipeline, pricing, referrals.', icon: '🏦' },
+  { key: 'happyhour',   label: 'Happy Hour',                      price: '$297 AUD',   url: 'https://calendly.com/phoebe-phoebeblamey/happy-hour',            desc: '90-minute strategy session — bring your one biggest question.', icon: '☀️' },
+  { key: 'adhoc',       label: 'Ad Hoc Coaching Session',         price: '$297 AUD',   url: 'https://calendly.com/phoebe-phoebeblamey/adhoc',                 desc: 'One-off coaching hour for when something specific comes up.', icon: '💬' },
+  { key: 'audit',       label: 'Beautiful Business Audit',        price: 'Free',       url: 'https://calendly.com/phoebe-phoebeblamey/audit',                 desc: 'Free 60-day audit of your business — find the leaks, map next steps.', icon: '🔍' },
+  { key: 'mdc',         label: 'Million Dollar Conspiracy Sprint', price: 'Members only', url: 'https://phoebeblamey.com.au/mdc',                              desc: 'The MDC community for graduates — ongoing accountability + cohort calls.', icon: '💡' },
+  { key: 'inquiry',     label: '15-Minute Clarity Call',          price: 'Free',       url: 'https://calendly.com/phoebe-phoebeblamey/new-meeting',           desc: 'Quick free call to figure out if we are a good fit.', icon: '🤝' },
+];
+
+async function addMyProgramAsProduct() {
+  // Pick which program to add via a branded modal (single-select list).
+  var existing = (window._coachSettings && Array.isArray(window._coachSettings.recommendableProducts))
+    ? window._coachSettings.recommendableProducts : [];
+  var existingNames = existing.map(function(p){ return (p.name || '').toLowerCase(); });
+  var available = MY_PROGRAM_PRESETS.filter(function(p) {
+    return existingNames.indexOf(p.label.toLowerCase()) < 0;
+  });
+  if (!available.length) {
+    branded.alert('All your built-in programs are already in the list. Edit one above to tweak its wording, or delete one to re-add fresh.', { title: 'Nothing to add' });
+    return;
+  }
+  // Render a branded modal with a list of buttons
+  var host = document.getElementById('branded-modal-host');
+  if (!host) return;
+  document.getElementById('branded-modal-icon').textContent = '📚';
+  document.getElementById('branded-modal-title').textContent = 'Pick a program to recommend';
+  var bodyEl = document.getElementById('branded-modal-body');
+  bodyEl.style.maxHeight = '60vh';
+  bodyEl.style.overflowY = 'auto';
+  bodyEl.innerHTML =
+    '<p style="font-size:13px;color:var(--magenta);margin-bottom:12px">Adds the program with a default link, price hint and short description. You can edit any field afterwards via the ✏️ button.</p>' +
+    '<div style="display:flex;flex-direction:column;gap:8px">' +
+      available.map(function(p) {
+        return '<button class="btn-sm" data-progkey="' + escapeHtml(p.key) + '" style="text-align:left;background:white;border:1.5px solid var(--border);padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer">' +
+          '<span style="font-size:22px">' + p.icon + '</span>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-weight:700;color:var(--magenta);font-size:13px">' + escapeHtml(p.label) + '</div>' +
+            '<div style="font-size:11px;color:var(--stone);margin-top:1px">' + escapeHtml(p.price) + ' · ' + escapeHtml(p.desc) + '</div>' +
+          '</div>' +
+        '</button>';
+      }).join('') +
+    '</div>';
+  document.getElementById('branded-modal-input').style.display = 'none';
+  document.getElementById('branded-modal-actions').innerHTML =
+    '<button class="btn-sm" onclick="document.getElementById(\'branded-modal-host\').style.display=\'none\'">Cancel</button>';
+  host._cancel = function() { host.style.display = 'none'; };
+  host.style.display = 'flex';
+  // Wire each program button
+  bodyEl.querySelectorAll('[data-progkey]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var k = btn.getAttribute('data-progkey');
+      var preset = MY_PROGRAM_PRESETS.find(function(x){ return x.key === k; });
+      if (!preset) return;
+      var newProd = {
+        id: 'prod-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        name: preset.label,
+        price: preset.price,
+        link: preset.url,
+        description: preset.desc,
+        audience: 'all',
+        isOwnProgram: true,
+        programKey: preset.key,
+      };
+      window._coachSettings = window._coachSettings || {};
+      window._coachSettings.recommendableProducts = (window._coachSettings.recommendableProducts || []).concat([newProd]);
+      flushCoachSettings();
+      renderRecommendableProductsList();
+      host.style.display = 'none';
+      branded.toast('Added ' + preset.label + ' to recommendations');
+    });
+  });
 }
 
 async function editRecommendableProduct(productId) {
