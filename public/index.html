@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11761">
-<link rel="stylesheet" href="styles.css?v=11761">
+<link rel="preload" as="style" href="styles.css?v=11762">
+<link rel="stylesheet" href="styles.css?v=11762">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11761 — Calendly consent + programs as recommendations. (1) Calendly webhook now extracts a comms-consent tick-box from intake answers (matches 'agree' / 'consent' / 'opt-in' / 'updates' / 'subscribe' / 'emails' phrasing). New clients get commsConsent + commsConsentAt + commsConsentSource recorded on their record. If they tick 'no' the per-type prefs (prefsDigest / prefsReminders / prefsCoach) all flip off so the digest + reminder schedules skip them automatically — still gets the welcome + login emails (transactional). (2) Settings → Products to recommend now has '+ Add one of my programs' alongside '+ Add a product'. Pick from a preset list (90-Day Builder, Accelerator, Broker, Happy Hour, Audit, MDC, Clarity Call, Ad Hoc) and the Calendly link + price + description auto-fill. (3) Settings copy updated: the Calendly webhook is now explicitly described as handling ALL Calendly programs, not just 90-Day.">
+<meta name="hmh-build" content="v11762 — Save-pending diagnostics. The 'Save pending' pill is now clickable: tap it to force-retry the save queue. If the retry succeeds you get a green '✓ Cleared' alert; if anything fails you see exactly why (401 / 409 / network) with a one-line summary of the failing records. Every flush logs failures to the browser console so screenshots show the cause. Also: enterCoach now auto-fires a flush 2s after sign-in, so the queue clears itself once your PIN works again — no more lingering 'Save pending' banner from a previous broken session.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -4427,9 +4427,6 @@ function setSaveStatus(state) {
     'conflict': { text: '⚠ Conflict',    bg: 'rgba(192,57,43,0.9)',   color: 'white' }
   };
   var p = presets[state] || presets.saved;
-  // Coach topbar uses an id; client uses a class so we can have one in each
-  // hub without an id collision (only one hub is .active at a time but
-  // both pills exist in the DOM).
   var pills = [];
   var coachPill = document.getElementById('save-status-pill');
   if (coachPill) pills.push(coachPill);
@@ -4439,6 +4436,17 @@ function setSaveStatus(state) {
     el.style.background = p.bg;
     el.style.color = p.color;
     el.style.opacity = '1';
+    // v11762: when the pill is showing "queued" or "conflict", make it
+    // clickable and Phoebe can force-retry to see what's failing.
+    if (state === 'queued' || state === 'conflict') {
+      el.style.cursor = 'pointer';
+      el.title = 'Click to retry — opens a diagnostic if anything fails';
+      el.onclick = function(e){ e.stopPropagation(); if (typeof manualFlushQueue === 'function') manualFlushQueue(); };
+    } else {
+      el.style.cursor = '';
+      el.title = '';
+      el.onclick = null;
+    }
   });
   if (state === 'saved') {
     setTimeout(function() {
@@ -4460,11 +4468,12 @@ function queueFailedSave(client) {
 }
 
 async function flushSaveQueue() {
-  if (!isDeployed) return;
+  if (!isDeployed) return { flushed: 0, remaining: 0, errors: [] };
   var queue;
-  try { queue = JSON.parse(localStorage.getItem(SAVE_QUEUE_KEY) || '[]'); } catch(e) { return; }
-  if (!queue.length) return;
+  try { queue = JSON.parse(localStorage.getItem(SAVE_QUEUE_KEY) || '[]'); } catch(e) { return { flushed: 0, remaining: 0, errors: [] }; }
+  if (!queue.length) return { flushed: 0, remaining: 0, errors: [] };
   var remaining = [];
+  var errors = [];
   for (var i = 0; i < queue.length; i++) {
     var item = queue[i];
     try {
@@ -4473,8 +4482,17 @@ async function flushSaveQueue() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId: item.clientId, data: item.data })
       });
-      if (!resp.ok) remaining.push(item);
+      if (!resp.ok) {
+        // v11762: capture the failure reason so Phoebe can see WHY
+        // saves aren't going through (was silent before).
+        var errBody = '';
+        try { errBody = (await resp.text()).slice(0, 120); } catch(_) {}
+        errors.push({ clientId: item.clientId, status: resp.status, body: errBody });
+        console.warn('[flushSaveQueue] failed for', item.clientId, '→ HTTP', resp.status, errBody);
+        remaining.push(item);
+      }
     } catch(e) {
+      errors.push({ clientId: item.clientId, status: 0, body: String(e && e.message || e) });
       remaining.push(item);
     }
   }
@@ -4483,6 +4501,45 @@ async function flushSaveQueue() {
     var flushed = queue.length - remaining.length;
     branded.toast('✓ ' + flushed + ' queued save' + (flushed===1?'':'s') + ' synced to server');
   }
+  // If the queue is fully drained, clear the "Save pending" pill.
+  if (!remaining.length && typeof setSaveStatus === 'function') {
+    try { setSaveStatus('saved'); } catch(_) {}
+  }
+  return { flushed: queue.length - remaining.length, remaining: remaining.length, errors: errors };
+}
+
+// v11762: clickable "Save pending" pill — Phoebe can force-retry and see
+// exactly why anything's still failing. Bound to BOTH the coach pill
+// (id=save-status-pill) and any client-side pills (.save-status-pill-c).
+async function manualFlushQueue() {
+  if (typeof branded === 'undefined') return;
+  var result = await flushSaveQueue();
+  if (result.flushed > 0 && result.remaining === 0) {
+    branded.success('All ' + result.flushed + ' pending save' + (result.flushed === 1 ? '' : 's') + ' synced — you\'re up to date.', { title: '✓ Cleared' });
+    return;
+  }
+  if (result.flushed > 0 && result.remaining > 0) {
+    branded.alert('Synced ' + result.flushed + ' of ' + (result.flushed + result.remaining) + '. ' + result.remaining + ' still failing — see browser console for details.', { title: 'Partial sync' });
+    return;
+  }
+  if (result.remaining > 0) {
+    // Build a short summary of the failure modes
+    var errSummary = (result.errors || []).slice(0, 3).map(function(e) {
+      return '• ' + e.clientId + ' → ' + (e.status === 401 ? 'Unauthorised (re-sign-in needed)' :
+                                            e.status === 409 ? 'Conflict (auto-merge couldn\'t resolve)' :
+                                            e.status === 0   ? 'Network: ' + e.body :
+                                            'HTTP ' + e.status + ' — ' + e.body);
+    }).join('\n');
+    // Most common path: 401 means PIN's wrong. Offer to clear the queue.
+    var any401 = (result.errors || []).some(function(e){ return e.status === 401; });
+    var msg = result.remaining + ' save' + (result.remaining === 1 ? '' : 's') + ' still pending:\n\n' + errSummary;
+    if (any401) {
+      msg += '\n\nLikely cause: your PIN isn\'t reaching the server. Sign out and sign back in with the right PIN.';
+    }
+    branded.alert(msg, { title: '⚠ Still pending' });
+    return;
+  }
+  branded.success('Nothing to sync — you\'re all caught up.', { title: '✓ All clear' });
 }
 
 function getDemoClients() {
@@ -4709,6 +4766,18 @@ async function enterCoach() {
   }, 300);
   startNotificationPolling();
   try { startLiveSync(); } catch (e) {}
+  // v11762: auto-flush any saves that piled up while the PIN was wrong.
+  // 2s delay so the bulk-render storm settles first. Result toasts if
+  // anything was actually synced.
+  setTimeout(function() {
+    if (typeof flushSaveQueue === 'function') {
+      flushSaveQueue().then(function(r) {
+        if (r && r.flushed > 0 && typeof branded !== 'undefined' && branded.toast) {
+          branded.toast('✓ Synced ' + r.flushed + ' pending save' + (r.flushed === 1 ? '' : 's'));
+        }
+      }).catch(function(){});
+    }
+  }, 2000);
   var rfab = document.getElementById('review-fab');
   if (rfab) { rfab.style.display = 'inline-flex'; updateReviewCount(); }
 }
