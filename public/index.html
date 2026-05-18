@@ -40,8 +40,8 @@
 <!-- Our own CSS — preload hints the browser to prioritise its fetch. The
      stylesheet link below it actually applies it; preload alone doesn't
      attach styles to the document. -->
-<link rel="preload" as="style" href="styles.css?v=11758">
-<link rel="stylesheet" href="styles.css?v=11758">
+<link rel="preload" as="style" href="styles.css?v=11759">
+<link rel="stylesheet" href="styles.css?v=11759">
 
 </head>
 <body>
@@ -83,7 +83,7 @@
 </script>
 <!-- Build stamp kept as a hidden meta tag for the deploy verification skill,
      no longer rendered as a visible banner (clean UX for clients + Phoebe). -->
-<meta name="hmh-build" content="v11758 — Coach PIN restored per Phoebe's request. Coach card still hidden by default on the landing page (reveal via ?coach URL / typing 'phoebe' / localStorage flag from a prior coach visit). Once revealed, Phoebe types her PIN (default Happy_529) and hits Enter to sign in. Successful sign-in writes the active PIN to sessionStorage so the fetch interceptor can authenticate API calls server-side, mirrors to localStorage so subsequent visits remember the value, and sets the sticky-reveal flag so the coach card stays visible on this device from now on. Settings → Coach PIN card restored so Phoebe can change her PIN any time. Client login (/api/client-login) + visible-by-default PB logo + dedicated ?coach URL from v11756/v11757 all remain shipped. Service worker bumped to peabe-v4 to flush any stale browser caches.">
+<meta name="hmh-build" content="v11759 — CRITICAL FIX: stray '}' at line 14060 was a SyntaxError that broke ALL JavaScript on the page (since the v11752 renderClientSettings refactor left an orphan closing brace + comment block in place). With JS broken, no listeners attached: ?coach didn't reveal the coach card, typing 'phoebe' did nothing, client login form didn't work, etc. Removing the orphan brace unblocks every interactive piece on the landing page. PIN entry, ?coach URL, typing phoebe, client access code login — all restored. Service worker v4 already in place from v11757 to flush browser caches.">
 <style>body{padding-top:0 !important}</style>
 
 <!-- ========== OFFLINE / NETWORK STATUS BANNER ==========
@@ -14052,11 +14052,6 @@ async function updateMyEmailPref(key, on) {
   if (typeof branded !== 'undefined' && branded.toast) {
     branded.toast(on ? '✓ Turned on' : '✓ Turned off');
   }
-}
-  // v11570: removed the "My answers moved" announcement banner — it was
-  // only useful for the few-week transition period after v11210 when
-  // the answers shifted location. Anyone joining now has only ever seen
-  // them on Summary, so the message is just clutter.
 }
 
 // Read-write client view of the universal intake. Question text is
